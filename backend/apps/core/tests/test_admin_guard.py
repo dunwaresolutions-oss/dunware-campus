@@ -6,12 +6,22 @@ from django.test import override_settings
 
 pytestmark = pytest.mark.django_db
 
+# Rendering /admin/login/ touches {% static %}; use non-manifest storage so the
+# test passes whether or not collectstatic has run (CI uses the dev settings).
+_PLAIN_STATIC = override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }
+)
+
 
 def test_anonymous_admin_is_404_not_302(client):
     # 404, not a login redirect — the admin does not advertise itself.
     assert client.get("/admin/").status_code == 404
 
 
+@_PLAIN_STATIC
 def test_login_page_reachable_from_allowlisted_ip(client):
     assert client.get("/admin/login/").status_code == 200
 
