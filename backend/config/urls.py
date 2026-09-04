@@ -27,6 +27,7 @@ api_patterns = [
     path("", include("apps.communication.urls")),
     path("", include("apps.grades.urls")),
     path("", include("apps.booking.urls")),
+    path("portal/", include("apps.people.portal_urls")),
 ]
 
 urlpatterns = [

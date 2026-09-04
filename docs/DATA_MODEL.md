@@ -42,6 +42,12 @@ place where every **PII field** is listed with its **purpose** and **retention**
   `EmergencyContact`, `AuthorizedPickup`, `Observation`
   (`visible_to_guardians` gate), `Document` (file bytes AES-GCM encrypted on
   disk via `EncryptedFileSystemStorage`).
+- `ContactChangeRequest(SensitiveModel)` *(Phase 6)* — a guardian's proposed
+  edit to their own `email` / `phone` / `address` (or a per-child
+  `receives_communications` / `lives_with` flag). `current_value` /
+  `proposed_value` encrypted; `PENDING → APPROVED / REJECTED`. On approve the
+  service applies the change to the target and audits it. Guardians never edit
+  their record directly.
 
 | PII field | purpose | retention |
 |---|---|---|
@@ -158,6 +164,22 @@ place where every **PII field** is listed with its **purpose** and **retention**
 Planned: `FeeSchedule`, `Invoice`, `InvoiceLine`, `Payment` (manual only),
 `Credit`. No card data. `PaymentGateway` interface + `ManualGateway` +
 `StripeGateway` stub.
+
+## portal  *(Phase 6 — done, no new app)*
+
+The restricted parent / student surface. No new tables beyond
+`people.ContactChangeRequest` — everything else is read-scoped through the
+same `Student.visible_queryset` / `is_visible_to` the staff API uses.
+
+- `GET /api/portal/dashboard/` — one call: the caller's children, each with
+  upcoming sessions, recent attendance, released report cards, upcoming
+  bookings, open (sent) incidents, and outstanding consent kinds; plus visible
+  announcements, the caller's message threads, their contact-change requests,
+  and an empty `invoices` list (Phase 7 fills it, read-only).
+- `POST /api/portal/contact-change-requests/` — submit a change; front office
+  `approve` / `reject`. `POST /api/portal/consents/` — record a consent
+  decision as a new versioned `registration.Consent` row (never an update).
+- Portal users cannot reach the dashboard as staff, and vice-versa.
 
 ## reporting  *(Phase 2 — done)*
 

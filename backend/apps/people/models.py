@@ -378,3 +378,62 @@ class Document(SensitiveSoftDeleteModel):
 
     def is_visible_to(self, user) -> bool:
         return self.student.is_visible_to(user)
+
+
+class ContactChangeRequest(SensitiveModel):
+    """
+    Portal write path: a guardian cannot edit their own record directly — they
+    propose a change here and the front office approves or rejects it, applying
+    the change and auditing it (see docs/DATA_MODEL.md, Phase 6).
+    """
+
+    PII_FIELDS = ("current_value", "proposed_value")
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending review"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    #: field name -> which model it lives on
+    GUARDIAN_FIELDS = ("email", "phone", "address")
+    LINK_FIELDS = ("receives_communications", "lives_with")
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="contact_change_requests"
+    )
+    guardian = models.ForeignKey(
+        Guardian, on_delete=models.CASCADE, related_name="contact_change_requests"
+    )
+    guardian_link = models.ForeignKey(
+        GuardianLink, null=True, blank=True, on_delete=models.CASCADE, related_name="+"
+    )
+    field = models.CharField(max_length=40)
+    current_value = EncryptedTextField(blank=True, default="")
+    proposed_value = EncryptedTextField(blank=True, default="")
+    reason = models.CharField(max_length=255, blank=True)
+
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.PENDING)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = "people_contact_change_request"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "created_at"])]
+
+    def __str__(self) -> str:
+        return f"change {self.field} on guardian {self.guardian_id} ({self.status})"
+
+    @property
+    def target_is_link(self) -> bool:
+        return self.field in self.LINK_FIELDS
+
+    def is_visible_to(self, user) -> bool:
+        role = getattr(user, "role", None)
+        if role in (Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK):
+            return True
+        return self.requested_by_id == getattr(user, "pk", None)
