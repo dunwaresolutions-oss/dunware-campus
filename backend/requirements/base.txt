@@ -1,0 +1,13 @@
+# Campus — runtime dependencies (all environments).
+Django>=5.2,<5.3
+djangorestframework>=3.15
+django-environ>=0.11
+psycopg[binary]>=3.2          # PostgreSQL driver
+argon2-cffi>=23.1             # password hashing (Argon2 first in PASSWORD_HASHERS)
+cryptography>=43.0            # AES-GCM field encryption (apps/core/fields.py)
+django-otp>=1.5               # TOTP MFA for staff
+qrcode>=7.4                   # MFA enrolment QR
+django-axes>=6.5             # login lockout / brute-force protection
+django-cors-headers>=4.4      # dev only in practice; prod is same-origin
+django-q2>=1.7                # background jobs (report cards, retention, digests)
+whitenoise>=6.7               # serve the exported Next.js build + static from Django

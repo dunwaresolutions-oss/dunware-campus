@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: campus
+          POSTGRES_USER: campus
+          POSTGRES_PASSWORD: campus
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U campus" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgres://campus:campus@localhost:5432/campus
+      SECRET_KEY: ci-only-not-a-real-secret-please-rotate-per-install-0123456789
+      FIELD_ENCRYPTION_KEY: MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=  # 32 bytes b64, CI only
+      DJANGO_SETTINGS_MODULE: config.settings.dev
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements/dev.txt
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: Security static analysis (bandit)
+        run: bandit -q -c pyproject.toml -r apps config
+      - name: Dependency audit (pip-audit)
+        run: pip-audit -r requirements/base.txt --strict
+      - name: Django deploy check
+        run: python manage.py check --deploy --fail-level WARNING
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.prod
+      - name: Migrations are complete
+        run: python manage.py makemigrations --check --dry-run
+      - name: Tests
+        run: pytest --cov=apps
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npx eslint .
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Static export builds
+        run: npm run build

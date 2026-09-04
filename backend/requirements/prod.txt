@@ -1,0 +1,5 @@
+-r base.txt
+
+# Campus — production (bundled installer) extras.
+waitress>=3.0                 # pure-Python WSGI server; runs as a Windows service
+weasyprint>=62.0             # report-card / document PDF rendering

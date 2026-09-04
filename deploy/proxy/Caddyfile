@@ -1,0 +1,38 @@
+# Campus — bundled reverse proxy / LAN HTTPS front door.
+# The installer templates {$CAMPUS_HOST} and {$API_BIND} from the first-run
+# wizard. Caddy runs as a Windows service.
+#
+# For a LAN host with no public DNS, use Caddy's internal CA (self-signed,
+# trusted after `caddy trust` on client machines) or `tls internal`.
+
+{$CAMPUS_HOST:localhost} {
+	encode gzip zstd
+
+	# API -> waitress (Django)
+	handle /api/* {
+		reverse_proxy {$API_BIND:127.0.0.1:8001}
+	}
+	handle /admin/* {
+		reverse_proxy {$API_BIND:127.0.0.1:8001}
+	}
+	handle /static/* {
+		reverse_proxy {$API_BIND:127.0.0.1:8001}
+	}
+	handle /media/* {
+		reverse_proxy {$API_BIND:127.0.0.1:8001}
+	}
+
+	# everything else -> the exported Next.js SPA (also served by Django/whitenoise)
+	handle {
+		reverse_proxy {$API_BIND:127.0.0.1:8001}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+	}
+
+	tls internal
+}

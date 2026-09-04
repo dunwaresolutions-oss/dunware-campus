@@ -1,0 +1,51 @@
+# ---- secrets & local config (NEVER commit) ----
+.env
+*.env
+!.env.example
+backend/.env
+frontend/.env*
+!frontend/.env.example
+deploy/.env
+*.key
+*.pem
+secrets/
+
+# ---- Python / Django ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.sqlite3
+backend/staticfiles/
+backend/media/
+backend/mediafiles/
+
+# ---- Node / Next.js ----
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.turbo/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---- build / packaging output ----
+build/
+dist/
+installer/
+*.spec.bak
+deploy/pgdata/
+deploy/_bundle/
+
+# ---- editor / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- runtime data (a real deployment writes here; never in the repo) ----
+data/
+logs/
+*.log

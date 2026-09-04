@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+:root {
+  --campus-bg: #f6f8fa;
+  --campus-fg: #1c2530;
+}
+
+html,
+body {
+  background: var(--campus-bg);
+  color: var(--campus-fg);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}

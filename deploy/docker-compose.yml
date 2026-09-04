@@ -1,0 +1,25 @@
+# DEVELOPMENT ONLY. This is NOT how Campus is shipped.
+# Production is a single bundled Windows installer (see docs/DEPLOYMENT.md) —
+# a portable PostgreSQL, a PyInstaller-frozen Django, the static Next export,
+# and Caddy, all as Windows services. This file just gives a dev a local
+# Postgres to point DATABASE_URL at.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: campus
+      POSTGRES_USER: campus
+      POSTGRES_PASSWORD: campus
+    ports:
+      - "5432:5432"
+    volumes:
+      - campus_dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U campus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  campus_dev_pgdata:
