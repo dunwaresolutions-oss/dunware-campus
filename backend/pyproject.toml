@@ -11,6 +11,7 @@ ignore = ["S101"]  # assert in tests
 "*/tests/*" = ["S105", "S106", "S107"]
 "*/tests.py" = ["S105", "S106", "S107"]
 "conftest.py" = ["S105", "S106", "S107"]
+"*/management/commands/seed_demo.py" = ["S311"]  # synthetic demo data, not crypto
 "config/settings/*" = ["F403", "F405", "S105", "S106"]
 
 [tool.pytest.ini_options]

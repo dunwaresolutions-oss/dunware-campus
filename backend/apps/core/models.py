@@ -49,6 +49,9 @@ class SoftDeleteQuerySet(models.QuerySet):
     def alive(self):
         return self.filter(deleted_at__isnull=True)
 
+    def dead(self):
+        return self.filter(deleted_at__isnull=False)
+
 
 class SoftDeleteModel(BaseModel):
     """
@@ -65,6 +68,32 @@ class SoftDeleteModel(BaseModel):
         on_delete=models.SET_NULL,
         related_name="+",
     )
+
+    objects = SoftDeleteQuerySet.as_manager()
+
+    class Meta:
+        abstract = True
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+    def soft_delete(self, by=None):
+        from django.utils import timezone
+
+        self.deleted_at = timezone.now()
+        self.deleted_by = by if getattr(by, "pk", None) else None
+        self.save(update_fields=["deleted_at", "deleted_by", "updated_at"])
+
+    def restore(self):
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(update_fields=["deleted_at", "deleted_by", "updated_at"])
+
+
+class SensitiveSoftDeleteModel(SensitiveModel, SoftDeleteModel):
+    """High-sensitivity PII that also needs history-preserving deletes
+    (students, health records, observations, documents)."""
 
     objects = SoftDeleteQuerySet.as_manager()
 

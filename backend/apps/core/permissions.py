@@ -10,6 +10,8 @@ from __future__ import annotations
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 STAFF_ROLE_NAMES = ("SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR")
+# Roles that see every person record; the rest are scoped by is_visible_to().
+ADMIN_ROLE_NAMES = ("SUPERADMIN", "ADMIN", "FRONT_DESK")
 
 
 class MFAVerified(BasePermission):
@@ -59,6 +61,26 @@ class PortalUser(RoleRequired):
     allowed_roles = ("PARENT", "STUDENT")
 
 
+class FrontOffice(RoleRequired):
+    """Superadmin / admin / front desk — the roles that run registration and
+    reference data. Instructors are excluded."""
+
+    allowed_roles = ADMIN_ROLE_NAMES
+
+
+class StaffWriteAuthenticatedRead(BasePermission):
+    """Reads: any authenticated user (the viewset's queryset + object-level
+    ``IsObjectOwnerOrStaff`` still scope what comes back). Writes: staff only."""
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return getattr(user, "role", None) in STAFF_ROLE_NAMES
+
+
 class StaffAndMFAVerified(BasePermission):
     """The default for staff-facing viewsets that touch person data: a staff
     role *and* a satisfied second factor. Compose object-level scoping on top."""
@@ -71,16 +93,19 @@ class StaffAndMFAVerified(BasePermission):
 
 class IsObjectOwnerOrStaff(BasePermission):
     """
-    Object-level scoping. Staff pass; a portal user passes only for objects
-    that belong to them. The model must implement ``is_visible_to(user)``.
+    Object-level scoping. Admin-tier staff (superadmin / admin / front desk)
+    pass; everyone else — instructors and portal users alike — passes only if
+    ``obj.is_visible_to(user)`` says so. Every scoped model implements it.
     """
+
+    message = "You do not have access to this record."
 
     def has_object_permission(self, request, view, obj):
         user = request.user
-        if getattr(user, "role", None) in ("SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR"):
+        if getattr(user, "role", None) in ADMIN_ROLE_NAMES:
             return True
         checker = getattr(obj, "is_visible_to", None)
-        return bool(checker and checker(user))
+        return bool(callable(checker) and checker(user))
 
 
 class ReadOnly(BasePermission):

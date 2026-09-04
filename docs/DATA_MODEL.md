@@ -30,22 +30,54 @@ place where every **PII field** is listed with its **purpose** and **retention**
   No field values.
 - Retention: `RETENTION_AUDIT_LOG_DAYS` (default ~10 years).
 
-## people  *(Phase 2)*
+## people  *(Phase 2 — done)*
 
-Planned: `Student`, `Guardian`, `GuardianLink` (relationship + custody flag),
-`EmergencyContact`, `AuthorizedPickup`, `Observation`, `Document`.
-PII table to be completed here.
+- `Group` (+ `GroupStaff`) — the age-agnostic unit; `GroupStaff` drives
+  instructor visibility.
+- `Student(SensitiveSoftDeleteModel)` — spine. `is_visible_to()` /
+  `visible_queryset()` are the one scoping authority. `legal_hold` blocks
+  retention + erasure; `left_on` starts the retention clock; `anonymized_at`
+  records an erasure.
+- `Guardian` + `GuardianLink` (relationship, custody, pickup, comms flags),
+  `EmergencyContact`, `AuthorizedPickup`, `Observation`
+  (`visible_to_guardians` gate), `Document` (file bytes AES-GCM encrypted on
+  disk via `EncryptedFileSystemStorage`).
 
-## health  *(Phase 2 — all encrypted)*
+| PII field | purpose | retention |
+|---|---|---|
+| `Student.first_name/last_name/preferred_name` | identification on rosters, report cards | while enrolled + `RETENTION_PAST_STUDENT_DAYS` after `left_on`, then anonymized |
+| `Student.date_of_birth` | age-band placement, ratio compliance | same |
+| `Student.government_id` *(encrypted)* | government reporting where legally required | same; blanked on erase |
+| `Student.custody_notes` *(encrypted)* | custody / access affecting pickup | same |
+| `Guardian.email` | announcements, incident reports, invoices | while linked to a current student + 1 yr |
+| `Guardian.phone` *(encrypted)*, `Guardian.address` *(encrypted)* | urgent contact / correspondence | same |
+| `GuardianLink.custody_notes` *(encrypted)* | who may collect / be told | with the link |
+| `EmergencyContact.*`, `AuthorizedPickup.*` *(name plain, phones encrypted)* | emergency contact / pickup validation | with the student |
+| `Observation.body` *(encrypted)* | developmental / incident record | with the student; erased on request |
+| `Document.file` *(encrypted on disk)* | birth cert, custody order, IEP, immunization | with the student; deleted on erase |
 
-Planned: `Allergy`, `Condition`, `Medication`, `ActionPlan`. Encrypted fields:
-allergen, reaction, condition name, medication name + dose + schedule, plan text.
-Retention: shortest window; erased with the student.
+## health  *(Phase 2 — done, all encrypted)*
 
-## registration  *(Phase 2)*
+- `HealthAccessGrant` — the **named staff subset**. `HealthProfile` (O2O),
+  `Allergy`, `Condition`, `Medication`, `ActionPlan(SensitiveSoftDeleteModel)`.
+- Encrypted: `blood_type`, `notes`, `allergen`, `reaction`, condition `name` +
+  `details`, medication `name` / `dose` / `schedule` / `prescriber`, action-plan
+  `plan`. Plain flags only: `severity`, `epipen_required`, `route`, `prn`,
+  `ongoing` — the operational minimum a non-clinical front desk needs.
+- Retention: shortest window; deleted outright by `erase_person`.
 
-Planned: `Application`, `WaitlistEntry`, `Offer`, `Enrolment`, `Consent`
-(`kind`, `version`, `granted_at`, `granted_by`), `UploadedDocument` (encrypted).
+## registration  *(Phase 2 — done)*
+
+- `Application(SensitiveSoftDeleteModel)` (+ `ApplicationDocument`, encrypted),
+  `WaitlistEntry`, `Offer`, `Enrolment` (authoritative student⇄group span;
+  one ACTIVE per pair), `Consent`.
+- `Consent` is **versioned** — a change is a new row; `Consent.current_for(
+  student, kind)` returns the latest. `kind` covers photo / media / field trip
+  / data sharing / medical treatment / technology / sunscreen.
+- Encrypted: `Application.applicant_phone` + `notes`, `Consent.notes`,
+  `ApplicationDocument.file`.
+- Lifecycle in `apps/registration/services.py`: `make_offer` → `respond_to_offer`
+  → `convert_application` (creates the `Student` + `Enrolment`), each audited.
 
 ## scheduling / attendance  *(Phase 3)*
 ## lessons  *(Phase 3)*
@@ -58,7 +90,18 @@ Planned: `FeeSchedule`, `Invoice`, `InvoiceLine`, `Payment` (manual only),
 `Credit`. No card data. `PaymentGateway` interface + `ManualGateway` +
 `StripeGateway` stub.
 
-## reporting  *(Phase 2+)*
+## reporting  *(Phase 2 — done)*
 
-No models of its own — jobs and exports over the above: retention purge /
-anonymize, right-to-erasure, data-subject access export.
+No models of its own. `apps/reporting/services.py`:
+- `data_subject_export(student)` — everything held about one child, decrypted,
+  as a dict (audited `EXPORT`). CLI: `manage.py export_student --student <id>`.
+- `erase_person(student)` — anonymize in place (names → "ERASED", encrypted
+  fields blanked, health rows deleted), keeping the row so audit / financial
+  history resolves. Blocked by `legal_hold`. Audited `ERASE`. CLI:
+  `manage.py erase_student --student <id>`.
+- `jobs.retention_sweep()` — audit-log anonymization + past-student erasure +
+  stale-application purge. CLI: `manage.py run_retention` (django-q2 schedule
+  in Phase 8).
+
+Synthetic demo data: `manage.py seed_demo` (refuses under `DEBUG=False`
+without `--force`).

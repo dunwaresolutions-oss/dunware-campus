@@ -18,8 +18,9 @@ def healthz(_request):
 api_patterns = [
     path("healthz/", healthz, name="healthz"),
     path("auth/", include("apps.accounts.urls")),
-    # feature apps register their routers here in phases 2-7, e.g.:
-    # path("", include("apps.people.urls")),
+    path("", include("apps.people.urls")),
+    path("", include("apps.health.urls")),
+    path("", include("apps.registration.urls")),
 ]
 
 urlpatterns = [
