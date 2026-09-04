@@ -14,7 +14,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
+from apps.attendance.services import check_in
 from apps.health.models import ActionPlan, Allergy, Condition, HealthProfile, Medication
+from apps.lessons.models import CurriculumUnit, LessonPlan
 from apps.people.models import (
     AuthorizedPickup,
     EmergencyContact,
@@ -26,6 +28,8 @@ from apps.people.models import (
     Student,
 )
 from apps.registration.models import Application, Consent, Enrolment
+from apps.scheduling.models import AcademicYear, Room, SessionTemplate, Term
+from apps.scheduling.services import generate_occurrences
 
 FIRST = ["Ada", "Bo", "Cai", "Dev", "Esi", "Finn", "Gia", "Hana", "Ira", "Jae",
          "Kit", "Lux", "Mira", "Noa", "Oki", "Pax", "Quin", "Rai", "Sol", "Tao",
@@ -89,7 +93,31 @@ class Command(BaseCommand):
         today = timezone.localdate()
         made = {"groups": len(groups), "teachers": len(teachers), "students": 0,
                 "guardians": 0, "allergies": 0, "conditions": 0, "medications": 0,
-                "action_plans": 0, "observations": 0, "applications": 0, "consents": 0}
+                "action_plans": 0, "observations": 0, "applications": 0, "consents": 0,
+                "sessions": 0, "check_ins": 0, "lesson_plans": 0}
+
+        # ── scheduling: a year + term, rooms, a weekly template per group ──
+        year = AcademicYear.objects.create(
+            name=f"{today.year}-{today.year + 1}",
+            start_date=today - dt.timedelta(days=30),
+            end_date=today + dt.timedelta(days=120), is_current=True,
+        )
+        term = Term.objects.create(
+            academic_year=year, name="Term 1", kind=Term.Kind.SEMESTER,
+            start_date=today - dt.timedelta(days=30), end_date=today + dt.timedelta(days=60),
+        )
+        campus_rooms = [
+            Room.objects.create(name=n, kind=k)
+            for n, k in [("Room A", Room.Kind.CLASSROOM), ("Room B", Room.Kind.CLASSROOM),
+                         ("Gym", Room.Kind.GYM), ("Yard", Room.Kind.OUTDOOR)]
+        ]
+        for grp in groups:
+            tmpl = SessionTemplate.objects.create(
+                group=grp, term=term, room=rng.choice(campus_rooms),
+                staff=rng.choice(teachers), weekday=rng.randint(0, 4),
+                start_time=dt.time(9, 0), end_time=dt.time(10, 0), title="Morning session",
+            )
+            made["sessions"] += generate_occurrences(tmpl)["created"]
 
         for i in range(n_students):
             fn, ln = _name(rng)
@@ -189,5 +217,25 @@ class Command(BaseCommand):
                                    Application.Status.WAITLISTED]),
             )
             made["applications"] += 1
+
+        # ── attendance: check a slice of today's roster in ──
+        for enr in Enrolment.objects.filter(status=Enrolment.Status.ACTIVE)[:12]:
+            check_in(student=enr.student, group=enr.group,
+                     by=rng.choice(teachers), dropped_off_by_name="a guardian")
+            made["check_ins"] += 1
+
+        # ── lessons: a unit + a couple of plans per group ──
+        for grp in groups:
+            unit = CurriculumUnit.objects.create(
+                group=grp, term=term, title="Unit 1", summary="Synthetic unit.", sequence=1
+            )
+            for d in range(2):
+                LessonPlan.objects.create(
+                    group=grp, unit=unit, author=rng.choice(teachers),
+                    date=today + dt.timedelta(days=d * 2),
+                    title=f"Lesson {d + 1}", objectives="Synthetic objectives.",
+                    status=LessonPlan.Status.PUBLISHED if d == 0 else LessonPlan.Status.DRAFT,
+                )
+                made["lesson_plans"] += 1
 
         return made

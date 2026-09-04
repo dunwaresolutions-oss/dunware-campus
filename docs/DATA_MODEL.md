@@ -79,8 +79,33 @@ place where every **PII field** is listed with its **purpose** and **retention**
 - Lifecycle in `apps/registration/services.py`: `make_offer` → `respond_to_offer`
   → `convert_application` (creates the `Student` + `Enrolment`), each audited.
 
-## scheduling / attendance  *(Phase 3)*
-## lessons  *(Phase 3)*
+## scheduling  *(Phase 3 — done)*
+
+- `Room`, `AcademicYear` → `Term` (kind = semester / trimester / quarter /
+  rolling / year-round — the configurable term model), `Closure` (site-wide
+  when `group` is null), `SessionTemplate` (weekly recurring meeting for a
+  group in a term), `SessionOccurrence` (a concrete dated meeting).
+- `apps/scheduling/services.py generate_occurrences(template, from_date,
+  to_date)` — expands a template across the term, skips `Closure`s, idempotent
+  on `(template, date)`. `SessionOccurrence.roster()` reads active
+  `registration.Enrolment` rows as of the date — never a duplicate list.
+- Not PII. Instructors are scoped to the groups they staff (`GroupStaff`).
+
+## attendance  *(Phase 3 — done)*
+
+- `AttendanceRecord(SensitiveModel)` — one per `(student, group, date)`.
+  Sign-in / sign-out fields plus who dropped off / collected. `PII_FIELDS`:
+  `dropped_off_by_name`, `collected_by_name`, `note`. Reads audited.
+- `apps/attendance/services.py`: `check_in`, `mark_absent`, and `check_out` —
+  which **only** releases a child to an active `AuthorizedPickup` for that
+  student or a `GuardianLink` with `can_pickup=True`; anything else raises
+  `NotAuthorizedToCollect` (API → 403). Every action audited.
+
+## lessons  *(Phase 3 — done)*
+
+- `CurriculumUnit`, `LessonPlan(SoftDeleteModel)` (draft → published,
+  `author`), `LessonResource` (link / file / note). Not PII — teaching
+  material. Instructor-scoped to their groups; admin sees all.
 ## grades  *(Phase 4)*
 ## communication  *(Phase 4 — email only)*
 ## booking  *(Phase 5)*

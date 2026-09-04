@@ -8,13 +8,15 @@ guardian contact (and later financial) details. The controls below are
 
 Status key: **[done]** built &amp; tested · **[scaffolded]** structure only · **[phase N]** a named later phase.
 
-Phase 1 (security foundation) and Phase 2 (Student CRM + Registration) are
-**complete**: custom user + roles + mandatory staff MFA + django-axes lockout +
-Argon2; append-only audit log with automatic write **and** read hooks; AES-256-GCM
-field + document encryption applied across `people` / `health` / `registration`;
-object-level visibility (`Student.is_visible_to`), a named health-access subset,
-versioned consent, data-subject export, legal-hold-aware erasure, and a retention
-sweep. 79 backend tests; `ruff` / `bandit` / `pip-audit` /
+Phases 1–3 are **complete**: custom user + roles + mandatory staff MFA +
+django-axes lockout + Argon2; append-only audit log with automatic write **and**
+read hooks; AES-256-GCM field + document encryption across `people` / `health` /
+`registration`; object-level visibility (`Student.is_visible_to`), a named
+health-access subset, versioned consent, data-subject export, legal-hold-aware
+erasure, retention sweep; Phase 3 adds calendars / rosters / recurring templates
++ closures, attendance with a check-out authorization rule (release only to an
+authorized pickup or a `can_pickup` guardian), and lesson planning — all
+instructor-scoped. 94 backend tests; `ruff` / `bandit` / `pip-audit` /
 `check --deploy --fail-level WARNING` all clean.
 
 ## 1. Data protection
