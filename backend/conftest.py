@@ -65,18 +65,20 @@ DEFAULT_PW = "Sup3r-Secret-Pw!"
 
 
 @pytest.fixture
-def auth_client(api, totp_for):
+def auth_client(totp_for):
     """Log a user in through the real endpoint (MFA included for staff) and
-    return the authenticated APIClient."""
+    return a fresh authenticated APIClient — each call gets its own session so
+    tests can hold several roles at once."""
 
     def _login(user, password=DEFAULT_PW):
+        client = APIClient()
         body = {"username": user.username, "password": password}
         if getattr(user, "must_use_mfa", False):
             _device, code = totp_for(user)
             body["otp"] = code()
-        resp = api.post("/api/auth/login/", body, format="json")
+        resp = client.post("/api/auth/login/", body, format="json")
         assert resp.status_code == 200, getattr(resp, "data", resp)
-        return api
+        return client
 
     return _login
 

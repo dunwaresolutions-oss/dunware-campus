@@ -24,6 +24,8 @@ api_patterns = [
     path("", include("apps.scheduling.urls")),
     path("", include("apps.attendance.urls")),
     path("", include("apps.lessons.urls")),
+    path("", include("apps.communication.urls")),
+    path("", include("apps.grades.urls")),
 ]
 
 urlpatterns = [

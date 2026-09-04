@@ -106,8 +106,36 @@ place where every **PII field** is listed with its **purpose** and **retention**
 - `CurriculumUnit`, `LessonPlan(SoftDeleteModel)` (draft → published,
   `author`), `LessonResource` (link / file / note). Not PII — teaching
   material. Instructor-scoped to their groups; admin sees all.
-## grades  *(Phase 4)*
-## communication  *(Phase 4 — email only)*
+## communication  *(Phase 4 — done, email only)*
+
+- `Announcement(SoftDeleteModel)` — audience (all staff / all parents / one
+  group / whole site); `publish` action stamps `published_at` and emails the
+  audience.
+- `MessageThread(SensitiveModel)` + `Message` (body `EncryptedTextField`) —
+  staff ↔ parent threads, participant-scoped.
+- `IncidentReport(SensitiveModel, SoftDeleteModel)` — `description` /
+  `action_taken` encrypted; `DRAFT → SENT → ACKNOWLEDGED`. `notify` emails the
+  guardians; a parent records an `IncidentAcknowledgement`, and once every
+  comms-guardian has, the report auto-flips to `ACKNOWLEDGED`.
+- `OutboundEmail` — a log of every send (kind, subject, recipients, what it was
+  about — **never the body**), so an operator can prove notification.
+- `apps/communication/services.py`: `send_announcement`, `notify_incident`.
+  **No SMS path anywhere.**
+
+## grades  *(Phase 4 — done)*
+
+- `AssessmentScheme` (kind = marks / rubric / narrative / mixed) +
+  `RubricCriterion`; `Assessment` (`released` → parent-visible);
+  `AssessmentResult(SensitiveModel)` (`narrative` encrypted, unique per
+  student) + `RubricScore`.
+- `ReportCard(SensitiveModel, SoftDeleteModel)` — `DRAFT → FINALIZED →
+  RELEASED`; `summary_narrative` encrypted; `document` written through the
+  encrypted storage. `ReportCardEntry` (`comment` encrypted) per subject.
+- `apps/grades/services.py`: `render_report_card_html()` always;
+  `html_to_pdf()` uses WeasyPrint when present (bundled in the installer,
+  Phase 9) and raises `PdfEngineUnavailable` otherwise; `generate_report_card()`
+  stores a `.pdf` or falls back to `.html`. `release_report_card()` emails the
+  guardians.
 ## booking  *(Phase 5)*
 ## billing  *(Phase 7 — placeholder)*
 
