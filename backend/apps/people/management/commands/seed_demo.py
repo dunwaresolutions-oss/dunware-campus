@@ -15,6 +15,8 @@ from django.utils import timezone
 
 from apps.accounts.models import Role, User
 from apps.attendance.services import check_in
+from apps.booking.models import AvailabilityWindow, Offering
+from apps.booking.services import book, generate_slots
 from apps.health.models import ActionPlan, Allergy, Condition, HealthProfile, Medication
 from apps.lessons.models import CurriculumUnit, LessonPlan
 from apps.people.models import (
@@ -237,5 +239,31 @@ class Command(BaseCommand):
                     status=LessonPlan.Status.PUBLISHED if d == 0 else LessonPlan.Status.DRAFT,
                 )
                 made["lesson_plans"] += 1
+
+        # ── booking: two offerings, a weekly window each, some bookings ──
+        made["offerings"] = 0
+        made["slots"] = made.get("slots", 0)
+        made["bookings"] = 0
+        students = list(Student.objects.all())
+        for title, kind, cap in [("Maths tutoring", Offering.Kind.TUTORING, 1),
+                                 ("Chess club", Offering.Kind.CLUB, 6)]:
+            off = Offering.objects.create(
+                title=title, kind=kind, provider=rng.choice(teachers),
+                room=rng.choice(campus_rooms), duration_minutes=45,
+                capacity_per_slot=cap, cancellation_hours=24, price_cents=None,
+            )
+            AvailabilityWindow.objects.create(
+                offering=off, weekday=rng.randint(0, 4),
+                start_time=dt.time(15, 30), end_time=dt.time(17, 0),
+                valid_from=today, valid_to=today + dt.timedelta(days=42),
+            )
+            made["slots"] += generate_slots(
+                off, from_date=today, to_date=today + dt.timedelta(days=42)
+            )["created"]
+            made["offerings"] += 1
+            for slot in off.slots.all()[:4]:
+                for student in rng.sample(students, k=min(len(students), cap + 1)):
+                    book(slot=slot, student=student, by=rng.choice(teachers))
+                    made["bookings"] += 1
 
         return made

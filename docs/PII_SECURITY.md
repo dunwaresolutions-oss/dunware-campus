@@ -8,7 +8,7 @@ guardian contact (and later financial) details. The controls below are
 
 Status key: **[done]** built &amp; tested · **[scaffolded]** structure only · **[phase N]** a named later phase.
 
-Phases 1–4 are **complete**: staff MFA + axes lockout + Argon2; append-only
+Phases 1–5 are **complete**: staff MFA + axes lockout + Argon2; append-only
 audit log with automatic write **and** read hooks; AES-256-GCM field + document
 encryption across `people` / `health` / `registration` / `communication` /
 `grades`; object-level visibility, a named health-access subset, versioned
@@ -18,8 +18,11 @@ authorization rule; **email-only** communication (announcements, encrypted
 staff↔parent threads, incident reports with a parent-acknowledgement flow, an
 `OutboundEmail` send-log that never stores the body); assessment schemes
 (rubric + narrative + marks) and report cards (encrypted narrative + encrypted
-document, released before parent-visible). 106 backend tests; `ruff` / `bandit`
-/ `pip-audit` / `check --deploy --fail-level WARNING` all clean.
+document, released before parent-visible); Phase 5 adds tutor / extra-curricular
+booking (offerings, availability, capacity slots, waitlist with automatic
+promotion, a non-staff cancellation cutoff, ICS export; `price_cents` is an
+inert Phase-7 hook). 114 backend tests; `ruff` / `bandit` / `pip-audit` /
+`check --deploy --fail-level WARNING` all clean.
 
 ## 1. Data protection
 

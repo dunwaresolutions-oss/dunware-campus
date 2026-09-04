@@ -136,7 +136,23 @@ place where every **PII field** is listed with its **purpose** and **retention**
   Phase 9) and raises `PdfEngineUnavailable` otherwise; `generate_report_card()`
   stores a `.pdf` or falls back to `.html`. `release_report_card()` emails the
   guardians.
-## booking  *(Phase 5)*
+## booking  *(Phase 5 — done)*
+
+- `Offering` — a bookable service (tutoring / music / sport / club). `provider`,
+  `room`, `duration_minutes`, `capacity_per_slot`, `cancellation_hours`,
+  `price_cents` (**placeholder** — Phase-7 billing hook, no charge in v1).
+- `AvailabilityWindow` — recurring weekly availability, valid between two dates.
+- `Slot` — a concrete bookable datetime with a capacity; `seats_left`,
+  `refresh_status()` (`OPEN` / `FULL` / `CANCELLED`).
+- `Booking(SensitiveModel)` — one student in one slot: `CONFIRMED` /
+  `WAITLISTED` (with `waitlist_position`) / `CANCELLED` / `ATTENDED` /
+  `NO_SHOW`. Unique per `(slot, student)` among non-cancelled. Reads audited.
+- `apps/booking/services.py`: `generate_slots()` (expands windows, skips
+  site-wide `Closure`s, idempotent), `book()` (confirm until capacity then
+  waitlist), `cancel_booking()` (enforces the cutoff for non-staff; promotes
+  the first waitlisted booking when a confirmed one is freed),
+  `bookings_to_ics()` (RFC-5545 `VCALENDAR`, no dependency). `GET
+  /api/bookings/ics/` returns the caller's bookings as a `.ics` download.
 ## billing  *(Phase 7 — placeholder)*
 
 Planned: `FeeSchedule`, `Invoice`, `InvoiceLine`, `Payment` (manual only),
