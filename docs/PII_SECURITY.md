@@ -27,9 +27,26 @@ their own record, staff approve/reject and the change is audited), and portal
 consent capture as new versioned rows; Phase 7 adds the payments placeholder —
 real `billing` models, a manual "mark paid" workflow through a
 `PaymentGateway` interface, and a `StripeGateway` **stub** that only ever
-raises — no card data collected, nothing for PCI scope to attach to. 135
-backend tests; `ruff` / `bandit` / `pip-audit` /
-`check --deploy --fail-level WARNING` all clean.
+raises — no card data collected, nothing for PCI scope to attach to.
+
+**Phase 8 (hardening & test) is complete** — no new features, all
+verification: a full self-review against OWASP ASVS
+(`docs/ASVS_LITE_REVIEW.md`, every row cites real code or a test — nothing
+is a bare checkbox) which caught and fixed one real gap (grades write
+endpoints checked read-time scoping but not create-time group ownership —
+fixed, regression-tested); a real, executed backup/restore drill
+(`docs/BACKUP_RESTORE_DRILL.md` — archive/GPG-encrypt/decrypt proven for
+real, `pg_dump`/`pg_restore` themselves deferred to Phase 9 since no
+Postgres exists in this dev environment yet); a real, executed retention +
+erasure drill against a persistent database
+(`docs/RETENTION_ERASURE_DRILL.md` — export, erasure, and the legal-hold
+exception to automated retention all verified with real output); a
+per-role end-to-end journey suite (`tests_e2e/test_role_journeys.py`) that
+walks admin, front desk, teacher, parent, student, and tutor through
+realistic multi-step flows against the real API; `SECURITY.md` at the repo
+root. 143 backend tests; `ruff` / `bandit` / `pip-audit` / `npm audit` /
+`check --deploy --fail-level WARNING` all clean (this pass's `npm audit`
+found and fixed 2 real advisories — see the ASVS review, V10.3.1).
 
 ## 1. Data protection
 
@@ -40,7 +57,7 @@ backend tests; `ruff` / `bandit` / `pip-audit` /
 | Prod refuses to start with no key | `settings/prod.py` | **[done]** |
 | Encrypted storage volume for PostgreSQL + backups (BitLocker on the host) — installer checks &amp; warns | `deploy/install.ps1` | **[phase 9]** |
 | TLS on the LAN, HSTS, HTTP→HTTPS redirect | `deploy/proxy/Caddyfile`, `settings/prod.py` | **[scaffolded]** |
-| Encrypted backups (`pg_dump` \| age/GPG) + a restore drill | `deploy/backup.ps1`, `restore.ps1` | **[phase 8]** |
+| Encrypted backups (`pg_dump` \| GPG) + a restore drill | `deploy/backup.ps1`, `restore.ps1`, `docs/BACKUP_RESTORE_DRILL.md` | **[done]** — archive/encrypt/decrypt drilled for real; the `pg_dump`/`pg_restore` calls themselves are written and deferred to a live run once Postgres is bundled in **[phase 9]** |
 | No PII in logs — a filter redacts emails, phone numbers, and known-sensitive `key=value` before any record is emitted | `apps/core/logging.py` (`PIIScrubFilter`) | **[done]** — tested (`apps/core/tests/test_logging.py`) |
 
 ## 2. Access control
@@ -62,7 +79,7 @@ backend tests; `ruff` / `bandit` / `pip-audit` /
 |---|---|---|
 | **Append-only audit log** — every create/update/delete **and every read** of a sensitive record (actor, action, object type+id, time, source IP). No values, ever. No update/delete path in the app; admin view is read-only. | `apps/audit/` (`AuditEntry`, `middleware`, `services.record()` / `record_safe()`, `signals`, `mixins.AuditReadMixin`, `registry`) | **[done]** — `save()`/`delete()`/queryset guards, auto CRUD signals for registered + `SensitiveModel` models, DRF read mixin, login/logout/failed + permission-denied + lockout hooks; tested |
 | **Data minimization** — every PII field annotated with purpose + retention on the model (`SensitiveModel.PII_FIELDS` / `PII_PURPOSE`), mirrored into `DATA_MODEL.md` | `people` / `health` / `registration` models; `docs/DATA_MODEL.md` | **[done]** — `PII_FIELDS` / `PII_PURPOSE` set on every sensitive model; table filled in |
-| **Retention** — configurable window per record type; a scheduled `django-q2` job purges or anonymizes past-student data | `apps/reporting/jobs.py` `retention_sweep()` (`sweep_past_students` + `purge_terminal_applications` + audit anonymize), `RETENTION_*` settings, `manage.py run_retention` | **[done]** — tested; django-q2 *schedule* wired in Phase 8 |
+| **Retention** — configurable window per record type; a scheduled `django-q2` job purges or anonymizes past-student data | `apps/reporting/jobs.py` `retention_sweep()` (`sweep_past_students` + `purge_terminal_applications` + audit anonymize), `RETENTION_*` settings, `manage.py run_retention` | **[done]** — logic tested + drilled for real (`docs/RETENTION_ERASURE_DRILL.md`); the recurring django-q2 *schedule* (today it's a manual/CLI trigger) is wired at install time in **[phase 9]** |
 | **Erasure** — "erase this person" action, blocked by a legal-hold flag, fully audited | `apps/reporting/services.py` `erase_person()`, `manage.py erase_student`, `Student.legal_hold` | **[done]** — anonymize-in-place, health rows deleted, `ERASE` audit; legal-hold raises; tested |
 | **Consent tracking** — each consent recorded with version + timestamp | `registration.Consent` (append-only rows, `current_for()`) | **[done]** — portal review surface in Phase 6 |
 | **Data-subject access** — "export everything we hold about this child" | `apps/reporting/services.py` `data_subject_export()`, `manage.py export_student` | **[done]** — decrypted dict + `EXPORT` audit; portal button in Phase 6 |
@@ -72,11 +89,12 @@ backend tests; `ruff` / `bandit` / `pip-audit` /
 
 | Control | Where | Status |
 |---|---|---|
-| Secrets only in `.env` (git-ignored) + a committed `.env.example`; installer generates unique secrets per deployment | `.gitignore`, `.env.example`, `deploy/install.ps1` | **[scaffolded]** |
-| `ruff` + `bandit` + `pip-audit` + `npm audit` + `manage.py check --deploy` in CI, gating every merge | `.github/workflows/ci.yml` | **[scaffolded]** |
-| `makemigrations --check` in CI — no un-migrated model change ships | CI | **[scaffolded]** |
-| All fixtures / demo data synthetic — no real child, family, or staff record in the repo | `apps/people/management/commands/seed_demo.py` (made-up names, refuses `DEBUG=False` without `--force`), test factories | **[done]** |
-| `SECURITY.md` (how to report) + an OWASP ASVS-lite review before packaging | `docs/`, Phase 8 | **[phase 8]** |
+| Secrets only in `.env` (git-ignored) + a committed `.env.example`; installer generates unique secrets per deployment | `.gitignore`, `.env.example`, `deploy/install.ps1` | **[done]** for the repo/CI side; installer secret generation is **[phase 9]** |
+| `ruff` + `bandit` + `pip-audit` + `npm audit` + `manage.py check --deploy` in CI, gating every merge | `.github/workflows/ci.yml` | **[done]** — all five re-run and verified clean this phase; `npm audit` caught 2 real advisories, fixed via a `postcss` override |
+| `makemigrations --check` in CI — no un-migrated model change ships | CI | **[done]** — verified clean |
+| All fixtures / demo data synthetic — no real child, family, or staff record in the repo | `apps/people/management/commands/seed_demo.py` (made-up names, refuses `DEBUG=False` without `--force`; now covers every app, including communication and grades) | **[done]** |
+| `SECURITY.md` (how to report) + an OWASP ASVS-lite review before packaging | `SECURITY.md`, `docs/ASVS_LITE_REVIEW.md` | **[done]** |
+| Per-role end-to-end journeys (not just unit-level checks) | `tests_e2e/test_role_journeys.py` — admin, front desk, teacher, parent, student, tutor | **[done]** |
 
 ## 5. Regulatory mapping
 

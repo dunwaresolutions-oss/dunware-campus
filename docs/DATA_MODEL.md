@@ -4,6 +4,11 @@ Filled in per phase. Each app owns its models; this file is the index and the
 place where every **PII field** is listed with its **purpose** and **retention**
 (the model carries the same via `SensitiveModel.PII_FIELDS` / `PII_PURPOSE`).
 
+**Phase 8 added no new models** — it's the hardening & test pass. See
+`docs/ASVS_LITE_REVIEW.md`, `docs/BACKUP_RESTORE_DRILL.md`,
+`docs/RETENTION_ERASURE_DRILL.md`, `SECURITY.md`, and
+`tests_e2e/test_role_journeys.py`.
+
 ## Conventions
 
 - All domain models inherit `apps.core.models.BaseModel` (UUID pk + timestamps).

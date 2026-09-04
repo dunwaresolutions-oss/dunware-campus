@@ -53,6 +53,37 @@ def test_instructor_grades_group_parent_sees_only_released(auth_client, staff, m
     assert parent_client.get("/api/assessment-results/").data["count"] == 1
 
 
+def test_teacher_cannot_create_a_scheme_for_a_group_they_do_not_teach(auth_client, staff):
+    mine, theirs = make_group(), make_group()
+    assign_staff(mine, staff)
+    client = auth_client(staff)
+
+    ok = client.post("/api/assessment-schemes/",
+                     {"group": str(mine.pk), "name": "mine"}, format="json")
+    assert ok.status_code == 201
+
+    blocked = client.post("/api/assessment-schemes/",
+                          {"group": str(theirs.pk), "name": "not mine"}, format="json")
+    assert blocked.status_code == 403
+    assert not AssessmentScheme.objects.filter(group=theirs).exists()
+
+
+def test_teacher_cannot_grade_a_student_outside_their_group(auth_client, staff):
+    mine, theirs = make_group(), make_group()
+    assign_staff(mine, staff)
+    outside_kid = make_student()
+    scheme = AssessmentScheme.objects.create(group=theirs, name="s")
+    assessment = Assessment.objects.create(scheme=scheme, group=theirs, title="t",
+                                           date=dt.date(2026, 9, 9))
+
+    client = auth_client(staff)
+    r = client.post("/api/assessment-results/", {
+        "assessment": str(assessment.pk), "student": str(outside_kid.pk), "mark": "100",
+    }, format="json")
+    assert r.status_code == 403
+    assert not AssessmentResult.objects.filter(assessment=assessment).exists()
+
+
 def test_result_narrative_is_encrypted_at_rest():
     from django.db import connection
 

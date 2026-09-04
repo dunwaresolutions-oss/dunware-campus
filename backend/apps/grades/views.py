@@ -39,6 +39,11 @@ def _instructor_group_ids(user):
 
 
 class _InstructorScopedViewSet(CampusViewSet):
+    """Read scoping (via `scope()`/`group_path`) only narrows what already
+    exists — it says nothing about a POST, which has no object yet. Every
+    subclass below also implements `_group_for_create()` so `perform_create`
+    can refuse to let an instructor write into a group they don't staff."""
+
     permission_classes = [StaffOnly, MFAVerified, IsObjectOwnerOrStaff]
     audit_reads = False
     group_path = "group_id"
@@ -50,6 +55,23 @@ class _InstructorScopedViewSet(CampusViewSet):
         if self._admin():
             return qs
         return qs.filter(**{f"{self.group_path}__in": _instructor_group_ids(self.request.user)})
+
+    def _group_for_create(self, validated_data):
+        """Return an object exposing the target group — either the Group
+        itself, or a related object with a `.group_id` — for the payload
+        about to be created. Subclasses override this per their FK shape."""
+        return validated_data.get("group")
+
+    def perform_create(self, serializer):
+        if not self._admin():
+            ref = self._group_for_create(serializer.validated_data)
+            group_id = getattr(ref, "group_id", None) or getattr(ref, "pk", None)
+            allowed = group_id and GroupStaff.objects.filter(
+                user=self.request.user, active=True, group_id=group_id
+            ).exists()
+            if not allowed:
+                self.permission_denied(self.request, message="Not your group.")
+        serializer.save()
 
 
 class AssessmentSchemeViewSet(_InstructorScopedViewSet):
@@ -67,6 +89,9 @@ class RubricCriterionViewSet(_InstructorScopedViewSet):
 
     def get_queryset(self):
         return self.scope(RubricCriterion.objects.select_related("scheme"))
+
+    def _group_for_create(self, validated_data):
+        return validated_data.get("scheme")  # AssessmentScheme has .group_id
 
 
 class AssessmentViewSet(_InstructorScopedViewSet):
@@ -117,7 +142,18 @@ class AssessmentResultViewSet(_InstructorScopedViewSet):
             return [MFAVerified()]
         return super().get_permissions()
 
+    def _group_for_create(self, validated_data):
+        return validated_data.get("assessment")  # Assessment has .group_id
+
     def perform_create(self, serializer):
+        if not self._admin():
+            ref = self._group_for_create(serializer.validated_data)
+            group_id = getattr(ref, "group_id", None)
+            allowed = group_id and GroupStaff.objects.filter(
+                user=self.request.user, active=True, group_id=group_id
+            ).exists()
+            if not allowed:
+                self.permission_denied(self.request, message="Not your group.")
         serializer.save(graded_by=self.request.user)
 
 
@@ -127,6 +163,10 @@ class RubricScoreViewSet(_InstructorScopedViewSet):
 
     def get_queryset(self):
         return self.scope(RubricScore.objects.select_related("result", "criterion"))
+
+    def _group_for_create(self, validated_data):
+        result = validated_data.get("result")
+        return result.assessment if result else None
 
 
 class ReportCardViewSet(CampusViewSet):
@@ -182,3 +222,10 @@ class ReportCardEntryViewSet(_InstructorScopedViewSet):
         return qs.filter(
             report_card__student__in=Student.visible_queryset(self.request.user)
         )
+
+    def perform_create(self, serializer):
+        if not self._admin():
+            card = serializer.validated_data.get("report_card")
+            if card is None or not card.student.is_visible_to(self.request.user):
+                self.permission_denied(self.request, message="Not your student.")
+        serializer.save()

@@ -20,6 +20,10 @@ from apps.billing.models import FeeSchedule, Invoice, InvoiceLine, Payment
 from apps.billing.services import issue_invoice
 from apps.booking.models import AvailabilityWindow, Offering
 from apps.booking.services import book, generate_slots
+from apps.communication.models import Announcement, IncidentReport, MessageThread
+from apps.communication.services import notify_incident, send_announcement
+from apps.grades.models import Assessment, AssessmentResult, AssessmentScheme, ReportCard
+from apps.grades.services import generate_report_card
 from apps.health.models import ActionPlan, Allergy, Condition, HealthProfile, Medication
 from apps.lessons.models import CurriculumUnit, LessonPlan
 from apps.people.models import (
@@ -292,5 +296,71 @@ class Command(BaseCommand):
                     received_by=rng.choice(teachers),
                 )
                 made["payments"] += 1
+
+        # ── communication: an announcement, a message thread, an incident ──
+        made["announcements"] = 0
+        made["message_threads"] = 0
+        made["incidents"] = 0
+        first_guardian_user = User.objects.filter(guardian_profile__isnull=False).first()
+        Announcement.objects.create(
+            title="Welcome back!", body="Synthetic announcement for demo purposes.",
+            audience=Announcement.Audience.WHOLE_SITE, author=rng.choice(teachers),
+            published_at=timezone.now(),
+        )
+        made["announcements"] += 1
+        if groups:
+            Announcement.objects.create(
+                title=f"{groups[0].name} update", body="Synthetic group announcement.",
+                audience=Announcement.Audience.GROUP, group=groups[0],
+                author=rng.choice(teachers), published_at=timezone.now(),
+            )
+            made["announcements"] += 1
+        for a in Announcement.objects.filter(published_at__isnull=False):
+            send_announcement(a)
+
+        if students and first_guardian_user:
+            thread = MessageThread.objects.create(
+                subject="About pickup time", student=rng.choice(students),
+                created_by=rng.choice(teachers),
+            )
+            thread.participants.add(rng.choice(teachers), first_guardian_user)
+            made["message_threads"] += 1
+
+        if students:
+            incident_student = rng.choice(students)
+            incident = IncidentReport.objects.create(
+                student=incident_student, occurred_at=timezone.now() - dt.timedelta(hours=3),
+                category=IncidentReport.Category.INJURY, description="Synthetic minor scrape.",
+                first_aid_given=True, reported_by=rng.choice(teachers),
+            )
+            notify_incident(incident)
+            made["incidents"] += 1
+
+        # ── grades: a scheme + assessment + results + one released report card ──
+        made["assessments"] = 0
+        made["report_cards"] = 0
+        for grp in groups:
+            scheme = AssessmentScheme.objects.create(
+                group=grp, term=term, name="Term work", kind=AssessmentScheme.Kind.MIXED
+            )
+            assessment = Assessment.objects.create(
+                scheme=scheme, group=grp, title="Unit 1 assessment", date=today,
+                max_mark=100, released=True, released_at=timezone.now(),
+            )
+            made["assessments"] += 1
+            for enr in Enrolment.objects.filter(group=grp, status=Enrolment.Status.ACTIVE)[:5]:
+                AssessmentResult.objects.create(
+                    assessment=assessment, student=enr.student,
+                    mark=rng.randint(60, 100), narrative="Synthetic feedback.",
+                    graded_by=rng.choice(teachers),
+                )
+            first_enr = Enrolment.objects.filter(group=grp, status=Enrolment.Status.ACTIVE).first()
+            if first_enr:
+                card = ReportCard.objects.create(
+                    student=first_enr.student, term=term,
+                    summary_narrative="Synthetic term summary.",
+                )
+                generate_report_card(card)
+                made["report_cards"] += 1
 
         return made
