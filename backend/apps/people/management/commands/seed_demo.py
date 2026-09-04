@@ -15,6 +15,9 @@ from django.utils import timezone
 
 from apps.accounts.models import Role, User
 from apps.attendance.services import check_in
+from apps.billing.gateways import ManualGateway
+from apps.billing.models import FeeSchedule, Invoice, InvoiceLine, Payment
+from apps.billing.services import issue_invoice
 from apps.booking.models import AvailabilityWindow, Offering
 from apps.booking.services import book, generate_slots
 from apps.health.models import ActionPlan, Allergy, Condition, HealthProfile, Medication
@@ -265,5 +268,29 @@ class Command(BaseCommand):
                 for student in rng.sample(students, k=min(len(students), cap + 1)):
                     book(slot=slot, student=student, by=rng.choice(teachers))
                     made["bookings"] += 1
+
+        # ── billing: a term fee schedule + an invoice per student, most paid ──
+        term_fee = FeeSchedule.objects.create(
+            name="Term fee", amount_cents=45_000, frequency=FeeSchedule.Frequency.TERM
+        )
+        made["invoices"] = 0
+        made["payments"] = 0
+        for student in students:
+            inv = Invoice.objects.create(student=student, term=term,
+                                         due_date=today + dt.timedelta(days=30))
+            InvoiceLine.objects.create(
+                invoice=inv, fee_schedule=term_fee, description=term_fee.name,
+                unit_amount_cents=term_fee.amount_cents,
+            )
+            issue_invoice(inv)
+            made["invoices"] += 1
+            if rng.random() < 0.7:
+                ManualGateway().charge(
+                    inv, inv.total_cents,
+                    method=rng.choice([Payment.Method.E_TRANSFER, Payment.Method.CASH,
+                                       Payment.Method.CHEQUE]),
+                    received_by=rng.choice(teachers),
+                )
+                made["payments"] += 1
 
         return made

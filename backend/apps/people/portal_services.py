@@ -81,6 +81,7 @@ def review_contact_change(
 
 def _child_block(student: Student):
     from apps.attendance.models import AttendanceRecord
+    from apps.billing.services import portal_summary
     from apps.booking.models import Booking
     from apps.communication.models import IncidentReport
     from apps.grades.models import ReportCard
@@ -143,6 +144,7 @@ def _child_block(student: Student):
         ],
         "open_incidents": [{**i, "id": str(i["id"])} for i in open_incidents],
         "pending_consents": pending_consents,
+        "invoices": portal_summary(student),  # read-only; billing is the only writer
     }
 
 
@@ -190,5 +192,4 @@ def build_dashboard(user) -> dict:
             }
             for r in ContactChangeRequest.objects.filter(requested_by=user)[:20]
         ],
-        "invoices": [],  # Phase 7 (billing) fills this in — read-only in the portal
     }

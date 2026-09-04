@@ -8,7 +8,7 @@ guardian contact (and later financial) details. The controls below are
 
 Status key: **[done]** built &amp; tested · **[scaffolded]** structure only · **[phase N]** a named later phase.
 
-Phases 1–6 are **complete**: staff MFA + axes lockout + Argon2; append-only
+Phases 1–7 are **complete**: staff MFA + axes lockout + Argon2; append-only
 audit log with automatic write **and** read hooks; AES-256-GCM field + document
 encryption across `people` / `health` / `registration` / `communication` /
 `grades`; object-level visibility, a named health-access subset, versioned
@@ -24,8 +24,12 @@ promotion, a non-staff cancellation cutoff, ICS export; `price_cents` is an
 inert Phase-7 hook); Phase 6 adds the restricted parent / student portal — one
 read-scoped dashboard, a **contact-change request** flow (guardians never edit
 their own record, staff approve/reject and the change is audited), and portal
-consent capture as new versioned rows. 123 backend tests; `ruff` / `bandit` /
-`pip-audit` / `check --deploy --fail-level WARNING` all clean.
+consent capture as new versioned rows; Phase 7 adds the payments placeholder —
+real `billing` models, a manual "mark paid" workflow through a
+`PaymentGateway` interface, and a `StripeGateway` **stub** that only ever
+raises — no card data collected, nothing for PCI scope to attach to. 135
+backend tests; `ruff` / `bandit` / `pip-audit` /
+`check --deploy --fail-level WARNING` all clean.
 
 ## 1. Data protection
 

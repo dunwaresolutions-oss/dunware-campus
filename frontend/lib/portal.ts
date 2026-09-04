@@ -6,7 +6,15 @@ export interface PortalDashboard {
   announcements: PortalAnnouncement[];
   message_threads: PortalThreadSummary[];
   contact_change_requests: ContactChangeRequest[];
-  invoices: unknown[]; // Phase 7 (billing) — read-only
+}
+
+/** A read-only invoice summary — no card data ever appears here. */
+export interface PortalInvoice {
+  id: string;
+  status: "ISSUED" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "VOID";
+  total_cents: number;
+  balance_cents: number;
+  due_date: string | null;
 }
 
 export interface PortalChild {
@@ -38,6 +46,7 @@ export interface PortalChild {
   }>;
   open_incidents: Array<{ id: string; occurred_at: string; category: string }>;
   pending_consents: string[];
+  invoices: PortalInvoice[]; // billing is the only writer — read-only here
 }
 
 export interface PortalAnnouncement {

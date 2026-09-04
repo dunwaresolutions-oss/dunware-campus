@@ -35,7 +35,7 @@ def test_dashboard_returns_only_the_callers_children(auth_client, make_user):
     ids = {c["id"] for c in resp.data["children"]}
     assert ids == {str(kid.pk)}
     assert str(other_kid.pk) not in ids
-    assert resp.data["invoices"] == []
+    assert resp.data["children"][0]["invoices"] == []
     assert "pending_consents" in resp.data["children"][0]
 
 

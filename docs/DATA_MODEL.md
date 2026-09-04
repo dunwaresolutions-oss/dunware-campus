@@ -159,11 +159,32 @@ place where every **PII field** is listed with its **purpose** and **retention**
   the first waitlisted booking when a confirmed one is freed),
   `bookings_to_ics()` (RFC-5545 `VCALENDAR`, no dependency). `GET
   /api/bookings/ics/` returns the caller's bookings as a `.ics` download.
-## billing  *(Phase 7 — placeholder)*
+## billing  *(Phase 7 — done, placeholder by design)*
 
-Planned: `FeeSchedule`, `Invoice`, `InvoiceLine`, `Payment` (manual only),
-`Credit`. No card data. `PaymentGateway` interface + `ManualGateway` +
-`StripeGateway` stub.
+Real models, a real manual workflow — **no card processing**, nothing here
+for PCI scope to attach to. Amounts are integer cents throughout.
+
+- `FeeSchedule` — a priced template (one-time / monthly / per-term / annual).
+- `Invoice(SensitiveModel)` — `DRAFT → ISSUED → PARTIALLY_PAID → PAID` (or
+  `VOID`); `total_cents` / `paid_cents` / `balance_cents` computed via
+  `.aggregate()` (never a stale prefetch cache) over `InvoiceLine` /
+  `Payment`. Reads audited.
+- `InvoiceLine` — fee-schedule-linked or ad hoc; `amount_cents` = quantity ×
+  unit.
+- `Payment` — **manual only**: cash / cheque / e-transfer + a reference,
+  `received_by`. Created exclusively through `ManualGateway.charge()`.
+- `Credit` — a manual adjustment in the family's favour (no automated refund
+  path in v1).
+- `apps/billing/gateways.py` — the `PaymentGateway` interface:
+  `ManualGateway` (the only real option; `refund()` is intentionally
+  unimplemented — issue a `Credit` instead) and `StripeGateway` (**stub** —
+  both methods raise `NotImplementedError`, `# TODO v2`). `get_gateway()`
+  reads `settings.FEATURE_PAYMENTS_GATEWAY` (default `"manual"`).
+- `apps/billing/services.py`: `issue_invoice`, `mark_paid` (→ the gateway),
+  `void_invoice`, `portal_summary(student)` — the read-only shape the parent
+  portal shows (no card fields, ever).
+- Access: front office (admin tier) manage everything; a parent reads their
+  own child's non-draft invoices/payments only. No instructor access.
 
 ## portal  *(Phase 6 — done, no new app)*
 
@@ -173,9 +194,10 @@ same `Student.visible_queryset` / `is_visible_to` the staff API uses.
 
 - `GET /api/portal/dashboard/` — one call: the caller's children, each with
   upcoming sessions, recent attendance, released report cards, upcoming
-  bookings, open (sent) incidents, and outstanding consent kinds; plus visible
-  announcements, the caller's message threads, their contact-change requests,
-  and an empty `invoices` list (Phase 7 fills it, read-only).
+  bookings, open (sent) incidents, outstanding consent kinds, and **`invoices`**
+  (`billing.services.portal_summary` — status/total/balance/due date, never a
+  card field); plus visible announcements, the caller's message threads, and
+  their contact-change requests.
 - `POST /api/portal/contact-change-requests/` — submit a change; front office
   `approve` / `reject`. `POST /api/portal/consents/` — record a consent
   decision as a new versioned `registration.Consent` row (never an update).
