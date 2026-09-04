@@ -26,6 +26,12 @@ def _client_ip(request) -> str | None:
     return request.META.get("REMOTE_ADDR")
 
 
+def axes_client_ip(request, _default=None) -> str | None:
+    """`settings.AXES_CLIENT_IP_CALLABLE` — keep axes and the audit log agreeing
+    on which address a request came from (both trust Caddy's X-Forwarded-For)."""
+    return _client_ip(request)
+
+
 class AuditContextMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response

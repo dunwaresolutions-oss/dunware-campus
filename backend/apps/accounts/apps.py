@@ -1,4 +1,4 @@
-﻿from django.apps import AppConfig
+from django.apps import AppConfig
 
 
 class AccountsConfig(AppConfig):
@@ -6,3 +6,6 @@ class AccountsConfig(AppConfig):
     name = "apps.accounts"
     label = "accounts"
     verbose_name = "Campus - Accounts"
+
+    def ready(self):
+        from . import signals  # noqa: F401  (connects auth-event receivers)

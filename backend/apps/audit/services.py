@@ -24,6 +24,16 @@ def _object_type(obj) -> str:
     return str(type(obj).__name__)
 
 
+def record_safe(action: str, obj=None, **kwargs):
+    """``record()`` that never propagates. For logging / guard / exception-handler
+    paths where a failed audit write must not become the response the caller
+    sees. Returns the entry, or ``None`` if the write failed."""
+    try:
+        return record(action, obj, **kwargs)
+    except Exception:  # noqa: BLE001 - deliberate: a failed audit write must not become the response
+        return None
+
+
 def record(
     action: str,
     obj=None,

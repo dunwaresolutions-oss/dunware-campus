@@ -87,6 +87,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "apps.audit.middleware.AuditContextMiddleware",  # actor/IP for the audit log
+    "apps.core.admin_guard.AdminBreakGlassMiddleware",  # /admin: superuser + MFA + IP allow-list
     "axes.middleware.AxesMiddleware",                # keep last
 ]
 
@@ -135,11 +136,16 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# django-axes — brute-force lockout (tuned in Phase 1)
+# django-axes — brute-force lockout.
 AXES_FAILURE_LIMIT = env.int("AXES_FAILURE_LIMIT", default=5)
 AXES_COOLOFF_TIME = env.int("AXES_COOLOFF_HOURS", default=1)  # hours
-AXES_LOCKOUT_PARAMETERS = ["username", "ip_address"]
+# Lock the (username, IP) pair — a wrong password from one client doesn't lock a
+# whole site behind a NAT, but a spray against one account from many IPs still
+# trips the per-username counter.
+AXES_LOCKOUT_PARAMETERS = [["username", "ip_address"]]
 AXES_RESET_ON_SUCCESS = True
+AXES_LOCKOUT_CALLABLE = "apps.accounts.lockout.lockout_response"
+AXES_CLIENT_IP_CALLABLE = "apps.audit.middleware.axes_client_ip"
 
 # ── DRF — deny by default; every viewset narrows further ──────────────────
 REST_FRAMEWORK = {
@@ -161,6 +167,8 @@ REST_FRAMEWORK = {
     },
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 25,
+    # Every PermissionDenied / NotAuthenticated is written to the audit log.
+    "EXCEPTION_HANDLER": "apps.core.exceptions.audited_exception_handler",
 }
 
 # ── Sessions & cookies ───────────────────────────────────────────────────
@@ -221,6 +229,18 @@ USE_TZ = True
 # ── Campus feature toggles ─────────────────────────────────────────────
 FEATURE_STUDENT_LOGINS = env.bool("FEATURE_STUDENT_LOGINS", default=False)
 FEATURE_PAYMENTS_GATEWAY = env("FEATURE_PAYMENTS_GATEWAY", default="manual")
+
+# ── Break-glass admin (enforced by apps.core.admin_guard) ──────────────
+# The Django admin is not a day-to-day surface: it is reachable only by a
+# superuser, from an allow-listed IP, with MFA satisfied. prod.py narrows the
+# allow-list further from the installer's answer.
+CAMPUS_ADMIN_IP_ALLOWLIST = env.list("CAMPUS_ADMIN_IP_ALLOWLIST", default=["127.0.0.1"])
+CAMPUS_ADMIN_REQUIRE_MFA = env.bool("CAMPUS_ADMIN_REQUIRE_MFA", default=True)
+
+# ── MFA (django-otp) ──────────────────────────────────────────────────
+OTP_TOTP_ISSUER = env("OTP_TOTP_ISSUER", default="Campus")
+# Staff cannot reach a sensitive endpoint until a TOTP device is confirmed and
+# the current session is OTP-verified (apps.core.permissions.MFAVerified).
 
 # ── Retention (days) — enforced by apps/reporting jobs ─────────────────
 RETENTION_PAST_STUDENT_DAYS = env.int("RETENTION_PAST_STUDENT_DAYS", default=2555)

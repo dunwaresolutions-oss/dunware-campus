@@ -6,40 +6,46 @@ guardian contact (and later financial) details. The controls below are
 **built in Phase 1, before any feature code**, and `python manage.py check
 --deploy` must pass clean before any package is built.
 
-Status key: **[scaffolded]** structure exists in Phase 0 · **[phase 1]** built next · **[later]** a named later phase.
+Status key: **[done]** built &amp; tested · **[scaffolded]** structure only · **[phase N]** a named later phase.
+
+Phase 1 (security foundation) is **complete**: custom user + roles, mandatory
+TOTP MFA for staff with a login gate, django-axes lockout, Argon2, append-only
+audit log with automatic write + read hooks, field-encryption round-trip tests,
+break-glass admin guard, PII log scrubbing. 49 backend tests, `ruff` / `bandit`
+/ `check --deploy --fail-level WARNING` all clean.
 
 ## 1. Data protection
 
 | Control | Where | Status |
 |---|---|---|
-| Field-level **AES-256-GCM encryption at rest** for medical/allergy/medication/action-plan, custody &amp; legal notes, government IDs, uploaded documents | `apps/core/fields.py` (`EncryptedTextField`, `EncryptedCharField`) | **[scaffolded]** |
-| Encryption key from `FIELD_ENCRYPTION_KEY` (env / installer-generated), **never** in DB, repo, or logs | `settings.base`, `deploy/install.ps1` | **[scaffolded]** |
+| Field-level **AES-256-GCM encryption at rest** for medical/allergy/medication/action-plan, custody &amp; legal notes, government IDs, uploaded documents | `apps/core/fields.py` (`EncryptedTextField`, `EncryptedCharField`) | **[done]** — hooks + round-trip / tamper / wrong-key tests (`apps/core/tests/test_fields.py`); applied to model fields per feature in Phase 2 |
+| Encryption key from `FIELD_ENCRYPTION_KEY` (env / installer-generated), **never** in DB, repo, or logs | `settings.base`, `deploy/install.ps1` | **[done]** |
 | Prod refuses to start with no key | `settings/prod.py` | **[done]** |
 | Encrypted storage volume for PostgreSQL + backups (BitLocker on the host) — installer checks &amp; warns | `deploy/install.ps1` | **[phase 9]** |
 | TLS on the LAN, HSTS, HTTP→HTTPS redirect | `deploy/proxy/Caddyfile`, `settings/prod.py` | **[scaffolded]** |
 | Encrypted backups (`pg_dump` \| age/GPG) + a restore drill | `deploy/backup.ps1`, `restore.ps1` | **[phase 8]** |
-| No PII in logs — a filter redacts emails, phone numbers, and known-sensitive `key=value` before any record is emitted | `apps/core/logging.py` (`PIIScrubFilter`) | **[scaffolded]** |
+| No PII in logs — a filter redacts emails, phone numbers, and known-sensitive `key=value` before any record is emitted | `apps/core/logging.py` (`PIIScrubFilter`) | **[done]** — tested (`apps/core/tests/test_logging.py`) |
 
 ## 2. Access control
 
 | Control | Where | Status |
 |---|---|---|
-| Custom `User` with an explicit `role` | `apps/accounts/models.py` | **[scaffolded]** |
-| DRF **deny-by-default** (`IsAuthenticated`), every viewset adds an explicit `RoleRequired` subclass | `settings.base` REST_FRAMEWORK, `apps/core/permissions.py` | **[scaffolded]** |
-| **Object-level scoping** — parent sees only their children, teacher only their classes, health data gated to a named staff subset | `IsObjectOwnerOrStaff` + per-model `is_visible_to(user)` | **[phase 1 / per feature]** |
-| **TOTP MFA** mandatory for staff roles, optional for parents | `django-otp`, `User.must_use_mfa`, a Phase-1 login-gate mixin | **[phase 1]** |
+| Custom `User` with an explicit `role` | `apps/accounts/models.py` | **[done]** |
+| DRF **deny-by-default** (`IsAuthenticated`), every viewset adds an explicit `RoleRequired` subclass | `settings.base` REST_FRAMEWORK, `apps/core/permissions.py` | **[done]** — `RoleRequired` (deny-by-default), `MFAVerified`, `StaffAndMFAVerified`, tested |
+| **Object-level scoping** — parent sees only their children, teacher only their classes, health data gated to a named staff subset | `IsObjectOwnerOrStaff` + per-model `is_visible_to(user)` | **[per feature, Phase 2+]** — building block ready |
+| **TOTP MFA** mandatory for staff roles, optional for parents | `django-otp`, `User.must_use_mfa`, `apps/accounts/mfa.py` + `LoginView` gate + `MFAVerified` | **[done]** — setup/confirm/status endpoints, login refuses staff without a code, session must be OTP-verified for sensitive endpoints; tested |
 | **Argon2** password hashing, 12-char minimum, common-password + similarity validators | `settings.base` | **[done]** |
-| **Login lockout** (`django-axes`) + endpoint rate limits (DRF ScopedRateThrottle: `auth` 10/min, `sensitive` 30/min) | `settings.base` | **[scaffolded]** |
-| Session hardening — `Secure`/`HttpOnly`/`SameSite` cookies, 8-hour hard cap, rotate on login, full `SECURE_*` header set, CSRF enforced | `settings.base` / `prod` | **[scaffolded]** |
-| **Break-glass Django admin** — superuser only, MFA + IP allow-list, every action audited | `settings/prod.py` `CAMPUS_ADMIN_IP_ALLOWLIST`, a Phase-1 admin mixin | **[phase 1]** |
+| **Login lockout** (`django-axes`, 5 tries / (user, IP) / 1 h → 429) + endpoint rate limits (DRF ScopedRateThrottle: `auth` 10/min, `sensitive` 30/min) | `settings.base`, `apps/accounts/lockout.py` | **[done]** — lockout returns 429 + audit `LOCKOUT`, tested |
+| Session hardening — `Secure`/`HttpOnly`/`SameSite` cookies, 8-hour hard cap, rotate on login, full `SECURE_*` header set, CSRF enforced | `settings.base` / `prod` | **[done]** — `check --deploy` clean |
+| **Break-glass Django admin** — superuser only, MFA + IP allow-list, every action audited | `apps/core/admin_guard.py` (`AdminBreakGlassMiddleware`), `CAMPUS_ADMIN_IP_ALLOWLIST` / `CAMPUS_ADMIN_REQUIRE_MFA` | **[done]** — non-qualifying requests get 404 + audit entry; tested |
 
 ## 3. Governance &amp; auditability
 
 | Control | Where | Status |
 |---|---|---|
-| **Append-only audit log** — every create/update/delete **and every read** of a sensitive record (actor, action, object type+id, time, source IP). No values, ever. No update/delete path in the app; admin view is read-only. | `apps/audit/` (`AuditEntry`, `middleware`, `services.record()`) | **[scaffolded]** — automatic CRUD/READ hooks in **[phase 1]** |
-| **Data minimization** — every PII field annotated with purpose + retention on the model (`SensitiveModel.PII_FIELDS` / `PII_PURPOSE`), mirrored into `DATA_MODEL.md` | `apps/core/models.py` | **[scaffolded]** |
-| **Retention** — configurable window per record type; a scheduled `django-q2` job purges or anonymizes past-student data | `apps/reporting/`, `RETENTION_*` settings | **[phase 2]** |
+| **Append-only audit log** — every create/update/delete **and every read** of a sensitive record (actor, action, object type+id, time, source IP). No values, ever. No update/delete path in the app; admin view is read-only. | `apps/audit/` (`AuditEntry`, `middleware`, `services.record()` / `record_safe()`, `signals`, `mixins.AuditReadMixin`, `registry`) | **[done]** — `save()`/`delete()`/queryset guards, auto CRUD signals for registered + `SensitiveModel` models, DRF read mixin, login/logout/failed + permission-denied + lockout hooks; tested |
+| **Data minimization** — every PII field annotated with purpose + retention on the model (`SensitiveModel.PII_FIELDS` / `PII_PURPOSE`), mirrored into `DATA_MODEL.md` | `apps/core/models.py` | **[scaffolded]** — convention set; fields land in Phase 2 |
+| **Retention** — configurable window per record type; a scheduled `django-q2` job purges or anonymizes past-student data | `apps/audit/jobs.py` (audit anonymization, working), `apps/reporting/jobs.py` (`retention_sweep` entry point), `RETENTION_*` settings | **[partial]** — audit-log anonymization done + tested; per-record-type student rules in **Phase 2** |
 | **Erasure** — admin "erase this person" action, blocked by a legal-hold flag, fully audited | `apps/reporting/` | **[phase 2]** |
 | **Consent tracking** — each consent recorded with version + timestamp; portal review | `apps/registration/` | **[phase 2]** |
 | **Data-subject access** — one-click "export everything we hold about this child" (admin + portal) | `apps/reporting/` | **[phase 2]** |

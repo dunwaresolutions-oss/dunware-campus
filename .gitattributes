@@ -1,0 +1,25 @@
+# Campus — normalize line endings. The repo is authored on Windows but the
+# installer build, CI, and any Linux dev all expect LF. Force it here so a
+# checkout is byte-identical everywhere.
+* text=auto eol=lf
+
+# Binary / generated — never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# Windows-only helper scripts keep CRLF so they run under powershell.exe cleanly.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Lockfiles: keep as-is, mark generated so diffs collapse in review.
+package-lock.json linguist-generated=true -diff

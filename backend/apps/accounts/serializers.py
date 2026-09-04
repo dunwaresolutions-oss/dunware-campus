@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import User
+from .models import STAFF_ROLES, User
 
 
 class WhoAmISerializer(serializers.ModelSerializer):
@@ -18,3 +18,22 @@ class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(style={"input_type": "password"}, trim_whitespace=False)
     otp = serializers.CharField(required=False, allow_blank=True)
+
+
+class TOTPTokenSerializer(serializers.Serializer):
+    """A 6-digit TOTP code (django-otp also accepts a static backup token)."""
+
+    token = serializers.CharField(min_length=6, max_length=16, trim_whitespace=True)
+
+
+class StaffInviteCreateSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(choices=[(r.value, r.label) for r in STAFF_ROLES])
+
+
+class InviteAcceptSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    username = serializers.CharField(min_length=3, max_length=150)
+    password = serializers.CharField(
+        style={"input_type": "password"}, trim_whitespace=False, min_length=12
+    )

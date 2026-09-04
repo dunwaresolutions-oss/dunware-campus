@@ -9,6 +9,28 @@ from __future__ import annotations
 
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
+STAFF_ROLE_NAMES = ("SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR")
+
+
+class MFAVerified(BasePermission):
+    """
+    Blocks a request whose user is required to use MFA but whose session is not
+    OTP-verified. Parents/students (``must_use_mfa`` False) pass straight
+    through; staff must have confirmed a TOTP device and cleared the second
+    factor this session.
+    """
+
+    message = "Multi-factor authentication is required. Finish MFA setup / verification."
+
+    def has_permission(self, request, view):
+        user = getattr(request, "user", None)
+        if not (user and user.is_authenticated):
+            return False
+        if not getattr(user, "must_use_mfa", False):
+            return True
+        is_verified = getattr(user, "is_verified", None)
+        return bool(callable(is_verified) and is_verified())
+
 
 class RoleRequired(BasePermission):
     """
@@ -26,7 +48,7 @@ class RoleRequired(BasePermission):
 
 
 class StaffOnly(RoleRequired):
-    allowed_roles = ("SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR")
+    allowed_roles = STAFF_ROLE_NAMES
 
 
 class AdminOnly(RoleRequired):
@@ -35,6 +57,16 @@ class AdminOnly(RoleRequired):
 
 class PortalUser(RoleRequired):
     allowed_roles = ("PARENT", "STUDENT")
+
+
+class StaffAndMFAVerified(BasePermission):
+    """The default for staff-facing viewsets that touch person data: a staff
+    role *and* a satisfied second factor. Compose object-level scoping on top."""
+
+    def has_permission(self, request, view):
+        return StaffOnly().has_permission(request, view) and MFAVerified().has_permission(
+            request, view
+        )
 
 
 class IsObjectOwnerOrStaff(BasePermission):
