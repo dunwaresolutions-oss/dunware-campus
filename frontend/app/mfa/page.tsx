@@ -50,7 +50,7 @@ export default function MfaPage() {
   return (
     <main className="mx-auto max-w-md px-6 py-16">
       <h1 className="text-xl font-semibold">Two-factor authentication</h1>
-      <p className="mt-2 text-sm text-neutral-600">
+      <p className="mt-2 text-sm text-[var(--campus-muted)]">
         {alreadyEnrolled
           ? "Enter the current 6-digit code from your authenticator app to finish signing in."
           : "Scan this with Google Authenticator, Authy, or 1Password, then enter the 6-digit code it shows."}
@@ -68,7 +68,7 @@ export default function MfaPage() {
         )}
         <form onSubmit={confirm} className="space-y-4">
           <input
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-center text-lg tracking-widest"
+            className="w-full rounded-md border border-[var(--campus-line)] px-3 py-2 text-center text-lg tracking-widest"
             placeholder="123456"
             inputMode="numeric"
             maxLength={6}

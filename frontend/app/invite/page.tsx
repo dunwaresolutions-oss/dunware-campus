@@ -31,13 +31,13 @@ function AcceptForm() {
   }
 
   const input =
-    "w-full rounded-md border border-neutral-300 px-3 py-2 text-sm";
+    "w-full rounded-md border border-[var(--campus-line)] px-3 py-2 text-sm";
 
   if (done)
     return (
       <Card className="p-6 text-sm">
         <p className="font-medium text-emerald-700">Account created.</p>
-        <p className="mt-2 text-neutral-600">
+        <p className="mt-2 text-[var(--campus-muted)]">
           Sign in with your new username and password, then set up an
           authenticator app when prompted.
         </p>
@@ -51,7 +51,7 @@ function AcceptForm() {
     <Card className="p-6">
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-600">
+          <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
             Invite token
           </label>
           <input
@@ -61,7 +61,7 @@ function AcceptForm() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-600">
+          <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
             Choose a username
           </label>
           <input
@@ -72,7 +72,7 @@ function AcceptForm() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-600">
+          <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
             Choose a password (12+ characters)
           </label>
           <input
@@ -96,7 +96,7 @@ export default function InvitePage() {
   return (
     <main className="mx-auto max-w-sm px-6 py-16">
       <h1 className="text-xl font-semibold">Join Campus</h1>
-      <p className="mt-2 text-sm text-neutral-600">
+      <p className="mt-2 text-sm text-[var(--campus-muted)]">
         You were invited by an administrator. Set your username and password
         below.
       </p>

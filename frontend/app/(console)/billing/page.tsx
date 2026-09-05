@@ -157,7 +157,7 @@ function Invoices({
 
   return (
     <Card>
-      <div className="flex justify-end border-b border-neutral-100 p-3">
+      <div className="flex justify-end border-b border-[var(--campus-line)] p-3">
         <Button size="sm" onClick={() => setCreating(true)}>
           New invoice
         </Button>
@@ -167,7 +167,7 @@ function Invoices({
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+            <tr className="border-b border-[var(--campus-line)] text-left text-xs uppercase text-[var(--campus-muted)]">
               <th className="px-3 py-2 font-medium">Student</th>
               <th className="px-3 py-2 font-medium">Total</th>
               <th className="px-3 py-2 font-medium">Balance</th>
@@ -178,7 +178,7 @@ function Invoices({
           </thead>
           <tbody>
             {(q.data?.results ?? []).map((inv) => (
-              <tr key={inv.id} className="border-b border-neutral-100">
+              <tr key={inv.id} className="border-b border-[var(--campus-line)]">
                 <td className="px-3 py-2.5">
                   {students.find((s) => s.id === inv.student)?.display_name ??
                     inv.student}
@@ -264,7 +264,7 @@ function Invoices({
             ))}
             {(q.data?.results ?? []).length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-neutral-500">
+                <td colSpan={6} className="p-6 text-center text-[var(--campus-muted)]">
                   No invoices yet.
                 </td>
               </tr>
@@ -272,7 +272,7 @@ function Invoices({
           </tbody>
         </table>
       )}
-      <div className="flex justify-between p-3 text-xs text-neutral-500">
+      <div className="flex justify-between p-3 text-xs text-[var(--campus-muted)]">
         <span>{q.data?.count ?? 0} total</span>
         <span className="flex gap-1">
           <Button size="sm" variant="ghost" disabled={page <= 1} onClick={() => setPage(page - 1)}>
@@ -344,7 +344,7 @@ function InvoiceLines({
         <table className="w-full text-sm">
           <tbody>
             {(lines.data?.results ?? []).map((l) => (
-              <tr key={l.id} className="border-b border-neutral-100">
+              <tr key={l.id} className="border-b border-[var(--campus-line)]">
                 <td className="py-2">{l.description}</td>
                 <td className="py-2 text-right">{l.quantity}</td>
                 <td className="py-2 text-right">
@@ -357,7 +357,7 @@ function InvoiceLines({
             ))}
             {(lines.data?.results ?? []).length === 0 && (
               <tr>
-                <td className="py-3 text-neutral-500">No lines.</td>
+                <td className="py-3 text-[var(--campus-muted)]">No lines.</td>
               </tr>
             )}
           </tbody>

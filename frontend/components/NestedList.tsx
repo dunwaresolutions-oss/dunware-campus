@@ -47,9 +47,9 @@ export function NestedList<T extends Row>({
   const reload = () => qc.invalidateQueries({ queryKey: ["all", resource] });
 
   return (
-    <div className="rounded-md border border-neutral-200">
-      <div className="flex items-center justify-between border-b border-neutral-100 px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <div className="rounded-md border border-[var(--campus-line)]">
+      <div className="flex items-center justify-between border-b border-[var(--campus-line)] px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
           {title}
         </span>
         {addFields && (
@@ -64,7 +64,7 @@ export function NestedList<T extends Row>({
       ) : rows.length === 0 ? (
         <EmptyState message={`No ${title.toLowerCase()}.`} />
       ) : (
-        <ul className="divide-y divide-neutral-100 text-sm">
+        <ul className="divide-y divide-[var(--campus-line)] text-sm">
           {rows.map((r) => (
             <li
               key={r.id}

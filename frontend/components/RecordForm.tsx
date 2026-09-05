@@ -101,7 +101,7 @@ export function RecordForm({
         const err = fieldErrors[f.name];
         return (
           <div key={f.name}>
-            <label className="mb-1 block text-xs font-medium text-neutral-600">
+            <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
               {f.label}
               {f.required && <span className="text-red-500"> *</span>}
             </label>
@@ -133,7 +133,7 @@ export function RecordForm({
             ) : f.type === "checkbox" ? (
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-neutral-300"
+                className="h-4 w-4 rounded border-[var(--campus-line)]"
                 checked={val as boolean}
                 onChange={(e) =>
                   setState((s) => ({ ...s, [f.name]: e.target.checked }))
@@ -162,7 +162,7 @@ export function RecordForm({
               />
             )}
             {f.help && !err && (
-              <p className="mt-1 text-xs text-neutral-400">{f.help}</p>
+              <p className="mt-1 text-xs text-[var(--campus-muted)]">{f.help}</p>
             )}
             {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
           </div>

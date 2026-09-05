@@ -47,7 +47,9 @@ export default function ConsoleLayout({
 
   return (
     <div className="grid min-h-screen grid-cols-[220px_1fr]">
-      <aside className="flex flex-col border-r border-[var(--campus-line)] bg-[var(--campus-panel)]">
+      <aside
+        className="sticky top-0 flex h-screen flex-col border-r border-[var(--glass-border)] bg-[var(--glass-bg)] [backdrop-filter:blur(var(--glass-blur))_saturate(160%)]"
+      >
         <div className="flex items-center gap-2.5 border-b border-[var(--campus-line)] px-4 py-4">
           <Image
             src="/icon.png"

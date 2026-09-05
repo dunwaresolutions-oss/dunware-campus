@@ -30,7 +30,7 @@ export function Modal({
       onMouseDown={onClose}
     >
       <div
-        className={`campus-modal-panel w-full rounded-2xl border border-[var(--campus-line)] bg-[var(--campus-panel)] shadow-[var(--campus-shadow-lg)] ${
+        className={`campus-modal-panel glass glass-strong w-full rounded-2xl !shadow-[var(--campus-shadow-lg)] ${
           wide ? "max-w-3xl" : "max-w-lg"
         }`}
         onMouseDown={(e) => e.stopPropagation()}

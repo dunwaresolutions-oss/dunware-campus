@@ -37,12 +37,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {items.map((t) => (
           <div
             key={t.id}
-            className={`campus-toast pointer-events-auto flex items-start gap-2.5 rounded-xl border-l-4 px-3.5 py-2.5 text-sm shadow-[var(--campus-shadow-md)] backdrop-blur ${
+            className={`campus-toast pointer-events-auto flex items-start gap-2.5 rounded-xl border border-[var(--glass-border)] border-l-4 px-3.5 py-2.5 text-sm shadow-[var(--campus-shadow-md)] [backdrop-filter:blur(14px)_saturate(160%)] ${
               t.kind === "success"
-                ? "border-l-emerald-500 bg-emerald-50/95 text-emerald-900 dark:bg-emerald-950/90 dark:text-emerald-200"
+                ? "border-l-emerald-500 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-200"
                 : t.kind === "error"
-                  ? "border-l-red-500 bg-red-50/95 text-red-900 dark:bg-red-950/90 dark:text-red-200"
-                  : "border-l-sky-500 bg-white/95 text-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-200"
+                  ? "border-l-red-500 bg-red-50/80 text-red-900 dark:bg-red-950/70 dark:text-red-200"
+                  : "border-l-[var(--campus-accent)] bg-white/70 text-neutral-800 dark:bg-neutral-900/70 dark:text-neutral-200"
             }`}
           >
             <span aria-hidden className="mt-px shrink-0 font-semibold">

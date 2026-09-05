@@ -23,7 +23,7 @@ export default function CommunicationPage() {
     <div>
       <PageHeader
         title="Messages"
-        subtitle="Announcements, staff ↔ parent threads, incident reports with acknowledgement, and the outbound email log. Email only."
+        subtitle="Announcements, staff â†” parent threads, incident reports with acknowledgement, and the outbound email log. Email only."
       />
       <Tabs
         active={tab}
@@ -235,7 +235,7 @@ function Threads({
 
   return (
     <Card>
-      <div className="flex justify-end border-b border-neutral-100 p-3">
+      <div className="flex justify-end border-b border-[var(--campus-line)] p-3">
         <Button size="sm" onClick={() => setCreating(true)}>
           New thread
         </Button>
@@ -243,7 +243,7 @@ function Threads({
       {threads.isLoading ? (
         <Spinner />
       ) : (
-        <ul className="divide-y divide-neutral-100 text-sm">
+        <ul className="divide-y divide-[var(--campus-line)] text-sm">
           {(threads.data?.results ?? []).map((t) => (
             <li key={t.id} className="px-4 py-3">
               <button
@@ -251,7 +251,7 @@ function Threads({
                 onClick={() => setOpen(open === t.id ? null : t.id)}
               >
                 <span className="font-medium">{t.subject}</span>
-                <span className="text-xs text-neutral-500">
+                <span className="text-xs text-[var(--campus-muted)]">
                   {t.message_count ?? 0} msg ·{" "}
                   {datetime(t.last_message_at)}
                   {t.closed && " · closed"}
@@ -261,7 +261,7 @@ function Threads({
             </li>
           ))}
           {(threads.data?.results ?? []).length === 0 && (
-            <li className="p-4 text-neutral-500">No threads yet.</li>
+            <li className="p-4 text-[var(--campus-muted)]">No threads yet.</li>
           )}
         </ul>
       )}
@@ -298,16 +298,16 @@ function ThreadMessages({ threadId }: { threadId: string }) {
     { thread: threadId },
   );
   return (
-    <div className="mt-3 space-y-2 rounded-md bg-neutral-50 p-3">
+    <div className="mt-3 space-y-2 rounded-md bg-black/[0.03] dark:bg-white/[0.04] p-3">
       {(msgs.data?.results ?? []).map((m) => (
         <div key={m.id} className="text-sm">
-          <span className="text-neutral-500">{datetime(m.created_at)} — </span>
+          <span className="text-[var(--campus-muted)]">{datetime(m.created_at)} — </span>
           {m.body}
         </div>
       ))}
       <div className="flex gap-2 pt-1">
         <input
-          className="flex-1 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+          className="flex-1 rounded-md border border-[var(--campus-line)] px-2 py-1 text-sm"
           placeholder="Reply…"
           value={body}
           onChange={(e) => setBody(e.target.value)}

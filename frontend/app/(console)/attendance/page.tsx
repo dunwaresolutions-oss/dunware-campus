@@ -119,7 +119,7 @@ export default function AttendancePage() {
 
       <div className="mb-5 flex flex-wrap gap-3">
         <select
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          className="rounded-md border border-[var(--campus-line)] px-3 py-2 text-sm"
           value={group}
           onChange={(e) => setGroup(e.target.value)}
         >
@@ -132,7 +132,7 @@ export default function AttendancePage() {
         </select>
         <input
           type="date"
-          className="rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          className="rounded-md border border-[var(--campus-line)] px-3 py-2 text-sm"
           value={day}
           onChange={(e) => setDay(e.target.value)}
         />
@@ -153,7 +153,7 @@ export default function AttendancePage() {
                 return (
                   <tr
                     key={s.id}
-                    className="border-b border-neutral-100 last:border-0"
+                    className="border-b border-[var(--campus-line)] last:border-0"
                   >
                     <td className="px-3 py-2.5 font-medium">
                       {s.display_name}
@@ -257,7 +257,7 @@ function CheckoutPicker({
         </p>
       ) : (
         <select
-          className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          className="w-full rounded-md border border-[var(--campus-line)] px-3 py-2 text-sm"
           value={choice}
           onChange={(e) => setChoice(e.target.value)}
         >

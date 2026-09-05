@@ -1,49 +1,52 @@
 @import "tailwindcss";
 
 :root {
-  --campus-bg: #f4f6f9;
-  --campus-panel: #ffffff;
-  --campus-fg: #1b2430;
-  --campus-muted: #5b6675;
-  --campus-line: #e5e9ef;
-  --campus-accent: #1f6f8b;
-  --campus-accent-strong: #175a72;
-  --campus-accent-soft: #e7f1f5;
-  --campus-ring: rgba(31, 111, 139, 0.35);
-  --campus-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06),
-    0 1px 3px rgba(16, 24, 40, 0.08);
-  --campus-shadow-md: 0 4px 12px -2px rgba(16, 24, 40, 0.1),
-    0 2px 6px -2px rgba(16, 24, 40, 0.06);
-  --campus-shadow-lg: 0 20px 40px -12px rgba(16, 24, 40, 0.25);
+  --campus-fg: #16202b;
+  --campus-muted: #55606f;
+  --campus-line: rgba(15, 30, 45, 0.1);
+  --campus-accent: #1f7d99;
+  --campus-accent-strong: #16657d;
+  --campus-accent-soft: rgba(31, 125, 153, 0.12);
+  --campus-ring: rgba(31, 125, 153, 0.4);
+
+  /* glass surfaces */
+  --glass-bg: rgba(255, 255, 255, 0.62);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-blur: 16px;
+
+  --campus-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04),
+    0 2px 8px -2px rgba(16, 24, 40, 0.08);
+  --campus-shadow-md: 0 8px 24px -6px rgba(16, 24, 40, 0.14),
+    0 2px 8px -2px rgba(16, 24, 40, 0.08);
+  --campus-shadow-lg: 0 30px 60px -18px rgba(16, 24, 40, 0.35),
+    0 8px 24px -8px rgba(16, 24, 40, 0.2);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --campus-bg: #0f1419;
-    --campus-panel: #171d24;
-    --campus-fg: #e7ebf0;
-    --campus-muted: #97a2b0;
-    --campus-line: #262e38;
-    --campus-accent: #4bb8d6;
-    --campus-accent-strong: #6fc9e2;
-    --campus-accent-soft: #14262d;
-    --campus-ring: rgba(75, 184, 214, 0.35);
+    --campus-fg: #e8edf3;
+    --campus-muted: #98a4b3;
+    --campus-line: rgba(255, 255, 255, 0.09);
+    --campus-accent: #4cc2e0;
+    --campus-accent-strong: #74d2ea;
+    --campus-accent-soft: rgba(76, 194, 224, 0.14);
+    --campus-ring: rgba(76, 194, 224, 0.4);
+
+    --glass-bg: rgba(22, 29, 38, 0.55);
+    --glass-bg-strong: rgba(24, 32, 42, 0.74);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-blur: 18px;
+
     --campus-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --campus-shadow-md: 0 6px 16px -4px rgba(0, 0, 0, 0.5);
-    --campus-shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+    --campus-shadow-md: 0 10px 28px -8px rgba(0, 0, 0, 0.55);
+    --campus-shadow-lg: 0 36px 64px -16px rgba(0, 0, 0, 0.7);
   }
 }
 
 html,
 body {
-  background:
-    radial-gradient(
-      1200px 600px at 100% -10%,
-      color-mix(in srgb, var(--campus-accent) 8%, transparent),
-      transparent 60%
-    ),
-    var(--campus-bg);
-  background-attachment: fixed;
+  min-height: 100%;
   color: var(--campus-fg);
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
@@ -52,8 +55,72 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* the coloured field the glass refracts */
+body {
+  background-color: #eef2f6;
+  background-image:
+    radial-gradient(
+      42rem 42rem at 8% -8%,
+      rgba(31, 125, 153, 0.22),
+      transparent 60%
+    ),
+    radial-gradient(
+      38rem 38rem at 108% 0%,
+      rgba(120, 90, 200, 0.18),
+      transparent 55%
+    ),
+    radial-gradient(
+      46rem 46rem at 50% 118%,
+      rgba(31, 153, 133, 0.16),
+      transparent 55%
+    );
+  background-attachment: fixed;
+}
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #0c1116;
+    background-image:
+      radial-gradient(
+        42rem 42rem at 8% -8%,
+        rgba(31, 125, 153, 0.28),
+        transparent 60%
+      ),
+      radial-gradient(
+        38rem 38rem at 108% 0%,
+        rgba(120, 90, 200, 0.22),
+        transparent 55%
+      ),
+      radial-gradient(
+        46rem 46rem at 50% 118%,
+        rgba(31, 153, 133, 0.2),
+        transparent 55%
+      );
+  }
+}
+
 * {
   scrollbar-width: thin;
+}
+
+/* ---- glass surface ------------------------------------------------- */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    var(--campus-shadow-md),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+@media (prefers-color-scheme: dark) {
+  .glass {
+    box-shadow:
+      var(--campus-shadow-md),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+}
+.glass-strong {
+  background: var(--glass-bg-strong);
 }
 
 /* ---- keyframes -------------------------------------------------------- */
@@ -108,10 +175,10 @@ body {
 
 /* ---- helpers -------------------------------------------------------- */
 .campus-enter {
-  animation: campus-fade-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: campus-fade-up 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .campus-stagger > * {
-  animation: campus-fade-up 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: campus-fade-up 0.36s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .campus-stagger > *:nth-child(1) {
   animation-delay: 0.02s;
@@ -146,7 +213,7 @@ body {
   background: linear-gradient(
     90deg,
     var(--campus-line) 25%,
-    color-mix(in srgb, var(--campus-line) 40%, transparent) 37%,
+    rgba(255, 255, 255, 0.3) 37%,
     var(--campus-line) 63%
   );
   background-size: 200% 100%;

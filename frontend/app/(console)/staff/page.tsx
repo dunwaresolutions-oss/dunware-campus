@@ -55,7 +55,7 @@ export default function StaffPage() {
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-neutral-200 text-left text-xs uppercase text-neutral-500">
+                <tr className="border-b border-[var(--campus-line)] text-left text-xs uppercase text-[var(--campus-muted)]">
                   <th className="px-3 py-2 font-medium">Username</th>
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Role</th>
@@ -64,7 +64,7 @@ export default function StaffPage() {
               </thead>
               <tbody>
                 {(users.data ?? []).map((u) => (
-                  <tr key={u.id} className="border-b border-neutral-100">
+                  <tr key={u.id} className="border-b border-[var(--campus-line)]">
                     <td className="px-3 py-2.5 font-medium">{u.username}</td>
                     <td className="px-3 py-2.5">{u.email || "—"}</td>
                     <td className="px-3 py-2.5">{label(u.role)}</td>
@@ -85,7 +85,7 @@ export default function StaffPage() {
 
       {tab === "invite" && (
         <Card className="p-5">
-          <p className="mb-4 max-w-lg text-sm text-neutral-600">
+          <p className="mb-4 max-w-lg text-sm text-[var(--campus-muted)]">
             An invite generates a one-time token. On an on-site install there
             may be no outbound email — copy the token and the link below and
             give them to the new staff member directly. They set their own
@@ -117,19 +117,19 @@ export default function StaffPage() {
             onCancel={() => setInvite(null)}
           />
           {invite && (
-            <div className="mt-5 rounded-md border border-sky-200 bg-sky-50 p-4 text-sm">
-              <div className="font-medium text-sky-900">
+            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[var(--campus-accent-soft)] p-4 text-sm">
+              <div className="font-medium text-[var(--campus-accent-strong)]">
                 Invite for {invite.email}
               </div>
               <div className="mt-2">
-                <span className="text-neutral-500">Redeem link: </span>
+                <span className="text-[var(--campus-muted)]">Redeem link: </span>
                 <code className="break-all">
                   {typeof window !== "undefined" ? window.location.origin : ""}
                   /invite/?token={invite.token}
                 </code>
               </div>
               <div className="mt-1">
-                <span className="text-neutral-500">Token: </span>
+                <span className="text-[var(--campus-muted)]">Token: </span>
                 <code className="break-all">{invite.token}</code>
               </div>
             </div>

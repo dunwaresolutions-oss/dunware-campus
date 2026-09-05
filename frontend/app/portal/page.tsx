@@ -72,16 +72,16 @@ export default function PortalPage() {
               <h3 className="text-sm font-semibold">Announcements</h3>
             </div>
             {(dash.data?.announcements ?? []).length === 0 && (
-              <p className="text-sm text-neutral-500">Nothing new.</p>
+              <p className="text-sm text-[var(--campus-muted)]">Nothing new.</p>
             )}
             <ul className="space-y-2 text-sm">
               {(dash.data?.announcements ?? []).map((a) => (
                 <li key={a.id}>
                   <span className="font-medium">{a.title}</span>{" "}
-                  <span className="text-xs text-neutral-500">
+                  <span className="text-xs text-[var(--campus-muted)]">
                     {datetime(a.published_at)}
                   </span>
-                  <p className="text-neutral-600">{a.body}</p>
+                  <p className="text-[var(--campus-muted)]">{a.body}</p>
                 </li>
               ))}
             </ul>
@@ -95,7 +95,7 @@ export default function PortalPage() {
               </Button>
             </div>
             {(dash.data?.contact_change_requests ?? []).length === 0 ? (
-              <p className="text-sm text-neutral-500">No open requests.</p>
+              <p className="text-sm text-[var(--campus-muted)]">No open requests.</p>
             ) : (
               <ul className="space-y-1 text-sm">
                 {(dash.data?.contact_change_requests ?? []).map((r) => (
@@ -175,16 +175,16 @@ function ChildCard({
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-semibold">{child.display_name}</h3>
-        <span className="text-xs text-neutral-500">#{child.student_number}</span>
+        <span className="text-xs text-[var(--campus-muted)]">#{child.student_number}</span>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <div className="text-xs font-semibold uppercase text-neutral-500">
+          <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
             Upcoming sessions
           </div>
           {child.upcoming_sessions.length === 0 ? (
-            <p className="text-sm text-neutral-500">None scheduled.</p>
+            <p className="text-sm text-[var(--campus-muted)]">None scheduled.</p>
           ) : (
             <ul className="text-sm">
               {child.upcoming_sessions.map((s) => (
@@ -196,11 +196,11 @@ function ChildCard({
           )}
         </div>
         <div>
-          <div className="text-xs font-semibold uppercase text-neutral-500">
+          <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
             Recent attendance
           </div>
           {child.recent_attendance.length === 0 ? (
-            <p className="text-sm text-neutral-500">Nothing recorded.</p>
+            <p className="text-sm text-[var(--campus-muted)]">Nothing recorded.</p>
           ) : (
             <ul className="text-sm">
               {child.recent_attendance.map((a) => (
@@ -212,11 +212,11 @@ function ChildCard({
           )}
         </div>
         <div>
-          <div className="text-xs font-semibold uppercase text-neutral-500">
+          <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
             Report cards
           </div>
           {child.released_report_cards.length === 0 ? (
-            <p className="text-sm text-neutral-500">None released.</p>
+            <p className="text-sm text-[var(--campus-muted)]">None released.</p>
           ) : (
             <ul className="text-sm">
               {child.released_report_cards.map((r) => (
@@ -226,11 +226,11 @@ function ChildCard({
           )}
         </div>
         <div>
-          <div className="text-xs font-semibold uppercase text-neutral-500">
+          <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
             Invoices
           </div>
           {child.invoices.length === 0 ? (
-            <p className="text-sm text-neutral-500">Nothing outstanding.</p>
+            <p className="text-sm text-[var(--campus-muted)]">Nothing outstanding.</p>
           ) : (
             <ul className="text-sm">
               {child.invoices.map((i) => (

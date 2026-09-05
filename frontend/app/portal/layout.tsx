@@ -18,5 +18,5 @@ export default function PortalLayout({
   }, [isLoading, me, router]);
 
   if (isLoading || !me) return null;
-  return <div className="min-h-screen bg-neutral-50">{children}</div>;
+  return <div className="min-h-screen bg-black/[0.03] dark:bg-white/[0.04]">{children}</div>;
 }

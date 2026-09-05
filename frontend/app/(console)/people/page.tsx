@@ -179,13 +179,13 @@ export default function PeoplePage() {
         {detail && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-              <div className="text-neutral-500">Date of birth</div>
+              <div className="text-[var(--campus-muted)]">Date of birth</div>
               <div>{date(detail.date_of_birth)}</div>
-              <div className="text-neutral-500">Status</div>
+              <div className="text-[var(--campus-muted)]">Status</div>
               <div>{label(detail.status)}</div>
-              <div className="text-neutral-500">Group</div>
+              <div className="text-[var(--campus-muted)]">Group</div>
               <div>{detail.primary_group_name || "—"}</div>
-              <div className="text-neutral-500">Pronouns</div>
+              <div className="text-[var(--campus-muted)]">Pronouns</div>
               <div>{detail.pronouns || "—"}</div>
             </div>
 
@@ -197,7 +197,7 @@ export default function PeoplePage() {
               render={(r) => (
                 <span>
                   {(r.guardian_name as string) || `#${r.guardian}`} ·{" "}
-                  <span className="text-neutral-500">
+                  <span className="text-[var(--campus-muted)]">
                     {label(r.relationship as string)}
                   </span>
                   {r.can_pickup ? " · pickup" : ""}
@@ -282,7 +282,7 @@ export default function PeoplePage() {
               title="Observations"
               render={(r) => (
                 <span>
-                  <span className="text-neutral-500">
+                  <span className="text-[var(--campus-muted)]">
                     {datetime(r.occurred_at as string)}
                   </span>{" "}
                   · {label(r.category as string)} — {r.body as string}
@@ -324,7 +324,7 @@ export default function PeoplePage() {
               render={(r) => (
                 <span>
                   {r.allergen as string} —{" "}
-                  <span className="text-neutral-500">
+                  <span className="text-[var(--campus-muted)]">
                     {label(r.severity as string)}
                   </span>
                 </span>

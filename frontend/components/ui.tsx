@@ -28,7 +28,7 @@ export function Button({
     danger:
       "bg-red-600 text-white shadow-sm hover:bg-red-700 hover:shadow-md hover:-translate-y-px",
     ghost:
-      "border border-[var(--campus-line)] bg-[var(--campus-panel)] text-[var(--campus-fg)] hover:border-[var(--campus-accent)] hover:text-[var(--campus-accent)] hover:shadow-sm",
+      "border border-[var(--glass-border)] bg-white/40 text-[var(--campus-fg)] backdrop-blur-sm hover:bg-white/70 hover:border-[var(--campus-accent)] hover:text-[var(--campus-accent)] hover:shadow-sm dark:bg-white/[0.06] dark:hover:bg-white/[0.12]",
     subtle:
       "text-[var(--campus-accent)] hover:bg-[var(--campus-accent-soft)]",
   };
@@ -76,11 +76,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div
-      className={`rounded-xl border border-[var(--campus-line)] bg-[var(--campus-panel)] shadow-[var(--campus-shadow-sm)] ${className}`}
-    >
-      {children}
-    </div>
+    <div className={`glass rounded-2xl ${className}`}>{children}</div>
   );
 }
 

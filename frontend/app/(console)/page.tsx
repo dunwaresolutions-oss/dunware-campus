@@ -119,12 +119,12 @@ export default function DashboardPage() {
 
           <div className="mt-8 grid gap-6 lg:grid-cols-2">
             <Card>
-              <div className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold">
+              <div className="border-b border-[var(--campus-line)] px-4 py-3 text-sm font-semibold">
                 Today&apos;s sessions
               </div>
-              <div className="divide-y divide-neutral-100">
+              <div className="divide-y divide-[var(--campus-line)]">
                 {(sessions.data?.results ?? []).length === 0 && (
-                  <div className="p-4 text-sm text-neutral-500">
+                  <div className="p-4 text-sm text-[var(--campus-muted)]">
                     Nothing scheduled for {date(today())}.
                   </div>
                 )}
@@ -137,11 +137,11 @@ export default function DashboardPage() {
                       <span className="font-medium">
                         {s.group_name ?? "Group"}
                       </span>{" "}
-                      <span className="text-neutral-500">
+                      <span className="text-[var(--campus-muted)]">
                         {s.room_name ?? ""}
                       </span>
                     </span>
-                    <span className="text-neutral-500">
+                    <span className="text-[var(--campus-muted)]">
                       {time(s.starts_at)}
                     </span>
                   </div>
@@ -150,12 +150,12 @@ export default function DashboardPage() {
             </Card>
 
             <Card>
-              <div className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold">
+              <div className="border-b border-[var(--campus-line)] px-4 py-3 text-sm font-semibold">
                 Open incident reports
               </div>
-              <div className="divide-y divide-neutral-100">
+              <div className="divide-y divide-[var(--campus-line)]">
                 {(incidents.data?.results ?? []).length === 0 && (
-                  <div className="p-4 text-sm text-neutral-500">
+                  <div className="p-4 text-sm text-[var(--campus-muted)]">
                     No incidents awaiting acknowledgement.
                   </div>
                 )}
@@ -168,7 +168,7 @@ export default function DashboardPage() {
                       <span className="font-medium">
                         {i.student_name ?? "Student"}
                       </span>{" "}
-                      <span className="text-neutral-500">{i.category}</span>
+                      <span className="text-[var(--campus-muted)]">{i.category}</span>
                     </span>
                     <Badge tone="amber">{i.status}</Badge>
                   </div>

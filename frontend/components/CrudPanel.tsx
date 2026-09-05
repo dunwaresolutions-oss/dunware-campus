@@ -111,7 +111,7 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   return (
     <Card>
       {(canCreate || headerActions) && fields && (
-        <div className="flex justify-end gap-2 border-b border-neutral-100 p-3">
+        <div className="flex justify-end gap-2 border-b border-[var(--campus-line)] p-3">
           {headerActions}
           {canCreate && (
             <Button size="sm" onClick={() => setCreating(true)}>
