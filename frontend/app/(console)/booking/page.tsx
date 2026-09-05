@@ -59,10 +59,9 @@ export default function BookingPage() {
               name: "kind",
               label: "Kind",
               type: "select",
-              options: ["TUTORING", "MUSIC", "SPORT", "CLUB"].map((v) => ({
-                value: v,
-                label: label(v),
-              })),
+              options: ["TUTORING", "MUSIC", "SPORT", "CLUB", "OTHER"].map(
+                (v) => ({ value: v, label: label(v) }),
+              ),
             },
             { name: "description", label: "Description", type: "textarea" },
             { name: "room", label: "Room", type: "select", options: roomOpts },

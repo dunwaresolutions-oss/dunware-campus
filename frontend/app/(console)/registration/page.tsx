@@ -84,11 +84,13 @@ export default function RegistrationPage() {
           fields={[
             { name: "child_first_name", label: "Child first name", required: true },
             { name: "child_last_name", label: "Child last name", required: true },
-            { name: "child_date_of_birth", label: "Child DOB", type: "date" },
+            { name: "child_date_of_birth", label: "Child DOB", type: "date", required: true },
+            { name: "desired_start", label: "Desired start", type: "date" },
+            { name: "desired_group", label: "Desired group", type: "select", options: groupOpts },
             { name: "applicant_name", label: "Applicant name", required: true },
-            { name: "applicant_email", label: "Applicant email" },
-            { name: "applicant_phone", label: "Applicant phone" },
-            { name: "notes", label: "Notes", type: "textarea" },
+            { name: "applicant_email", label: "Applicant email", required: true },
+            { name: "applicant_phone", label: "Applicant phone (encrypted)" },
+            { name: "notes", label: "Notes (encrypted)", type: "textarea" },
           ]}
           extraRowActions={(row, reload) => {
             const id = row.id as number;

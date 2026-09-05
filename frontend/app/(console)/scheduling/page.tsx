@@ -75,13 +75,10 @@ export default function SchedulingPage() {
               name: "kind",
               label: "Kind",
               type: "select",
-              options: [
-                "CLASSROOM",
-                "GYM",
-                "OUTDOOR",
-                "SHARED",
-                "OFFICE",
-              ].map((v) => ({ value: v, label: label(v) })),
+              options: ["CLASSROOM", "GYM", "OUTDOOR", "RESOURCE"].map((v) => ({
+                value: v,
+                label: label(v),
+              })),
             },
             { name: "capacity", label: "Capacity", type: "number" },
             { name: "active", label: "Active", type: "checkbox" },

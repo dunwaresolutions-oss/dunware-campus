@@ -212,7 +212,21 @@ export default function PeoplePage() {
                   required: true,
                   options: guardianOpts,
                 },
-                { name: "relationship", label: "Relationship", required: true },
+                {
+                  name: "relationship",
+                  label: "Relationship",
+                  type: "select",
+                  required: true,
+                  options: [
+                    "MOTHER",
+                    "FATHER",
+                    "PARENT",
+                    "GRANDPARENT",
+                    "LEGAL_GUARDIAN",
+                    "FOSTER",
+                    "OTHER",
+                  ].map((v) => ({ value: v, label: label(v) })),
+                },
                 { name: "is_primary_contact", label: "Primary contact", type: "checkbox" },
                 { name: "has_custody", label: "Has custody", type: "checkbox" },
                 { name: "can_pickup", label: "Can pick up", type: "checkbox" },
@@ -275,7 +289,20 @@ export default function PeoplePage() {
                 </span>
               )}
               addFields={[
-                { name: "category", label: "Category", required: true },
+                {
+                  name: "category",
+                  label: "Category",
+                  type: "select",
+                  required: true,
+                  options: [
+                    "DEVELOPMENTAL",
+                    "BEHAVIOURAL",
+                    "ACADEMIC",
+                    "INCIDENT",
+                    "MEDICAL",
+                    "GENERAL",
+                  ].map((v) => ({ value: v, label: label(v) })),
+                },
                 { name: "occurred_at", label: "When", type: "datetime", required: true },
                 { name: "body", label: "Note", type: "textarea", required: true },
                 { name: "visible_to_guardians", label: "Visible to guardians", type: "checkbox" },
