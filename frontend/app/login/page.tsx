@@ -18,9 +18,19 @@ export default function LoginPage() {
     setError(null);
     try {
       const me = await login(username, password, otp || undefined);
-      router.push(isStaff(me.role) ? "/" : "/portal/");
-    } catch {
-      setError("Invalid username or password.");
+      if (isStaff(me.role)) {
+        const needsMfa =
+          me.mfa_enrollment_required || (me.must_use_mfa && !me.mfa_verified);
+        router.push(needsMfa ? "/mfa/" : "/");
+      } else {
+        router.push("/portal/");
+      }
+    } catch (err) {
+      setError(
+        (err as Error).name === "MfaRequiredError"
+          ? "Enter the 6-digit code from your authenticator app."
+          : "Invalid username or password.",
+      );
     } finally {
       setBusy(false);
     }

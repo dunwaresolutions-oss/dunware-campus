@@ -18,14 +18,5 @@ export default function PortalLayout({
   }, [isLoading, me, router]);
 
   if (isLoading || !me) return null;
-
-  return (
-    <div className="mx-auto max-w-3xl px-6 py-10">
-      <header className="mb-8 flex items-center justify-between">
-        <span className="font-semibold">Campus — Family Portal</span>
-        <span className="text-sm text-neutral-500">{me.display_name}</span>
-      </header>
-      {children}
-    </div>
-  );
+  return <div className="min-h-screen bg-neutral-50">{children}</div>;
 }
