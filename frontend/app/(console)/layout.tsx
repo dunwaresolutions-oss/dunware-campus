@@ -18,6 +18,7 @@ const NAV = [
   ["/booking/", "Booking"],
   ["/communication/", "Messages"],
   ["/billing/", "Billing"],
+  ["/staff/", "Staff"],
 ] as const;
 
 export default function ConsoleLayout({

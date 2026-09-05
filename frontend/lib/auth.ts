@@ -103,3 +103,48 @@ export interface MfaStatus {
 export async function mfaStatus(): Promise<MfaStatus> {
   return api<MfaStatus>("/auth/mfa/status/");
 }
+
+/* --------------------------------------------------------- staff admin */
+
+export interface DirectoryUser {
+  id: string;
+  username: string;
+  email: string;
+  role: Role;
+  is_active: boolean;
+  display_name: string;
+}
+
+export function listUsers(): Promise<DirectoryUser[]> {
+  return api<DirectoryUser[]>("/auth/users/");
+}
+
+export interface StaffInvite {
+  token: string;
+  email: string;
+  role: string;
+  expires_at: string;
+}
+
+export async function inviteStaff(
+  email: string,
+  role: string,
+): Promise<StaffInvite> {
+  await ensureCsrf();
+  return api<StaffInvite>("/auth/invite/", {
+    method: "POST",
+    body: JSON.stringify({ email, role }),
+  });
+}
+
+export async function acceptInvite(input: {
+  token: string;
+  username: string;
+  password: string;
+}): Promise<{ username: string }> {
+  await ensureCsrf();
+  return api("/auth/invite/accept/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}

@@ -179,6 +179,29 @@ class MFAStatusView(APIView):
         )
 
 
+class UsersView(APIView):
+    """Admin-only staff directory — just enough to populate a group-staff
+    assignment picker. No PII beyond name + role + active flag."""
+
+    permission_classes = [IsAuthenticated, AdminOnly]
+
+    def get(self, request):
+        from apps.accounts.models import User
+
+        out = [
+            {
+                "id": str(u.pk),
+                "username": u.username,
+                "email": u.email,
+                "role": u.role,
+                "is_active": u.is_active,
+                "display_name": getattr(u, "display_name", "") or u.username,
+            }
+            for u in User.objects.order_by("username")
+        ]
+        return Response(out)
+
+
 class StaffInviteView(APIView):
     permission_classes = [IsAuthenticated, AdminOnly]
 
