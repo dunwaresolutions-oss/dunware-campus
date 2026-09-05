@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
-import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
+import { ActionButton } from "@/components/ActionButton";
+import { PageHeader, Tabs, Badge } from "@/components/ui";
 import { act } from "@/lib/resource";
-import { useToast } from "@/components/Toast";
-import { date, label } from "@/lib/format";
+import { date, label, today } from "@/lib/format";
 
 interface Group {
   id: number;
@@ -19,27 +19,10 @@ interface Student {
 
 export default function RegistrationPage() {
   const [tab, setTab] = useState("applications");
-  const toast = useToast();
   const groups = useAll<Group>("groups");
   const students = useAll<Student>("students");
   const groupOpts = options(groups.data, (g) => g.name);
   const studentOpts = options(students.data, (s) => s.display_name);
-
-  async function run(
-    resource: string,
-    id: number,
-    verb: string,
-    reload: () => void,
-    body?: Record<string, unknown>,
-  ) {
-    try {
-      await act(resource, id, verb, body);
-      toast("success", `${label(verb)} done`);
-      reload();
-    } catch (e) {
-      toast("error", String((e as Error).message));
-    }
-  }
 
   return (
     <div>
@@ -93,59 +76,64 @@ export default function RegistrationPage() {
             { name: "notes", label: "Notes (encrypted)", type: "textarea" },
           ]}
           extraRowActions={(row, reload) => {
-            const id = row.id as number;
+            const id = row.id as string;
             const s = row.status as string;
             return (
               <>
                 {s === "SUBMITTED" && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => run("applications", id, "review", reload)}
-                  >
-                    Review
-                  </Button>
+                  <ActionButton
+                    label="Review"
+                    onRun={() => act("applications", id, "review")}
+                    onDone={reload}
+                  />
                 )}
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const group = window.prompt(
-                      "Offer for group id:\n" +
-                        (groups.data ?? [])
-                          .map((g) => `${g.id} = ${g.name}`)
-                          .join("\n"),
-                    );
-                    if (!group) return;
-                    const start_date = window.prompt("Start date (YYYY-MM-DD):");
-                    if (!start_date) return;
-                    const expires_at = window.prompt(
-                      "Offer expires (YYYY-MM-DD):",
-                    );
-                    if (!expires_at) return;
-                    run("applications", id, "make_offer", reload, {
-                      group,
-                      start_date,
-                      expires_at,
-                    });
-                  }}
-                >
-                  Make offer
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    const group = window.prompt(
-                      "Convert into group id (blank = none):",
-                    );
-                    run("applications", id, "convert", reload, {
-                      group: group || undefined,
-                    });
-                  }}
-                >
-                  Convert
-                </Button>
+                {s !== "ENROLLED" && s !== "DECLINED" && (
+                  <ActionButton
+                    label="Make offer"
+                    title="Make an offer"
+                    fields={[
+                      {
+                        name: "group",
+                        label: "Group",
+                        type: "select",
+                        required: true,
+                        options: groupOpts,
+                      },
+                      { name: "start_date", label: "Start date", type: "date", required: true },
+                      { name: "expires_at", label: "Offer expires", type: "date", required: true },
+                    ]}
+                    onRun={(v) => act("applications", id, "make_offer", v)}
+                    onDone={reload}
+                  />
+                )}
+                {s !== "ENROLLED" && (
+                  <ActionButton
+                    label="Convert"
+                    title="Convert to an enrolled student"
+                    fields={[
+                      {
+                        name: "group",
+                        label: "Enrol into group",
+                        type: "select",
+                        options: groupOpts,
+                        help: "Optional — leave blank to create the student without an enrolment.",
+                      },
+                      {
+                        name: "start_date",
+                        label: "Enrolment start",
+                        type: "date",
+                        help: "Defaults to today if a group is chosen.",
+                      },
+                    ]}
+                    onRun={(v) =>
+                      act("applications", id, "convert", {
+                        group: v.group || undefined,
+                        start_date: v.start_date || (v.group ? today() : undefined),
+                      })
+                    }
+                    onDone={reload}
+                  />
+                )}
               </>
             );
           }}
@@ -205,20 +193,18 @@ export default function RegistrationPage() {
           ]}
           extraRowActions={(row, reload) => (
             <>
-              <Button
-                size="sm"
+              <ActionButton
+                label="Accept"
+                onRun={() => act("offers", row.id as string, "accept")}
+                onDone={reload}
+              />
+              <ActionButton
+                label="Decline"
                 variant="ghost"
-                onClick={() => run("offers", row.id as number, "accept", reload)}
-              >
-                Accept
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => run("offers", row.id as number, "decline", reload)}
-              >
-                Decline
-              </Button>
+                confirm="Decline this offer?"
+                onRun={() => act("offers", row.id as string, "decline")}
+                onDone={reload}
+              />
             </>
           )}
         />
@@ -270,19 +256,20 @@ export default function RegistrationPage() {
           ]}
           extraRowActions={(row, reload) =>
             row.status === "ACTIVE" ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const end_date = window.prompt("End date (YYYY-MM-DD):");
-                  if (end_date)
-                    run("enrolments", row.id as number, "end", reload, {
-                      end_date,
-                    });
-                }}
-              >
-                End
-              </Button>
+              <ActionButton
+                label="End"
+                title="End this enrolment"
+                fields={[
+                  {
+                    name: "end_date",
+                    label: "End date",
+                    type: "date",
+                    required: true,
+                  },
+                ]}
+                onRun={(v) => act("enrolments", row.id as string, "end", v)}
+                onDone={reload}
+              />
             ) : null
           }
         />

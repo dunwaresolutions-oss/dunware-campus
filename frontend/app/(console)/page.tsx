@@ -24,16 +24,30 @@ function Stat({
   label,
   value,
   href,
+  tone = "sky",
 }: {
   label: string;
   value: number | string;
   href: string;
+  tone?: "sky" | "amber" | "emerald" | "violet" | "rose" | "slate";
 }) {
+  const bars: Record<string, string> = {
+    sky: "before:bg-sky-400",
+    amber: "before:bg-amber-400",
+    emerald: "before:bg-emerald-400",
+    violet: "before:bg-violet-400",
+    rose: "before:bg-rose-400",
+    slate: "before:bg-slate-400",
+  };
   return (
-    <Link href={href}>
-      <Card className="p-4 transition hover:border-sky-300">
-        <div className="text-2xl font-semibold text-neutral-900">{value}</div>
-        <div className="mt-1 text-xs text-neutral-500">{label}</div>
+    <Link href={href} className="block">
+      <Card
+        className={`relative overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[var(--campus-shadow-md)] before:absolute before:inset-y-0 before:left-0 before:w-1 ${bars[tone]}`}
+      >
+        <div className="text-2xl font-semibold tracking-tight text-[var(--campus-fg)]">
+          {value}
+        </div>
+        <div className="mt-1 text-xs text-[var(--campus-muted)]">{label}</div>
       </Card>
     </Link>
   );
@@ -64,36 +78,42 @@ export default function DashboardPage() {
         <Spinner />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="campus-stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Stat
               label="Students on file"
               value={students.data?.count ?? 0}
               href="/people/"
+              tone="sky"
             />
             <Stat
               label="Applications to review"
               value={apps.data?.count ?? 0}
               href="/registration/"
+              tone="amber"
             />
             <Stat
               label="Issued invoices"
               value={invoices.data?.count ?? 0}
               href="/billing/"
+              tone="emerald"
             />
             <Stat
               label="Message threads"
               value={threads.data?.count ?? 0}
               href="/communication/"
+              tone="violet"
             />
             <Stat
               label="Open incidents"
               value={incidents.data?.count ?? 0}
               href="/communication/"
+              tone="rose"
             />
             <Stat
               label="Sessions today"
               value={sessions.data?.count ?? 0}
               href="/scheduling/"
+              tone="slate"
             />
           </div>
 

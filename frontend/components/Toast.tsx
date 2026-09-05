@@ -33,19 +33,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
+      <div className="pointer-events-none fixed bottom-5 right-5 z-50 flex w-80 flex-col gap-2.5">
         {items.map((t) => (
           <div
             key={t.id}
-            className={`pointer-events-auto rounded-md border px-3 py-2 text-sm shadow-sm ${
+            className={`campus-toast pointer-events-auto flex items-start gap-2.5 rounded-xl border-l-4 px-3.5 py-2.5 text-sm shadow-[var(--campus-shadow-md)] backdrop-blur ${
               t.kind === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                ? "border-l-emerald-500 bg-emerald-50/95 text-emerald-900 dark:bg-emerald-950/90 dark:text-emerald-200"
                 : t.kind === "error"
-                  ? "border-red-200 bg-red-50 text-red-800"
-                  : "border-neutral-200 bg-white text-neutral-800"
+                  ? "border-l-red-500 bg-red-50/95 text-red-900 dark:bg-red-950/90 dark:text-red-200"
+                  : "border-l-sky-500 bg-white/95 text-neutral-800 dark:bg-neutral-900/95 dark:text-neutral-200"
             }`}
           >
-            {t.text}
+            <span aria-hidden className="mt-px shrink-0 font-semibold">
+              {t.kind === "success" ? "✓" : t.kind === "error" ? "!" : "i"}
+            </span>
+            <span>{t.text}</span>
           </div>
         ))}
       </div>

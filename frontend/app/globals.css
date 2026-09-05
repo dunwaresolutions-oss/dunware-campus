@@ -1,15 +1,165 @@
 @import "tailwindcss";
 
 :root {
-  --campus-bg: #f6f8fa;
-  --campus-fg: #1c2530;
+  --campus-bg: #f4f6f9;
+  --campus-panel: #ffffff;
+  --campus-fg: #1b2430;
+  --campus-muted: #5b6675;
+  --campus-line: #e5e9ef;
+  --campus-accent: #1f6f8b;
+  --campus-accent-strong: #175a72;
+  --campus-accent-soft: #e7f1f5;
+  --campus-ring: rgba(31, 111, 139, 0.35);
+  --campus-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06),
+    0 1px 3px rgba(16, 24, 40, 0.08);
+  --campus-shadow-md: 0 4px 12px -2px rgba(16, 24, 40, 0.1),
+    0 2px 6px -2px rgba(16, 24, 40, 0.06);
+  --campus-shadow-lg: 0 20px 40px -12px rgba(16, 24, 40, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --campus-bg: #0f1419;
+    --campus-panel: #171d24;
+    --campus-fg: #e7ebf0;
+    --campus-muted: #97a2b0;
+    --campus-line: #262e38;
+    --campus-accent: #4bb8d6;
+    --campus-accent-strong: #6fc9e2;
+    --campus-accent-soft: #14262d;
+    --campus-ring: rgba(75, 184, 214, 0.35);
+    --campus-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --campus-shadow-md: 0 6px 16px -4px rgba(0, 0, 0, 0.5);
+    --campus-shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+  }
 }
 
 html,
 body {
-  background: var(--campus-bg);
+  background:
+    radial-gradient(
+      1200px 600px at 100% -10%,
+      color-mix(in srgb, var(--campus-accent) 8%, transparent),
+      transparent 60%
+    ),
+    var(--campus-bg);
+  background-attachment: fixed;
   color: var(--campus-fg);
   font-family:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+/* ---- keyframes -------------------------------------------------------- */
+@keyframes campus-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes campus-scale-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes campus-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes campus-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes campus-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes campus-shimmer {
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ---- helpers -------------------------------------------------------- */
+.campus-enter {
+  animation: campus-fade-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.campus-stagger > * {
+  animation: campus-fade-up 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.campus-stagger > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.campus-stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.campus-stagger > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.campus-stagger > *:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.campus-stagger > *:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.campus-stagger > *:nth-child(6) {
+  animation-delay: 0.22s;
+}
+
+.campus-modal-backdrop {
+  animation: campus-fade 0.18s ease both;
+}
+.campus-modal-panel {
+  animation: campus-scale-in 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.campus-toast {
+  animation: campus-slide-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.campus-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--campus-line) 25%,
+    color-mix(in srgb, var(--campus-line) 40%, transparent) 37%,
+    var(--campus-line) 63%
+  );
+  background-size: 200% 100%;
+  animation: campus-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  .campus-enter,
+  .campus-stagger > *,
+  .campus-modal-panel,
+  .campus-toast {
+    animation: none !important;
+    transition: none !important;
+  }
 }

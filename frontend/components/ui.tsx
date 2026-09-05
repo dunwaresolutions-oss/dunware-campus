@@ -17,13 +17,20 @@ export function Button({
   ...rest
 }: BtnProps) {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition disabled:opacity-50 disabled:pointer-events-none";
+    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium " +
+    "transition-all duration-150 ease-out select-none " +
+    "active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--campus-ring)] focus-visible:ring-offset-1";
   const sizes = { sm: "px-2.5 py-1 text-xs", md: "px-3.5 py-2 text-sm" };
   const variants = {
-    primary: "bg-sky-700 text-white hover:bg-sky-800",
-    danger: "bg-red-600 text-white hover:bg-red-700",
-    ghost: "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50",
-    subtle: "text-sky-700 hover:bg-sky-50",
+    primary:
+      "bg-[var(--campus-accent)] text-white shadow-sm hover:bg-[var(--campus-accent-strong)] hover:shadow-md hover:-translate-y-px",
+    danger:
+      "bg-red-600 text-white shadow-sm hover:bg-red-700 hover:shadow-md hover:-translate-y-px",
+    ghost:
+      "border border-[var(--campus-line)] bg-[var(--campus-panel)] text-[var(--campus-fg)] hover:border-[var(--campus-accent)] hover:text-[var(--campus-accent)] hover:shadow-sm",
+    subtle:
+      "text-[var(--campus-accent)] hover:bg-[var(--campus-accent-soft)]",
   };
   return (
     <button
@@ -45,11 +52,15 @@ export function PageHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div className="campus-enter mb-7 flex items-start justify-between gap-4">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--campus-fg)]">
+          {title}
+        </h1>
         {subtitle && (
-          <p className="mt-1 max-w-2xl text-sm text-neutral-500">{subtitle}</p>
+          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-[var(--campus-muted)]">
+            {subtitle}
+          </p>
         )}
       </div>
       {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
@@ -66,7 +77,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-lg border border-neutral-200 bg-white ${className}`}
+      className={`rounded-xl border border-[var(--campus-line)] bg-[var(--campus-panel)] shadow-[var(--campus-shadow-sm)] ${className}`}
     >
       {children}
     </div>
@@ -81,15 +92,15 @@ export function Badge({
   tone?: "neutral" | "green" | "amber" | "red" | "sky";
 }) {
   const tones = {
-    neutral: "bg-neutral-100 text-neutral-700",
-    green: "bg-emerald-100 text-emerald-800",
-    amber: "bg-amber-100 text-amber-800",
-    red: "bg-red-100 text-red-800",
-    sky: "bg-sky-100 text-sky-800",
+    neutral: "bg-neutral-100 text-neutral-700 ring-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:ring-neutral-700",
+    green: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:ring-emerald-800",
+    amber: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:ring-amber-800",
+    red: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950 dark:text-red-300 dark:ring-red-800",
+    sky: "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:ring-sky-800",
   };
   return (
     <span
-      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${tones[tone]}`}
     >
       {children}
     </span>
@@ -98,8 +109,11 @@ export function Badge({
 
 export function Spinner() {
   return (
-    <div className="flex items-center gap-2 p-8 text-sm text-neutral-500">
-      <span className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-sky-600" />
+    <div className="flex items-center gap-2.5 p-8 text-sm text-[var(--campus-muted)]">
+      <span
+        className="h-4 w-4 rounded-full border-2 border-[var(--campus-line)] border-t-[var(--campus-accent)]"
+        style={{ animation: "campus-spin 0.7s linear infinite" }}
+      />
       Loading…
     </div>
   );
@@ -113,7 +127,10 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 p-10 text-center text-sm text-neutral-500">
+    <div className="campus-enter flex flex-col items-center gap-3 p-12 text-center text-sm text-[var(--campus-muted)]">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]">
+        ○
+      </div>
       <p>{message}</p>
       {action}
     </div>
@@ -122,7 +139,7 @@ export function EmptyState({
 
 export function ErrorNote({ message }: { message: string }) {
   return (
-    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+    <div className="campus-enter rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
       {message}
     </div>
   );
@@ -132,8 +149,6 @@ export function ErrorNote({ message }: { message: string }) {
 
 export interface Column<T> {
   header: string;
-  // returns anything React can render; screens often produce `unknown` from
-  // the loosely-typed row bag, which Table stringifies safely.
   cell: (row: T) => unknown;
   className?: string;
 }
@@ -165,9 +180,9 @@ export function Table<T extends { id: string | number }>({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-500">
+          <tr className="border-b border-[var(--campus-line)] text-left text-xs uppercase tracking-wide text-[var(--campus-muted)]">
             {columns.map((c) => (
-              <th key={c.header} className="px-3 py-2 font-medium">
+              <th key={c.header} className="px-3 py-2.5 font-medium">
                 {c.header}
               </th>
             ))}
@@ -178,12 +193,14 @@ export function Table<T extends { id: string | number }>({
             <tr
               key={row.id}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`border-b border-neutral-100 ${
-                onRowClick ? "cursor-pointer hover:bg-neutral-50" : ""
+              className={`border-b border-[var(--campus-line)]/60 transition-colors duration-100 ${
+                onRowClick
+                  ? "cursor-pointer hover:bg-[var(--campus-accent-soft)]/60"
+                  : "hover:bg-black/[0.015] dark:hover:bg-white/[0.02]"
               }`}
             >
               {columns.map((c) => (
-                <td key={c.header} className={`px-3 py-2.5 ${c.className ?? ""}`}>
+                <td key={c.header} className={`px-3 py-3 ${c.className ?? ""}`}>
                   {renderCell(c.cell(row))}
                 </td>
               ))}
@@ -207,18 +224,23 @@ export function Tabs({
   onChange: (key: string) => void;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap gap-1 border-b border-neutral-200">
+    <div className="mb-6 flex flex-wrap gap-1 border-b border-[var(--campus-line)]">
       {tabs.map((t) => (
         <button
           key={t.key}
           onClick={() => onChange(t.key)}
-          className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition ${
+          className={`relative -mb-px px-3 py-2 text-sm font-medium transition-colors duration-150 ${
             active === t.key
-              ? "border-sky-600 text-sky-700"
-              : "border-transparent text-neutral-500 hover:text-neutral-800"
+              ? "text-[var(--campus-accent)]"
+              : "text-[var(--campus-muted)] hover:text-[var(--campus-fg)]"
           }`}
         >
           {t.label}
+          <span
+            className={`absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[var(--campus-accent)] transition-all duration-200 ${
+              active === t.key ? "opacity-100" : "opacity-0"
+            }`}
+          />
         </button>
       ))}
     </div>
@@ -241,7 +263,7 @@ export function Paginator({
   const pages = Math.max(1, Math.ceil(count / pageSize));
   if (pages <= 1) return null;
   return (
-    <div className="flex items-center justify-between px-3 py-2 text-xs text-neutral-500">
+    <div className="flex items-center justify-between border-t border-[var(--campus-line)] px-3 py-2.5 text-xs text-[var(--campus-muted)]">
       <span>
         {count} total · page {page} of {pages}
       </span>

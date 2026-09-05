@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -45,43 +46,65 @@ export default function ConsoleLayout({
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <div className="grid min-h-screen grid-cols-[210px_1fr] bg-neutral-50">
-      <aside className="flex flex-col border-r border-neutral-200 bg-white">
-        <div className="border-b border-neutral-100 px-4 py-4 text-base font-semibold">
-          Campus
+    <div className="grid min-h-screen grid-cols-[220px_1fr]">
+      <aside className="flex flex-col border-r border-[var(--campus-line)] bg-[var(--campus-panel)]">
+        <div className="flex items-center gap-2.5 border-b border-[var(--campus-line)] px-4 py-4">
+          <Image
+            src="/icon.png"
+            alt=""
+            width={26}
+            height={26}
+            className="rounded-md"
+          />
+          <span className="text-base font-semibold tracking-tight">Campus</span>
         </div>
-        <nav className="flex-1 space-y-0.5 p-2 text-sm">
-          {NAV.map(([href, text]) => (
-            <Link
-              key={href}
-              href={href}
-              className={`block rounded px-3 py-2 ${
-                active(href)
-                  ? "bg-sky-50 font-medium text-sky-800"
-                  : "text-neutral-700 hover:bg-neutral-100"
-              }`}
-            >
-              {text}
-            </Link>
-          ))}
+
+        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5 text-sm">
+          {NAV.map(([href, text]) => {
+            const on = active(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`group relative flex items-center rounded-lg px-3 py-2 transition-all duration-150 ${
+                  on
+                    ? "bg-[var(--campus-accent-soft)] font-medium text-[var(--campus-accent)]"
+                    : "text-[var(--campus-fg)]/80 hover:bg-black/[0.03] hover:pl-3.5 dark:hover:bg-white/[0.04]"
+                }`}
+              >
+                <span
+                  className={`absolute left-0 top-1/2 h-4 w-1 -translate-y-1/2 rounded-r-full bg-[var(--campus-accent)] transition-all duration-200 ${
+                    on ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+                {text}
+              </Link>
+            );
+          })}
         </nav>
-        <div className="border-t border-neutral-100 p-3 text-xs text-neutral-500">
-          <div className="font-medium text-neutral-800">
+
+        <div className="border-t border-[var(--campus-line)] p-3.5 text-xs">
+          <div className="font-medium text-[var(--campus-fg)]">
             {me?.display_name || me?.username}
           </div>
-          <div>{label(me?.role)}</div>
+          <div className="text-[var(--campus-muted)]">{label(me?.role)}</div>
           <button
             onClick={async () => {
               await logout();
               router.replace("/login/");
             }}
-            className="mt-2 text-sky-700 hover:underline"
+            className="mt-2 font-medium text-[var(--campus-accent)] transition-colors hover:text-[var(--campus-accent-strong)]"
           >
             Sign out
           </button>
         </div>
       </aside>
-      <main className="overflow-x-hidden p-8">{children}</main>
+
+      <main className="overflow-x-hidden px-8 py-8">
+        <div key={pathname} className="campus-enter mx-auto max-w-6xl">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
+import { ActionButton } from "@/components/ActionButton";
 import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
 import { act } from "@/lib/resource";
 import { useToast } from "@/components/Toast";
@@ -72,28 +73,18 @@ export default function BookingPage() {
             { name: "active", label: "Active", type: "checkbox" },
           ]}
           extraRowActions={(row, reload) => (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                const from_date = window.prompt("Generate slots from (YYYY-MM-DD):");
-                if (!from_date) return;
-                const to_date = window.prompt("…through (YYYY-MM-DD):");
-                if (!to_date) return;
-                try {
-                  await act("offerings", row.id as number, "generate_slots", {
-                    from_date,
-                    to_date,
-                  });
-                  toast("success", "Slots generated");
-                  reload();
-                } catch (e) {
-                  toast("error", String((e as Error).message));
-                }
-              }}
-            >
-              Generate slots
-            </Button>
+            <ActionButton
+              label="Generate slots"
+              title="Generate bookable slots for this offering"
+              fields={[
+                { name: "from_date", label: "From", type: "date", required: true },
+                { name: "to_date", label: "Through", type: "date", required: true },
+              ]}
+              onRun={(v) =>
+                act("offerings", row.id as string, "generate_slots", v)
+              }
+              onDone={reload}
+            />
           )}
         />
       )}

@@ -26,20 +26,22 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/30 p-4 sm:p-10"
+      className="campus-modal-backdrop fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-[2px] sm:p-10"
       onMouseDown={onClose}
     >
       <div
-        className={`w-full rounded-lg bg-white shadow-xl ${
+        className={`campus-modal-panel w-full rounded-2xl border border-[var(--campus-line)] bg-[var(--campus-panel)] shadow-[var(--campus-shadow-lg)] ${
           wide ? "max-w-3xl" : "max-w-lg"
         }`}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-3">
-          <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>
+        <div className="flex items-center justify-between border-b border-[var(--campus-line)] px-5 py-3.5">
+          <h2 className="text-sm font-semibold text-[var(--campus-fg)]">
+            {title}
+          </h2>
           <button
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-700"
+            className="rounded-md p-1 text-[var(--campus-muted)] transition-colors hover:bg-black/5 hover:text-[var(--campus-fg)] dark:hover:bg-white/10"
             aria-label="Close"
           >
             ✕

@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
-import { PageHeader, Tabs, Badge } from "@/components/ui";
+import { ActionButton } from "@/components/ActionButton";
+import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
 import { date, time, weekday, label, WEEKDAYS } from "@/lib/format";
 import { act } from "@/lib/resource";
+import { api } from "@/lib/api";
 import { useToast } from "@/components/Toast";
-import { Button } from "@/components/ui";
 
 interface Group {
   id: number;
@@ -222,28 +223,16 @@ export default function SchedulingPage() {
             { name: "end_time", label: "End", type: "time", required: true },
           ]}
           extraRowActions={(row, reload) => (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={async () => {
-                const from = window.prompt("Generate sessions from (YYYY-MM-DD):");
-                if (!from) return;
-                const to = window.prompt("…through (YYYY-MM-DD):");
-                if (!to) return;
-                try {
-                  await act("session-templates", row.id as number, "generate", {
-                    from_date: from,
-                    to_date: to,
-                  });
-                  toast("success", "Sessions generated");
-                  reload();
-                } catch (e) {
-                  toast("error", String((e as Error).message));
-                }
-              }}
-            >
-              Generate
-            </Button>
+            <ActionButton
+              label="Generate"
+              title="Generate dated sessions from this template"
+              fields={[
+                { name: "from_date", label: "From", type: "date", required: true },
+                { name: "to_date", label: "Through", type: "date", required: true },
+              ]}
+              onRun={(v) => act("session-templates", row.id as string, "generate", v)}
+              onDone={reload}
+            />
           )}
         />
       )}
@@ -272,15 +261,18 @@ export default function SchedulingPage() {
               variant="ghost"
               onClick={async () => {
                 try {
-                  const roster = await act<{ students?: unknown[] } | unknown[]>(
-                    "sessions",
-                    row.id as number,
-                    "roster",
+                  const roster = await api<
+                    Array<{ student_name?: string; display_name?: string }>
+                  >(`/sessions/${row.id}/roster/`);
+                  const names = (roster ?? [])
+                    .map((r) => r.student_name ?? r.display_name)
+                    .filter(Boolean);
+                  toast(
+                    "info",
+                    names.length
+                      ? `${names.length}: ${names.slice(0, 6).join(", ")}${names.length > 6 ? "…" : ""}`
+                      : "No students on this roster",
                   );
-                  const n = Array.isArray(roster)
-                    ? roster.length
-                    : (roster.students?.length ?? 0);
-                  toast("info", `${n} student(s) on this roster`);
                 } catch (e) {
                   toast("error", String((e as Error).message));
                 }

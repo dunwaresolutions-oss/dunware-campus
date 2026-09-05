@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useAll, useList, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
+import { ActionButton } from "@/components/ActionButton";
 import { create, act } from "@/lib/resource";
 import { PageHeader, Tabs, Badge, Button, Card, Spinner } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
-import { money, date, apiMessage, label } from "@/lib/format";
+import { money, date, label } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function BillingPage() {
@@ -154,16 +155,6 @@ function Invoices({
   }>("invoices", { page });
   const reload = () => qc.invalidateQueries({ queryKey: ["list", "invoices"] });
 
-  async function run(id: number, verb: string, body?: Record<string, unknown>) {
-    try {
-      await act("invoices", id, verb, body);
-      toast("success", `${label(verb)} done`);
-      reload();
-    } catch (e) {
-      toast("error", apiMessage(e));
-    }
-  }
-
   return (
     <Card>
       <div className="flex justify-end border-b border-neutral-100 p-3">
@@ -218,52 +209,53 @@ function Invoices({
                       Lines
                     </Button>
                     {inv.status === "DRAFT" && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => run(inv.id, "issue")}
-                      >
-                        Issue
-                      </Button>
+                      <ActionButton
+                        label="Issue"
+                        confirm="Issue this invoice? It can't be edited after."
+                        onRun={() => act("invoices", inv.id, "issue")}
+                        onDone={reload}
+                      />
                     )}
                     {inv.status !== "PAID" && inv.status !== "VOID" && (
                       <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            const amt = window.prompt(
-                              `Payment amount in dollars (balance ${money(
-                                inv.balance_cents,
-                              )}):`,
-                            );
-                            if (!amt) return;
-                            const method =
-                              window.prompt(
-                                "Method (CASH / CHEQUE / E_TRANSFER / OTHER):",
+                        <ActionButton
+                          label="Mark paid"
+                          title={`Record a payment · balance ${money(inv.balance_cents)}`}
+                          fields={[
+                            {
+                              name: "amount_cents",
+                              label: "Amount",
+                              type: "money",
+                              required: true,
+                            },
+                            {
+                              name: "method",
+                              label: "Method",
+                              type: "select",
+                              required: true,
+                              options: [
+                                "CASH",
+                                "CHEQUE",
                                 "E_TRANSFER",
-                              ) || "OTHER";
-                            const reference =
-                              window.prompt("Reference:") || "";
-                            run(inv.id, "mark-paid", {
-                              amount_cents: Math.round(Number(amt) * 100),
-                              method,
-                              reference,
-                            });
-                          }}
-                        >
-                          Mark paid
-                        </Button>
-                        <Button
-                          size="sm"
+                                "OTHER",
+                              ].map((v) => ({ value: v, label: label(v) })),
+                            },
+                            { name: "reference", label: "Reference" },
+                            { name: "note", label: "Note" },
+                          ]}
+                          onRun={(v) => act("invoices", inv.id, "mark-paid", v)}
+                          onDone={reload}
+                        />
+                        <ActionButton
+                          label="Void"
                           variant="ghost"
-                          onClick={() => {
-                            const reason = window.prompt("Void reason:") || "";
-                            run(inv.id, "void", { reason });
-                          }}
-                        >
-                          Void
-                        </Button>
+                          title="Void this invoice"
+                          fields={[
+                            { name: "reason", label: "Reason", required: true },
+                          ]}
+                          onRun={(v) => act("invoices", inv.id, "void", v)}
+                          onDone={reload}
+                        />
                       </>
                     )}
                   </span>

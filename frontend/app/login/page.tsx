@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { isStaff, login } from "@/lib/auth";
+import { Button, Card, ErrorNote } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -36,40 +38,61 @@ export default function LoginPage() {
     }
   }
 
+  const field =
+    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-panel)] px-3 py-2.5 text-sm transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
+
   return (
-    <main className="mx-auto max-w-sm px-6 py-24">
-      <h1 className="text-xl font-semibold">Sign in to Campus</h1>
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <input
-          className="w-full rounded-md border border-neutral-300 px-3 py-2"
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          autoComplete="username"
-        />
-        <input
-          className="w-full rounded-md border border-neutral-300 px-3 py-2"
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          autoComplete="current-password"
-        />
-        <input
-          className="w-full rounded-md border border-neutral-300 px-3 py-2"
-          placeholder="Authenticator code (staff)"
-          value={otp}
-          onChange={(e) => setOtp(e.target.value)}
-          inputMode="numeric"
-        />
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <button
-          className="w-full rounded-md bg-sky-700 px-4 py-2 text-white hover:bg-sky-800 disabled:opacity-50"
-          disabled={busy}
-        >
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
+    <main className="flex min-h-screen items-center justify-center px-6">
+      <div className="campus-enter w-full max-w-sm">
+        <div className="mb-6 flex flex-col items-center gap-3 text-center">
+          <Image
+            src="/icon.png"
+            alt="Campus"
+            width={56}
+            height={56}
+            className="rounded-xl shadow-[var(--campus-shadow-md)]"
+          />
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              Sign in to Campus
+            </h1>
+            <p className="text-sm text-[var(--campus-muted)]">
+              On-site school &amp; daycare operations
+            </p>
+          </div>
+        </div>
+
+        <Card className="p-6 shadow-[var(--campus-shadow-md)]">
+          <form onSubmit={onSubmit} className="space-y-3.5">
+            <input
+              className={field}
+              placeholder="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+            />
+            <input
+              className={field}
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            <input
+              className={field}
+              placeholder="Authenticator code (staff)"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              inputMode="numeric"
+            />
+            {error && <ErrorNote message={error} />}
+            <Button type="submit" disabled={busy} className="w-full">
+              {busy ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </Card>
+      </div>
     </main>
   );
 }
