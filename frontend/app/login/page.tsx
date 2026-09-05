@@ -39,7 +39,7 @@ export default function LoginPage() {
   }
 
   const field =
-    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-panel)] px-3 py-2.5 text-sm transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
+    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] text-[var(--campus-fg)] px-3 py-2.5 text-sm transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6">

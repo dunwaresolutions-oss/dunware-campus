@@ -91,7 +91,7 @@ export function RecordForm({
   }
 
   const inputCls =
-    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-panel)] px-3 py-2 text-sm transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
+    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] text-[var(--campus-fg)] px-3 py-2 text-sm transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
 
   return (
     <form onSubmit={submit} className="space-y-4">

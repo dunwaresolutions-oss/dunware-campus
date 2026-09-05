@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import secrets
 
+from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS
 
 from apps.accounts.models import Role
+from apps.audit.models import AuditAction
+from apps.audit.services import record
 from apps.core.api import CampusViewSet
 from apps.core.permissions import (
     AdminOnly,
@@ -119,6 +122,46 @@ class GuardianViewSet(CampusViewSet):
         if role == Role.PARENT:
             return qs.filter(user=user)
         return qs.none()
+
+    @action(detail=True, methods=["post"], permission_classes=[AdminOnly, MFAVerified])
+    def create_login(self, request, pk=None):
+        """Front office: give this guardian a portal account. Body:
+        {username, password}. The new user is role PARENT (no MFA), linked
+        one-to-one to the guardian; the guardian's children then appear on
+        the portal via the existing GuardianLink visibility."""
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from rest_framework import status
+        from rest_framework.exceptions import ValidationError
+        from rest_framework.response import Response
+
+        from apps.accounts.models import User
+
+        guardian = self.get_object()
+        if guardian.user_id:
+            raise ValidationError("This guardian already has a portal login.")
+        username = (request.data.get("username") or "").strip()
+        password = request.data.get("password") or ""
+        if not username:
+            raise ValidationError({"username": "Required."})
+        if User.objects.filter(username=username).exists():
+            raise ValidationError({"username": "That username is taken."})
+        try:
+            validate_password(password)
+        except DjangoValidationError as exc:
+            raise ValidationError({"password": list(exc.messages)}) from exc
+
+        user = User(username=username, email=guardian.email or "", role=Role.PARENT)
+        user.set_password(password)
+        user.save()
+        guardian.user = user
+        guardian.save(update_fields=["user"])
+        record(
+            AuditAction.CREATE, guardian,
+            summary=f"portal login created for guardian ({username})",
+            actor=request.user,
+        )
+        return Response({"username": username}, status=status.HTTP_201_CREATED)
 
 
 class GuardianLinkViewSet(_StudentScopedViewSet):

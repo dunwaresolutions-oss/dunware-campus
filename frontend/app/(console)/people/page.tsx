@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { NestedList } from "@/components/NestedList";
+import { ActionButton } from "@/components/ActionButton";
 import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
 import { Modal } from "@/components/Modal";
+import { act } from "@/lib/resource";
 import { date, datetime, label } from "@/lib/format";
 
 interface Group {
@@ -159,6 +161,11 @@ export default function PeoplePage() {
             },
             { header: "Email", cell: (g) => (g.email as string) || "—" },
             { header: "Phone", cell: (g) => (g.phone as string) || "—" },
+            {
+              header: "Portal",
+              cell: (g) =>
+                g.user ? <Badge tone="green">has login</Badge> : "—",
+            },
           ]}
           fields={[
             { name: "first_name", label: "First name", required: true },
@@ -167,6 +174,26 @@ export default function PeoplePage() {
             { name: "phone", label: "Phone (encrypted)" },
             { name: "address", label: "Address (encrypted)", type: "textarea" },
           ]}
+          extraRowActions={(row, reload) =>
+            row.user ? null : (
+              <ActionButton
+                label="Create portal login"
+                title="Give this guardian a portal account"
+                fields={[
+                  { name: "username", label: "Username", required: true },
+                  {
+                    name: "password",
+                    label: "Password (12+ chars)",
+                    required: true,
+                  },
+                ]}
+                onRun={(v) =>
+                  act("guardians", row.id as string, "create_login", v)
+                }
+                onDone={reload}
+              />
+            )
+          }
         />
       )}
 

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: light;
   --campus-fg: #16202b;
   --campus-muted: #55606f;
   --campus-line: rgba(15, 30, 45, 0.1);
@@ -8,6 +9,8 @@
   --campus-accent-strong: #16657d;
   --campus-accent-soft: rgba(31, 125, 153, 0.12);
   --campus-ring: rgba(31, 125, 153, 0.4);
+  /* solid, opaque — form controls must not be see-through over glass */
+  --campus-input-bg: #ffffff;
 
   /* glass surfaces */
   --glass-bg: rgba(255, 255, 255, 0.62);
@@ -25,6 +28,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --campus-fg: #e8edf3;
     --campus-muted: #98a4b3;
     --campus-line: rgba(255, 255, 255, 0.09);
@@ -32,6 +36,7 @@
     --campus-accent-strong: #74d2ea;
     --campus-accent-soft: rgba(76, 194, 224, 0.14);
     --campus-ring: rgba(76, 194, 224, 0.4);
+    --campus-input-bg: #161c24;
 
     --glass-bg: rgba(22, 29, 38, 0.55);
     --glass-bg-strong: rgba(24, 32, 42, 0.74);
@@ -100,6 +105,24 @@ body {
 
 * {
   scrollbar-width: thin;
+}
+
+/* form controls: solid background, readable in both themes, and the native
+   <option> popup gets an explicit colour so it isn't low-contrast */
+input,
+select,
+textarea {
+  background-color: var(--campus-input-bg);
+  color: var(--campus-fg);
+}
+select option,
+select optgroup {
+  background-color: var(--campus-input-bg);
+  color: var(--campus-fg);
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--campus-muted);
 }
 
 /* ---- glass surface ------------------------------------------------- */
