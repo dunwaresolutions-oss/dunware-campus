@@ -270,9 +270,12 @@ if (-not $SkipServices) {
 
 # ── 9. desktop launcher target ───────────────────────────────────────────
 $launcherUrl = Join-Path $InstallRoot "launch-campus.url"
+$icoPath = Join-Path $InstallRoot "campus.ico"
 Set-Content -Path $launcherUrl -Value @"
 [InternetShortcut]
 URL=https://$LanHost/
+IconFile=$icoPath
+IconIndex=0
 "@ -Encoding ascii
 
 # ── 10. verify - a half-install must NOT look like a success ────────────

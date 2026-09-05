@@ -126,6 +126,32 @@ Ensure-Service "Campus App" $app "serve --host 127.0.0.1 --port 8001" (Join-Path
 Step "Registering Campus Proxy"
 Ensure-Service "Campus Proxy" $caddy ("run --config `"$cfile`"") (Join-Path $InstallRoot "caddy")
 
+# --- 3b. app icon (shortcut + browser favicon) --------------------
+Step "Applying the Campus icon"
+$icoSrc = @(
+  (Join-Path $InstallRoot "campus.ico"),
+  (Join-Path $InstallRoot "scripts\campus.ico"),
+  (Join-Path $PSScriptRoot "campus.ico")
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($icoSrc) {
+  $icoDst = Join-Path $InstallRoot "campus.ico"
+  if ($icoSrc -ne $icoDst) { Copy-Item $icoSrc $icoDst -Force }
+  Set-Content -Path (Join-Path $InstallRoot "launch-campus.url") -Encoding ascii -Value @"
+[InternetShortcut]
+URL=https://$LanHost/
+IconFile=$icoDst
+IconIndex=0
+"@
+  # browser favicon for an install whose frontend_out predates the icon
+  $favDst = Join-Path $webRoot "favicon.ico"
+  if ((Test-Path $webRoot) -and -not (Test-Path $favDst)) { Copy-Item $icoDst $favDst -Force }
+  $msg = "icon set on launch-campus.url"
+  if (Test-Path $favDst) { $msg += " and frontend_out\favicon.ico" }
+  Info $msg
+} else {
+  Warn "campus.ico not found - it ships with the next full reinstall (Campus-Setup.exe 0.9.0+ with the icon)"
+}
+
 # --- 4. restart everything (Caddyfile changed) --------------------
 Step "Restarting services"
 foreach ($svc in @("Campus PostgreSQL","Campus App","Campus Proxy")) {

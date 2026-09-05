@@ -42,7 +42,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
 LicenseFile=..\LICENSE
-UninstallDisplayIcon={app}\app\campus-app.exe
+SetupIconFile=campus.ico
+UninstallDisplayIcon={app}\campus.ico
 WizardStyle=modern
 SetupLogging=yes
 
@@ -72,12 +73,14 @@ Source: "_thirdparty\caddy\*"; DestDir: "{app}\caddy\bin"; Flags: recursesubdirs
 Source: "install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "repair-campus.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "create-campus-admin.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "campus.ico"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "backup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "restore.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "uninstall-services.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 
 Source: "..\.env.example"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "campus.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Dirs]
 ; created empty; install.ps1 also ensures these exist (belt + braces since
@@ -87,8 +90,8 @@ Name: "{app}\media"; Permissions: admins-full system-full
 Name: "{app}\logs"
 
 [Icons]
-Name: "{group}\Campus"; Filename: "{app}\launch-campus.url"
-Name: "{commondesktop}\Campus"; Filename: "{app}\launch-campus.url"; Tasks: desktopicon
+Name: "{group}\Campus"; Filename: "{app}\launch-campus.url"; IconFilename: "{app}\campus.ico"
+Name: "{commondesktop}\Campus"; Filename: "{app}\launch-campus.url"; IconFilename: "{app}\campus.ico"; Tasks: desktopicon
 
 [Run]
 ; NO runascurrentuser here - install.ps1 registers Windows services (nssm,

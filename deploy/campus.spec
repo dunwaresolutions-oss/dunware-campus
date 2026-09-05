@@ -87,6 +87,7 @@ exe = EXE(
     upx=False,
     console=True,
     disable_windowed_traceback=False,
+    icon=os.path.join(REPO_ROOT, "deploy", "campus.ico"),
 )
 
 coll = COLLECT(
