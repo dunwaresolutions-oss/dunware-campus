@@ -41,7 +41,7 @@ a named phase · **N/A** — doesn't apply to this system's shape.
 | 3.2.3 | Session inactivity / absolute timeout | Pass | 8-hour hard cap, `SESSION_EXPIRE_AT_BROWSER_CLOSE` (`settings.base`) |
 | 3.3.1 | Logout invalidates the session server-side | Pass | `LogoutView` calls Django `logout()`, tested |
 | 3.4.1–3.4.3 | Cookie flags: `Secure`, `HttpOnly`, `SameSite` | Pass | prod: `SESSION_COOKIE_SECURE=True`; both envs: `HTTPONLY=True`, `SAMESITE="Lax"` |
-| 3.7.1 | Re-authentication for a sensitive action | Deferred | No step-up re-auth on e.g. "erase this person" beyond the standing MFA + role check; scoped for Phase 9 alongside the break-glass admin hardening |
+| 3.7.1 | Re-authentication for a sensitive action | Deferred | No step-up re-auth on e.g. "erase this person" beyond the standing MFA + role check; the break-glass admin path (`admin_guard.py`) is the mitigating control today — a dedicated step-up flow is a possible Phase 11+ feature, not something packaging closes |
 
 ## V4 — Access control
 
@@ -69,7 +69,7 @@ a named phase · **N/A** — doesn't apply to this system's shape.
 | 6.2.1 | Approved, vetted cryptographic primitives | Pass | `cryptography` (pyca), AES-256-GCM (AEAD — confidentiality + integrity) for both field values (`core/fields.py`) and document bytes (`core/storage.py`) |
 | 6.2.3 | Encryption key never in source, config-in-repo, or logs | Pass | `FIELD_ENCRYPTION_KEY` env-only, not in the repo (`.gitignore`), prod refuses to boot without it (`settings/prod.py`), scrubbed from logs if it ever appeared in a message |
 | 6.2.5 | Authenticated encryption; tampering is detected, not silently decrypted | Pass | GCM tag verification; a flipped bit raises `ValueError` (`core/tests/test_fields.py::test_tampered_ciphertext_is_rejected`) |
-| 6.4.1 | Key management process documented | Partial | Generation is specified (installer, Phase 9) and the "never in repo/logs" rule is enforced now; **key rotation** procedure is not yet written — scoped for Phase 9's `DEPLOYMENT.md` |
+| 6.4.1 | Key management process documented | Partial | Generation is real and proven (`deploy/install.ps1`, `docs/PACKAGING.md`) and the "never in repo/logs" rule is enforced now; **key rotation** procedure is still not written — a `FIELD_ENCRYPTION_KEY` change today re-encrypts nothing, it just breaks existing ciphertext, so this stays a named gap rather than a false Pass |
 
 ## V7 — Error handling and logging
 
@@ -116,7 +116,7 @@ a named phase · **N/A** — doesn't apply to this system's shape.
 | # | Requirement | Status | Evidence |
 |---|---|---|---|
 | 12.3.1 | Uploaded files not served from a path that executes them | Pass | `MEDIA_URL`/`whitenoise` serve static assets only; uploaded documents go through `EncryptedFileSystemStorage`, decrypted only via the Django view layer, never a raw static path |
-| 12.4.1 | File content-type / size validated server-side | Partial | DRF `FileField` validates it's a file; no explicit MIME allow-list or max-size cap yet on `Document`/report-card uploads — scoped for Phase 9 alongside the installer's storage-quota story |
+| 12.4.1 | File content-type / size validated server-side | Partial | DRF `FileField` validates it's a file; no explicit MIME allow-list or max-size cap yet on `Document`/report-card uploads — an operator-tunable quota belongs to a future Phase, not packaging |
 | 13.1.1 | API only accepts JSON it expects, rejects the rest | Pass | DRF `JSONParser` default; serializers reject unknown-shaped payloads |
 | 13.2.1 | Every endpoint's authorization is tested, not assumed | Pass | 135 tests, the large majority of which assert a *specific* role gets 200/403/404 — see any `apps/*/tests/test_*.py` |
 
@@ -136,7 +136,9 @@ pytest                                           135 passed
 No **Pass**-required row in this review is failing. Everything marked
 **Partial** or **Deferred** is a named, scoped follow-up (self-service MFA
 recovery, log shipping/WORM storage, key rotation runbook, upload MIME/size
-limits, booking-specific rate limiting) rather than an unknown gap — each one
-is either an operator/deployment decision that belongs in Phase 9's
-`DEPLOYMENT.md`, or low-risk enough on a LAN-only, single-tenant install to
-defer deliberately. None of them block packaging.
+limits, booking-specific rate limiting, step-up re-auth) rather than an
+unknown gap — each one is either an operator decision now covered in
+`docs/DEPLOYMENT.md` (BitLocker, TLS via bundled Caddy, encrypted backups —
+all real as of Phase 9, see `docs/PACKAGING.md`), or low-risk enough on a
+LAN-only, single-tenant install to defer deliberately to a future feature
+phase. None of them block packaging, which is itself now complete.

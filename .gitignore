@@ -38,6 +38,7 @@ installer/
 *.spec.bak
 deploy/pgdata/
 deploy/_bundle/
+deploy/_thirdparty/
 
 # ---- editor / OS ----
 .idea/

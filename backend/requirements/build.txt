@@ -1,0 +1,4 @@
+# Campus — packaging-time only. Runs on the build machine to freeze the app;
+# never installed on the target machine and never imported at runtime.
+-r prod.txt
+pyinstaller>=6.10

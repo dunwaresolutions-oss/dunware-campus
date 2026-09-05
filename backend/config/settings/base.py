@@ -6,14 +6,21 @@ default and each environment only relaxes what it must (dev) or tightens
 further (prod). `python manage.py check --deploy` must pass clean before any
 package is built.
 """
+import sys
 from pathlib import Path
 
 import environ
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent  # .../backend
+if getattr(sys, "frozen", False):
+    # PyInstaller onedir build: everything the installer cares about (.env,
+    # the exported frontend, staticfiles) lives next to campus-app.exe, not
+    # wherever this bundled module happens to unpack to.
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent.parent  # .../backend
 
 env = environ.Env()
-# backend/.env if present (the installer writes it; dev copies .env.example)
+# BASE_DIR/.env if present (the installer writes it; dev copies .env.example)
 _env_file = BASE_DIR / ".env"
 if _env_file.exists():
     env.read_env(str(_env_file))
@@ -201,7 +208,13 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="campus@localhost")
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 # The Next.js `output: 'export'` build lands here and whitenoise serves it.
-FRONTEND_EXPORT_DIR = BASE_DIR.parent / "frontend" / "out"
+# In the source tree that's a sibling frontend/out; the installer copies the
+# same export to frontend_out/ next to the frozen exe (see deploy/campus.spec
+# and deploy/install.ps1).
+if getattr(sys, "frozen", False):
+    FRONTEND_EXPORT_DIR = BASE_DIR / "frontend_out"
+else:
+    FRONTEND_EXPORT_DIR = BASE_DIR.parent / "frontend" / "out"
 STATICFILES_DIRS = [FRONTEND_EXPORT_DIR] if FRONTEND_EXPORT_DIR.exists() else []
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},

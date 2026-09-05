@@ -48,6 +48,21 @@ root. 143 backend tests; `ruff` / `bandit` / `pip-audit` / `npm audit` /
 `check --deploy --fail-level WARNING` all clean (this pass's `npm audit`
 found and fixed 2 real advisories — see the ASVS review, V10.3.1).
 
+**Phase 9 (packaging) is complete** — the frozen app was actually run, not
+just built: `campus-app.exe` (PyInstaller onedir) served real traffic, which
+surfaced and fixed a missing-submodule crash (`whitenoise`) and a
+proxy-trust misconfiguration that would have infinite-redirect-looped behind
+the real bundled Caddy (waitress's default of not trusting
+`X-Forwarded-Proto`) — both proven fixed against the rebuilt exe, not just
+reasoned about. `install.ps1` was rewritten into real first-run logic
+(secrets + a verified-real ACL lock, Caddyfile templating, graceful
+degradation when third-party binaries aren't staged) and drilled against a
+scratch install root. `Campus-Setup.exe` (Inno Setup) compiled successfully
+and bundles all of the above; it was not run/installed this session (that
+registers real Windows services on whatever machine runs it — an operator
+action, not a build-verification one). Full account: `docs/PACKAGING.md`;
+what an operator stages before a real install: `docs/DEPLOYMENT.md`.
+
 ## 1. Data protection
 
 | Control | Where | Status |
@@ -55,9 +70,9 @@ found and fixed 2 real advisories — see the ASVS review, V10.3.1).
 | Field-level **AES-256-GCM encryption at rest** for medical/allergy/medication/action-plan, custody &amp; legal notes, government IDs, uploaded documents | `apps/core/fields.py` (`EncryptedTextField`, `EncryptedCharField`); `apps/core/storage.py` (`EncryptedFileSystemStorage` for document bytes) | **[done]** — applied across `people` / `health` / `registration`; DB + on-disk ciphertext verified by tests |
 | Encryption key from `FIELD_ENCRYPTION_KEY` (env / installer-generated), **never** in DB, repo, or logs | `settings.base`, `deploy/install.ps1` | **[done]** |
 | Prod refuses to start with no key | `settings/prod.py` | **[done]** |
-| Encrypted storage volume for PostgreSQL + backups (BitLocker on the host) — installer checks &amp; warns | `deploy/install.ps1` | **[phase 9]** |
-| TLS on the LAN, HSTS, HTTP→HTTPS redirect | `deploy/proxy/Caddyfile`, `settings/prod.py` | **[scaffolded]** |
-| Encrypted backups (`pg_dump` \| GPG) + a restore drill | `deploy/backup.ps1`, `restore.ps1`, `docs/BACKUP_RESTORE_DRILL.md` | **[done]** — archive/encrypt/decrypt drilled for real; the `pg_dump`/`pg_restore` calls themselves are written and deferred to a live run once Postgres is bundled in **[phase 9]** |
+| Encrypted storage volume for PostgreSQL + backups (BitLocker on the host) — installer checks &amp; warns | `deploy/install.ps1` | **[done]** — the check is real (warns, doesn't block); the drive being encrypted is the operator's action, enforced by policy not code |
+| TLS on the LAN, HSTS, HTTP→HTTPS redirect | `deploy/proxy/Caddyfile`, `settings/prod.py`, bundled by the installer | **[done]** — Caddy ships in the installer when staged (`docs/DEPLOYMENT.md#third-party-binaries`); the frozen app's own redirect enforcement was proven against a real proxy-trust config (`docs/PACKAGING.md` bug #2) |
+| Encrypted backups (`pg_dump` \| GPG) + a restore drill | `deploy/backup.ps1`, `restore.ps1`, `docs/BACKUP_RESTORE_DRILL.md` | **[done]** — archive/encrypt/decrypt drilled for real; the `pg_dump`/`pg_restore` calls themselves run against whatever Postgres the operator stages (`docs/DEPLOYMENT.md#third-party-binaries`) — no Postgres exists on this dev machine to run them against directly, so that specific call is exercised at go-live, not in this repo |
 | No PII in logs — a filter redacts emails, phone numbers, and known-sensitive `key=value` before any record is emitted | `apps/core/logging.py` (`PIIScrubFilter`) | **[done]** — tested (`apps/core/tests/test_logging.py`) |
 
 ## 2. Access control
@@ -79,7 +94,7 @@ found and fixed 2 real advisories — see the ASVS review, V10.3.1).
 |---|---|---|
 | **Append-only audit log** — every create/update/delete **and every read** of a sensitive record (actor, action, object type+id, time, source IP). No values, ever. No update/delete path in the app; admin view is read-only. | `apps/audit/` (`AuditEntry`, `middleware`, `services.record()` / `record_safe()`, `signals`, `mixins.AuditReadMixin`, `registry`) | **[done]** — `save()`/`delete()`/queryset guards, auto CRUD signals for registered + `SensitiveModel` models, DRF read mixin, login/logout/failed + permission-denied + lockout hooks; tested |
 | **Data minimization** — every PII field annotated with purpose + retention on the model (`SensitiveModel.PII_FIELDS` / `PII_PURPOSE`), mirrored into `DATA_MODEL.md` | `people` / `health` / `registration` models; `docs/DATA_MODEL.md` | **[done]** — `PII_FIELDS` / `PII_PURPOSE` set on every sensitive model; table filled in |
-| **Retention** — configurable window per record type; a scheduled `django-q2` job purges or anonymizes past-student data | `apps/reporting/jobs.py` `retention_sweep()` (`sweep_past_students` + `purge_terminal_applications` + audit anonymize), `RETENTION_*` settings, `manage.py run_retention` | **[done]** — logic tested + drilled for real (`docs/RETENTION_ERASURE_DRILL.md`); the recurring django-q2 *schedule* (today it's a manual/CLI trigger) is wired at install time in **[phase 9]** |
+| **Retention** — configurable window per record type; a scheduled `django-q2` job purges or anonymizes past-student data | `apps/reporting/jobs.py` `retention_sweep()` (`sweep_past_students` + `purge_terminal_applications` + audit anonymize), `RETENTION_*` settings, `manage.py run_retention` (frozen: `campus-app.exe manage run_retention`) | **[done]** — logic tested + drilled for real (`docs/RETENTION_ERASURE_DRILL.md`); still a manual/CLI trigger, not yet wired to a recurring schedule — an operator adds it to Windows Task Scheduler alongside the nightly `backup.ps1` job (`docs/DEPLOYMENT.md`) |
 | **Erasure** — "erase this person" action, blocked by a legal-hold flag, fully audited | `apps/reporting/services.py` `erase_person()`, `manage.py erase_student`, `Student.legal_hold` | **[done]** — anonymize-in-place, health rows deleted, `ERASE` audit; legal-hold raises; tested |
 | **Consent tracking** — each consent recorded with version + timestamp | `registration.Consent` (append-only rows, `current_for()`) | **[done]** — portal review surface in Phase 6 |
 | **Data-subject access** — "export everything we hold about this child" | `apps/reporting/services.py` `data_subject_export()`, `manage.py export_student` | **[done]** — decrypted dict + `EXPORT` audit; portal button in Phase 6 |
@@ -89,7 +104,7 @@ found and fixed 2 real advisories — see the ASVS review, V10.3.1).
 
 | Control | Where | Status |
 |---|---|---|
-| Secrets only in `.env` (git-ignored) + a committed `.env.example`; installer generates unique secrets per deployment | `.gitignore`, `.env.example`, `deploy/install.ps1` | **[done]** for the repo/CI side; installer secret generation is **[phase 9]** |
+| Secrets only in `.env` (git-ignored) + a committed `.env.example`; installer generates unique secrets per deployment | `.gitignore`, `.env.example`, `deploy/install.ps1` | **[done]** — installer secret generation is real code, proven for real: a fresh `SECRET_KEY`/`FIELD_ENCRYPTION_KEY`/`POSTGRES_PASSWORD` were generated and the resulting `.env` was verified ACL-locked to SYSTEM + Administrators (`docs/PACKAGING.md`) |
 | `ruff` + `bandit` + `pip-audit` + `npm audit` + `manage.py check --deploy` in CI, gating every merge | `.github/workflows/ci.yml` | **[done]** — all five re-run and verified clean this phase; `npm audit` caught 2 real advisories, fixed via a `postcss` override |
 | `makemigrations --check` in CI — no un-migrated model change ships | CI | **[done]** — verified clean |
 | All fixtures / demo data synthetic — no real child, family, or staff record in the repo | `apps/people/management/commands/seed_demo.py` (made-up names, refuses `DEBUG=False` without `--force`; now covers every app, including communication and grades) | **[done]** |
