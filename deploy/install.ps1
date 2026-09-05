@@ -46,6 +46,32 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Warn2($msg) { Write-Host "    ! $msg" -ForegroundColor Yellow }
 function Write-Skip($msg) { Write-Host "    - skipped: $msg" -ForegroundColor DarkYellow }
 
+# The installer must hand us an ELEVATED token - registering Windows services
+# (nssm / pg_ctl) and writing under %ProgramData% both need it. campus.iss's
+# [Run] entry drops `runascurrentuser` for exactly this reason; if someone
+# runs this script by hand from a non-elevated shell, fail loudly here rather
+# than half-installing and still exiting 0 (the bug that shipped in 0.9.0).
+$__id = [Security.Principal.WindowsIdentity]::GetCurrent()
+if (-not $SkipServices -and -not (New-Object Security.Principal.WindowsPrincipal($__id)).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)) {
+  throw "install.ps1 needs to run elevated (it registers Windows services). Re-run from an Administrator PowerShell, or pass -SkipServices to only lay down files + secrets."
+}
+
+# Run a frozen-app management command. Django/axes log to stderr on a normal
+# run; with $ErrorActionPreference='Stop' a native command's stderr line is
+# promoted to a terminating error, which silently aborted 0.9.0's install
+# right after `migrate` (before any service got registered). Neutralise that:
+# drop to Continue for the call, then judge success by the real exit code.
+function Invoke-Manage([string]$exe, [string[]]$mArgs) {
+  $old = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    & $exe @mArgs 2>&1 | ForEach-Object { Write-Host "    | $_" }
+    $code = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $old }
+  if ($code -ne 0) { throw "campus-app.exe $($mArgs -join ' ') failed (exit $code)" }
+}
+
 function New-RandomBytes([int]$count) {
   # Windows PowerShell 5.1 runs on .NET Framework, which only exposes the
   # instance-based RNG API (RandomNumberGenerator.Fill is .NET 6+ only).
@@ -65,19 +91,41 @@ function New-RandomSecretKey([int]$length = 50) {
   -join ($buf | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
 }
 
+# For anything that lands inside a URL (the Postgres password goes into
+# DATABASE_URL) - keep it to characters that never need percent-encoding, so
+# `postgres://campus:<pw>@host/db` can't be corrupted by a stray @ / # / % / /.
+function New-UrlSafeSecret([int]$length = 32) {
+  $alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+  $buf = New-RandomBytes $length
+  -join ($buf | ForEach-Object { $alphabet[$_ % $alphabet.Length] })
+}
+
 function Protect-ToAdminsOnly([string]$path) {
   icacls $path /inheritance:r | Out-Null
   icacls $path /grant:r "SYSTEM:(F)" "BUILTIN\Administrators:(F)" | Out-Null
 }
 
-function Register-CampusService([string]$name, [string]$nssmPath, [string]$targetExe, [string]$args, [string]$appDir) {
+function Register-CampusService([string]$name, [string]$nssmPath, [string]$targetExe, [string]$svcArgs, [string]$appDir) {
   if (-not (Test-Path $nssmPath)) {
     Write-Skip "$name - NSSM not staged at $nssmPath (see docs/DEPLOYMENT.md#third-party-binaries)"
     return $false
   }
-  & $nssmPath install $name $targetExe $args | Out-Null
+  if (Get-Service -Name $name -ErrorAction SilentlyContinue) {
+    & $nssmPath set $name Application $targetExe   | Out-Null
+    & $nssmPath set $name AppParameters $svcArgs   | Out-Null
+  } else {
+    & $nssmPath install $name $targetExe $svcArgs | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "nssm install '$name' failed (exit $LASTEXITCODE) - is this shell elevated?" }
+  }
   & $nssmPath set $name AppDirectory $appDir | Out-Null
   & $nssmPath set $name Start SERVICE_AUTO_START | Out-Null
+  & $nssmPath set $name AppStdout (Join-Path $InstallRoot ("logs\" + ($name -replace ' ', '-') + ".log")) | Out-Null
+  & $nssmPath set $name AppStderr (Join-Path $InstallRoot ("logs\" + ($name -replace ' ', '-') + ".log")) | Out-Null
+  # nssm can exit 0 yet not create the service if the SCM call was refused -
+  # confirm it actually exists rather than trusting the exit code alone.
+  if (-not (Get-Service -Name $name -ErrorAction SilentlyContinue)) {
+    throw "'$name' was not created (nssm returned 0 but the service is absent) - install.ps1 is not running elevated."
+  }
   return $true
 }
 
@@ -106,7 +154,7 @@ foreach ($d in @("pgdata", "logs", "media")) {
 # ── 3. secrets ───────────────────────────────────────────────────────────
 Write-Step "Generating per-install secrets"
 $envPath = Join-Path $InstallRoot "app\.env"
-$pgPassword = New-RandomSecretKey 24
+$pgPassword = New-UrlSafeSecret 32   # goes into DATABASE_URL - must not need %-encoding
 $envBody = @"
 CAMPUS_ENV=prod
 DJANGO_SETTINGS_MODULE=config.settings.prod
@@ -125,6 +173,14 @@ PUBLIC_BASE_URL=https://$LanHost
 API_BIND=$ApiBind
 CAMPUS_ADMIN_IP_ALLOWLIST=127.0.0.1
 "@
+# A prior install locked this file to SYSTEM+Administrators with inheritance
+# removed; on a reinstall the plain WriteAllText below then fails with
+# Access Denied. Re-open write access first (we are elevated - see the guard
+# at the top) so a reinstall can refresh the secrets.
+if (Test-Path $envPath) {
+  & icacls $envPath /grant "*S-1-5-32-544:(F)" /inheritance:e | Out-Null
+  try { Remove-Item $envPath -Force } catch { }
+}
 # Set-Content/Out-File -Encoding utf8 writes a UTF-8 BOM in Windows
 # PowerShell 5.1; django-environ silently drops a BOM-prefixed first line
 # as an "Invalid line" instead of erroring, so WriteAllText with a
@@ -159,9 +215,9 @@ if ((Test-Path (Join-Path $pgBin "initdb.exe")) -and -not $SkipServices) {
 $appExe = Join-Path $InstallRoot "app\campus-app.exe"
 if ($dbReady -and (Test-Path $appExe)) {
   Write-Step "Running database migrations"
-  & $appExe manage migrate
+  Invoke-Manage $appExe @("manage", "migrate", "--noinput")
   Write-Step "Collecting static files"
-  & $appExe manage collectstatic --noinput
+  Invoke-Manage $appExe @("manage", "collectstatic", "--noinput")
 } else {
   Write-Skip "migrate/collectstatic - needs a reachable database (run manually once Postgres is available: campus-app.exe manage migrate)"
 }
@@ -170,35 +226,45 @@ if ($dbReady -and (Test-Path $appExe)) {
 $nssm = Join-Path $InstallRoot "caddy\bin\nssm.exe"
 $caddyExe = Join-Path $InstallRoot "caddy\bin\caddy.exe"
 $caddyfileSrc = Join-Path $InstallRoot "caddy\Caddyfile"
+$webRoot = Join-Path $InstallRoot "app\frontend_out"
 if (Test-Path $caddyfileSrc) {
+  # Caddy wants forward slashes even on Windows; a bare backslash path in a
+  # Caddyfile `root` directive is read as an escape.
+  $webRootFwd = $webRoot -replace '\\', '/'
   $templated = (Get-Content $caddyfileSrc -Raw) `
     -replace '\{\$CAMPUS_HOST:localhost\}', $LanHost `
-    -replace '\{\$API_BIND:127\.0\.0\.1:8001\}', $ApiBind
+    -replace '\{\$API_BIND:127\.0\.0\.1:8001\}', $ApiBind `
+    -replace '\{\$CAMPUS_WEB_ROOT:\./frontend_out\}', $webRootFwd
   # same BOM pitfall as the .env write above - Caddy's Caddyfile parser
   # should not have to tolerate a BOM on its first line either.
   [System.IO.File]::WriteAllText($caddyfileSrc, $templated, (New-Object System.Text.UTF8Encoding($false)))
-  Write-Host "    templated Caddyfile for host '$LanHost', api '$ApiBind'"
+  Write-Host "    templated Caddyfile (host '$LanHost', api '$ApiBind', web root '$webRootFwd')"
+  if (-not (Test-Path (Join-Path $webRoot "index.html"))) {
+    Write-Warn2 "no frontend_out\index.html under $webRoot - the SPA will 404 until the exported frontend is present"
+  }
 }
 if (-not $SkipServices) {
   if (Test-Path $caddyExe) {
     Register-CampusService -name "Campus Proxy" -nssmPath $nssm -targetExe $caddyExe `
-      -args "run --config `"$caddyfileSrc`"" -appDir (Join-Path $InstallRoot "caddy") | Out-Null
+      -svcArgs "run --config `"$caddyfileSrc`"" -appDir (Join-Path $InstallRoot "caddy") | Out-Null
   } else {
     Write-Skip "Campus Proxy service - Caddy not staged at $caddyExe (see docs/DEPLOYMENT.md#third-party-binaries)"
   }
   if (Test-Path $appExe) {
     Register-CampusService -name "Campus App" -nssmPath $nssm -targetExe $appExe `
-      -args "serve --host 127.0.0.1 --port 8001" -appDir (Join-Path $InstallRoot "app") | Out-Null
+      -svcArgs "serve --host 127.0.0.1 --port 8001" -appDir (Join-Path $InstallRoot "app") | Out-Null
   }
 }
 
 # ── 8. start everything Automatic ────────────────────────────────────────
-foreach ($svc in @("Campus PostgreSQL", "Campus App", "Campus Proxy")) {
-  $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
-  if ($s) {
-    Set-Service -Name $svc -StartupType Automatic
-    if ($s.Status -ne "Running") { Start-Service -Name $svc -ErrorAction SilentlyContinue }
-    Write-Host "    $svc -> $((Get-Service -Name $svc).Status)"
+if (-not $SkipServices) {
+  foreach ($svc in @("Campus PostgreSQL", "Campus App", "Campus Proxy")) {
+    $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+    if ($s) {
+      Set-Service -Name $svc -StartupType Automatic
+      if ($s.Status -ne "Running") { Start-Service -Name $svc -ErrorAction SilentlyContinue }
+      Write-Host "    $svc -> $((Get-Service -Name $svc).Status)"
+    }
   }
 }
 
@@ -208,6 +274,28 @@ Set-Content -Path $launcherUrl -Value @"
 [InternetShortcut]
 URL=https://$LanHost/
 "@ -Encoding ascii
+
+# ── 10. verify - a half-install must NOT look like a success ────────────
+if (-not $SkipServices) {
+  Write-Step "Verifying"
+  $missing = @("Campus PostgreSQL", "Campus App", "Campus Proxy") |
+    Where-Object { -not (Get-Service -Name $_ -ErrorAction SilentlyContinue) }
+  if ($missing) { throw "these services were not registered: $($missing -join ', '). Setup did not complete." }
+
+  $ok = $false
+  [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+  foreach ($try in 1..10) {
+    Start-Sleep -Seconds 3
+    try {
+      $resp = Invoke-WebRequest "https://$LanHost/api/healthz/" -TimeoutSec 10 -UseBasicParsing
+      if ($resp.StatusCode -eq 200) { $ok = $true; break }
+    } catch { }
+  }
+  if (-not $ok) {
+    throw "services registered but https://$LanHost/ did not answer 200 within ~30s - check $InstallRoot\logs\Campus-App.log and Campus-Proxy.log"
+  }
+  Write-Host "    https://$LanHost/api/healthz/ -> 200 OK"
+}
 
 Write-Step "Setup finished"
 Write-Host "    Campus: https://$LanHost/  (trust the LAN certificate on client machines: 'caddy trust')"

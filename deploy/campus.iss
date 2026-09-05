@@ -70,6 +70,7 @@ Source: "_thirdparty\caddy\*"; DestDir: "{app}\caddy\bin"; Flags: recursesubdirs
 
 ; the first-run wizard + day-2 ops scripts
 Source: "install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "repair-campus.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "backup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "restore.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "uninstall-services.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
@@ -89,10 +90,14 @@ Name: "{group}\Campus"; Filename: "{app}\launch-campus.url"
 Name: "{commondesktop}\Campus"; Filename: "{app}\launch-campus.url"; Tasks: desktopicon
 
 [Run]
+; NO runascurrentuser here - install.ps1 registers Windows services (nssm,
+; pg_ctl) and writes ACL'd files under {commonappdata}, so it must inherit
+; Setup's elevated token. With runascurrentuser (0.9.0) the nssm CreateService
+; calls silently failed and Setup still reported success.
 Filename: "powershell.exe"; \
   Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install.ps1"" -InstallRoot ""{app}"""; \
   StatusMsg: "Setting up Campus (this can take a few minutes)..."; \
-  Flags: runascurrentuser waituntilterminated
+  Flags: waituntilterminated
 
 [UninstallRun]
 Filename: "powershell.exe"; \
