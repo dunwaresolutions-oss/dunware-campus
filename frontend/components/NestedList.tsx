@@ -101,11 +101,24 @@ export function NestedList<T extends Row>({
             fields={addFields}
             submitLabel="Add"
             onSubmit={async (values) => {
-              await create(resource, {
+              const merged: Record<string, unknown> = {
                 ...values,
                 [parentKey]: parentId,
                 ...addFixed,
-              });
+              };
+              const hasFile = Object.values(merged).some(
+                (v) => typeof File !== "undefined" && v instanceof File,
+              );
+              if (hasFile) {
+                const fd = new FormData();
+                for (const [k, v] of Object.entries(merged)) {
+                  if (v == null || v === "") continue;
+                  fd.append(k, v instanceof File ? v : String(v));
+                }
+                await create(resource, fd);
+              } else {
+                await create(resource, merged);
+              }
               toast("success", "Added");
               setAdding(false);
               reload();

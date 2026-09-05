@@ -1,13 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { useAll, options } from "@/lib/hooks";
+import { useAll, useList, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { NestedList } from "@/components/NestedList";
 import { ActionButton } from "@/components/ActionButton";
-import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
+import {
+  PageHeader,
+  Tabs,
+  Badge,
+  Button,
+  Card,
+  Spinner,
+  Table,
+} from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { act } from "@/lib/resource";
+import { useQueryClient } from "@tanstack/react-query";
 import { date, datetime, label } from "@/lib/format";
 
 interface Group {
@@ -84,6 +93,7 @@ export default function PeoplePage() {
           { key: "students", label: "Students" },
           { key: "groups", label: "Groups" },
           { key: "guardians", label: "Guardians" },
+          { key: "changes", label: "Change requests" },
         ]}
       />
 
@@ -194,6 +204,15 @@ export default function PeoplePage() {
               />
             )
           }
+        />
+      )}
+
+      {tab === "changes" && (
+        <ChangeRequests
+          guardianName={(id: unknown) => {
+            const g = guardiansAll.data?.find((x) => x.id === id);
+            return g ? `${g.first_name} ${g.last_name}` : String(id);
+          }}
         />
       )}
 
@@ -341,7 +360,19 @@ export default function PeoplePage() {
               parentKey="student"
               parentId={detail.id}
               title="Health — conditions"
-              render={(r) => <span>{r.name as string}</span>}
+              render={(r) => (
+                <span>
+                  <span className="font-medium">{r.name as string}</span>
+                  {r.ongoing ? " · ongoing" : ""}
+                  {r.details ? ` — ${r.details as string}` : ""}
+                </span>
+              )}
+              addFields={[
+                { name: "name", label: "Condition", required: true },
+                { name: "details", label: "Details (encrypted)", type: "textarea" },
+                { name: "diagnosed_on", label: "Diagnosed on", type: "date" },
+                { name: "ongoing", label: "Ongoing", type: "checkbox" },
+              ]}
             />
             <NestedList
               resource="health/allergies"
@@ -350,12 +381,95 @@ export default function PeoplePage() {
               title="Health — allergies"
               render={(r) => (
                 <span>
-                  {r.allergen as string} —{" "}
+                  <span className="font-medium">{r.allergen as string}</span> —{" "}
                   <span className="text-[var(--campus-muted)]">
                     {label(r.severity as string)}
                   </span>
+                  {r.epipen_required ? " · EpiPen" : ""}
+                  {r.reaction ? ` — ${r.reaction as string}` : ""}
                 </span>
               )}
+              addFields={[
+                { name: "allergen", label: "Allergen (encrypted)", required: true },
+                { name: "reaction", label: "Reaction (encrypted)", type: "textarea" },
+                {
+                  name: "severity",
+                  label: "Severity",
+                  type: "select",
+                  required: true,
+                  options: ["MILD", "MODERATE", "SEVERE", "ANAPHYLAXIS"].map(
+                    (v) => ({ value: v, label: label(v) }),
+                  ),
+                },
+                { name: "epipen_required", label: "EpiPen required", type: "checkbox" },
+              ]}
+            />
+            <NestedList
+              resource="health/medications"
+              parentKey="student"
+              parentId={detail.id}
+              title="Health — medications"
+              render={(r) => (
+                <span>
+                  <span className="font-medium">{r.name as string}</span>
+                  {r.dose ? ` ${r.dose as string}` : ""}
+                  {r.schedule ? ` · ${r.schedule as string}` : ""}
+                  {r.prn ? " · PRN" : ""}
+                </span>
+              )}
+              addFields={[
+                { name: "name", label: "Medication (encrypted)", required: true },
+                { name: "dose", label: "Dose (encrypted)" },
+                { name: "schedule", label: "Schedule (encrypted)" },
+                {
+                  name: "route",
+                  label: "Route",
+                  type: "select",
+                  options: [
+                    "ORAL",
+                    "TOPICAL",
+                    "INHALED",
+                    "INJECTION",
+                    "OTHER",
+                  ].map((v) => ({ value: v, label: label(v) })),
+                },
+                { name: "prn", label: "As needed (PRN)", type: "checkbox" },
+                { name: "prescriber", label: "Prescriber (encrypted)" },
+                { name: "starts_on", label: "Starts", type: "date" },
+                { name: "ends_on", label: "Ends", type: "date" },
+              ]}
+            />
+            <NestedList
+              resource="health/action-plans"
+              parentKey="student"
+              parentId={detail.id}
+              title="Health — action plans"
+              render={(r) => (
+                <span>
+                  <span className="font-medium">
+                    {label(r.kind as string)}
+                  </span>
+                  {r.review_by ? ` · review by ${date(r.review_by as string)}` : ""}
+                </span>
+              )}
+              addFields={[
+                {
+                  name: "kind",
+                  label: "Kind",
+                  type: "select",
+                  required: true,
+                  options: [
+                    "ANAPHYLAXIS",
+                    "ASTHMA",
+                    "SEIZURE",
+                    "DIABETES",
+                    "OTHER",
+                  ].map((v) => ({ value: v, label: label(v) })),
+                },
+                { name: "plan", label: "Plan (encrypted)", type: "textarea", required: true },
+                { name: "effective_from", label: "Effective from", type: "date" },
+                { name: "review_by", label: "Review by", type: "date" },
+              ]}
             />
 
             <NestedList
@@ -366,15 +480,136 @@ export default function PeoplePage() {
               render={(r) => (
                 <a
                   href={(r.download_url as string) || "#"}
-                  className="text-sky-700 hover:underline"
+                  className="text-[var(--campus-accent)] hover:underline"
                 >
                   {r.title as string} ({label(r.kind as string)})
                 </a>
               )}
+              addFields={[
+                { name: "title", label: "Title", required: true },
+                {
+                  name: "kind",
+                  label: "Kind",
+                  type: "select",
+                  required: true,
+                  options: [
+                    "BIRTH_CERTIFICATE",
+                    "IMMUNIZATION",
+                    "CUSTODY_ORDER",
+                    "IEP",
+                    "PHOTO",
+                    "CONSENT_FORM",
+                    "OTHER",
+                  ].map((v) => ({ value: v, label: label(v) })),
+                },
+                { name: "file", label: "File", type: "file", required: true },
+              ]}
             />
           </div>
         )}
       </Modal>
     </div>
+  );
+}
+
+function ChangeRequests({
+  guardianName,
+}: {
+  guardianName: (id: unknown) => string;
+}) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState("PENDING");
+  const q = useList<{
+    id: string;
+    guardian: string;
+    field: string;
+    current_value: string | null;
+    proposed_value: string;
+    reason: string;
+    status: string;
+  }>("portal/contact-change-requests", { status });
+  const reload = () =>
+    qc.invalidateQueries({ queryKey: ["list", "portal/contact-change-requests"] });
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2 border-b border-[var(--campus-line)] p-3 text-sm">
+        <span className="text-[var(--campus-muted)]">Show:</span>
+        {["PENDING", "APPROVED", "REJECTED"].map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatus(s)}
+            className={`rounded-md px-2 py-1 text-xs ${
+              status === s
+                ? "bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+                : "text-[var(--campus-muted)] hover:text-[var(--campus-fg)]"
+            }`}
+          >
+            {label(s)}
+          </button>
+        ))}
+      </div>
+      {q.isLoading ? (
+        <Spinner />
+      ) : (
+        <Table
+          rows={q.data?.results ?? []}
+          empty={`No ${label(status).toLowerCase()} requests.`}
+          columns={[
+            { header: "Guardian", cell: (r) => guardianName(r.guardian) },
+            { header: "Field", cell: (r) => label(r.field) },
+            { header: "Current", cell: (r) => r.current_value || "—" },
+            { header: "Proposed", cell: (r) => r.proposed_value },
+            {
+              header: "Reason",
+              cell: (r) => r.reason || "—",
+              className: "max-w-xs truncate",
+            },
+            {
+              header: "",
+              className: "text-right whitespace-nowrap",
+              cell: (r) =>
+                r.status === "PENDING" ? (
+                  <span
+                    className="flex justify-end gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ActionButton
+                      label="Approve"
+                      confirm="Apply this change to the guardian's record?"
+                      onRun={() =>
+                        act(
+                          "portal/contact-change-requests",
+                          r.id,
+                          "approve",
+                        )
+                      }
+                      onDone={reload}
+                    />
+                    <ActionButton
+                      label="Reject"
+                      variant="ghost"
+                      fields={[{ name: "note", label: "Note (optional)" }]}
+                      onRun={(v) =>
+                        act(
+                          "portal/contact-change-requests",
+                          r.id,
+                          "reject",
+                          v,
+                        )
+                      }
+                      onDone={reload}
+                    />
+                  </span>
+                ) : (
+                  <Badge tone={r.status === "APPROVED" ? "green" : "red"}>
+                    {label(r.status)}
+                  </Badge>
+                ),
+            },
+          ]}
+        />
+      )}
+    </Card>
   );
 }

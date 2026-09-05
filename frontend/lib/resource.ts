@@ -52,7 +52,10 @@ export const retrieve = <T>(resource: string, id: string | number) =>
   api<T>(`/${resource}/${id}/`);
 
 export const create = <T>(resource: string, body: unknown) =>
-  api<T>(`/${resource}/`, { method: "POST", body: JSON.stringify(body) });
+  api<T>(`/${resource}/`, {
+    method: "POST",
+    body: body instanceof FormData ? body : JSON.stringify(body),
+  });
 
 export const update = <T>(resource: string, id: string | number, body: unknown) =>
   api<T>(`/${resource}/${id}/`, { method: "PUT", body: JSON.stringify(body) });

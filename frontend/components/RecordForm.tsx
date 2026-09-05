@@ -13,7 +13,8 @@ export type FieldType =
   | "time"
   | "datetime"
   | "select"
-  | "checkbox";
+  | "checkbox"
+  | "file";
 
 export interface FieldDef {
   name: string;
@@ -61,6 +62,7 @@ export function RecordForm({
     for (const f of fields) s[f.name] = initial(f, initialValues);
     return s;
   });
+  const [files, setFiles] = useState<Record<string, File | null>>({});
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -71,7 +73,10 @@ export function RecordForm({
     setFormError(null);
     setFieldErrors({});
     const out: Values = {};
-    for (const f of fields) out[f.name] = coerce(f, state[f.name]);
+    for (const f of fields) {
+      out[f.name] =
+        f.type === "file" ? (files[f.name] ?? null) : coerce(f, state[f.name]);
+    }
     try {
       await onSubmit(out);
     } catch (err) {
@@ -137,6 +142,17 @@ export function RecordForm({
                 checked={val as boolean}
                 onChange={(e) =>
                   setState((s) => ({ ...s, [f.name]: e.target.checked }))
+                }
+              />
+            ) : f.type === "file" ? (
+              <input
+                type="file"
+                className="block w-full text-sm text-[var(--campus-muted)] file:mr-3 file:rounded-md file:border file:border-[var(--campus-line)] file:bg-[var(--campus-input-bg)] file:px-3 file:py-1.5 file:text-sm file:text-[var(--campus-fg)] hover:file:border-[var(--campus-accent)]"
+                onChange={(e) =>
+                  setFiles((s) => ({
+                    ...s,
+                    [f.name]: e.target.files?.[0] ?? null,
+                  }))
                 }
               />
             ) : (
