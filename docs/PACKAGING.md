@@ -228,3 +228,74 @@ not just that each one runs in isolation. The drill root was torn down
 afterward (processes stopped, Postgres shut down cleanly, directory
 deleted) — nothing persisted outside the repo's own `install.ps1` fix and
 the (gitignored) staged binaries.
+
+### 5 — what the drill missed: three bugs the real Windows-service install found
+
+The scratch drill above ran the binaries as plain processes. A real
+`Campus-Setup.exe` run on a real machine goes through the Windows-service
+path, and that surfaced three more genuine bugs — each one only visible
+because the install was actually performed, not simulated.
+
+**Bug — "refused to connect" (no app / proxy services).** `campus.iss`
+ran `install.ps1` from `[Run]` with `Flags: runascurrentuser`. On an
+elevated Setup that flag runs the script with the *non-elevated* user
+token, and `nssm install <service>` needs admin to call `CreateService` —
+so both `Campus App` and `Campus Proxy` failed to register, `nssm` exited
+non-zero, `Register-CampusService` ignored that and returned `$true`, and
+the script ran to the end and exited 0. `Campus PostgreSQL` had registered
+(that step ran earlier, before whatever token quirk bit the later ones),
+so the install *looked* half-right: a database, no web tier, nothing on
+443. Fixes:
+
+- `campus.iss`: dropped `runascurrentuser` — `install.ps1` now inherits
+  Setup's elevated token.
+- `install.ps1`: a hard elevation guard at the top (throw, don't
+  half-install); `Register-CampusService` checks `$LASTEXITCODE` **and**
+  re-queries `Get-Service` afterward (nssm can exit 0 without creating the
+  service); an `Invoke-Manage` wrapper runs `campus-app.exe manage …` with
+  `$ErrorActionPreference` dropped to `Continue` so Django/axes' normal
+  stderr logging can't be promoted to a terminating error (that had been
+  aborting the run right after `migrate`, before any service registration);
+  a URL-safe Postgres password (the old alphabet could put `@` / `#` / `%`
+  straight into `DATABASE_URL`); the `.env` write reopens write access if a
+  prior install left the file ACL-locked to SYSTEM+Administrators.
+- `install.ps1` step 10 (new): after starting services, **throw** if any of
+  the three is missing or if `https://<host>/` doesn't answer 200 within
+  ~30s. A half-install now fails Setup loudly instead of reporting success.
+
+**Bug — 404 at `/` (SPA never served).** With the services finally up, the
+response headers showed `server: waitress` and `via: 1.1 Caddy` — the whole
+chain was working — but `GET /` returned a Django 404. The Caddyfile
+proxied every non-`/api` path to waitress, and Django has no route for `/`
+and no `WHITENOISE_ROOT`; the bundled `frontend_out/` export was collected
+into `staticfiles/` but only reachable under `/static/`. Fix:
+`deploy/proxy/Caddyfile` now has **Caddy serve the static export directly**
+(`root * {$CAMPUS_WEB_ROOT}` + `try_files {path} {path}/index.html
+{path}.html /index.html` + `file_server`) and proxies only
+`/api /admin /static /media` to waitress. `install.ps1` templates the new
+`{$CAMPUS_WEB_ROOT}` placeholder to `<InstallRoot>/app/frontend_out` with
+forward slashes (a bare backslash in a Caddyfile `root` is an escape).
+Validated with `caddy validate` / `caddy fmt`.
+
+**Bug — no first-run admin path.** The only way to make the initial
+account was a `manage shell -c "from apps.accounts.services import
+bootstrap_superadmin; …"` one-liner that is near-impossible to quote
+correctly through PowerShell. Fix: a real
+`campus-app.exe manage create_admin` management command
+(`apps/accounts/management/commands/create_admin.py`) — wraps
+`bootstrap_superadmin`, takes `--username/--email/--password` or the
+`CAMPUS_ADMIN_*` env vars or a hidden prompt, runs Django's password
+validators, first-run-only. 4 tests, suite now 147. `install.ps1`'s
+closing message points at it. `deploy/create-campus-admin.ps1` is an
+elevated helper for installs whose frozen exe predates the command.
+
+### `deploy/repair-campus.ps1`
+
+Bundled into the installer. One-shot, idempotent, run-as-Administrator fix
+for an install that came up wrong (either of the first two bugs above):
+strips a `.env` BOM, applies migrations if none are present, rewrites the
+Caddyfile to the SPA-serving layout, (re)registers `Campus App` /
+`Campus Proxy` via nssm, restarts everything, and health-checks
+`/api/healthz/` and `/` with TLS 1.2 forced (the Windows PowerShell 5.1
+client won't negotiate it with modern Caddy by default). This is the
+recovery path for anyone who installed 0.9.0 before these fixes shipped.
