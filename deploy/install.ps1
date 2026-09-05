@@ -125,7 +125,12 @@ PUBLIC_BASE_URL=https://$LanHost
 API_BIND=$ApiBind
 CAMPUS_ADMIN_IP_ALLOWLIST=127.0.0.1
 "@
-Set-Content -Path $envPath -Value $envBody -Encoding utf8 -NoNewline
+# Set-Content/Out-File -Encoding utf8 writes a UTF-8 BOM in Windows
+# PowerShell 5.1; django-environ silently drops a BOM-prefixed first line
+# as an "Invalid line" instead of erroring, so WriteAllText with a
+# BOM-less encoding is required here, not a style preference (found by
+# actually running install.ps1's own .env against the frozen app).
+[System.IO.File]::WriteAllText($envPath, $envBody, (New-Object System.Text.UTF8Encoding($false)))
 Protect-ToAdminsOnly $envPath
 Write-Host "    wrote $envPath (ACL'd to SYSTEM + Administrators)"
 
@@ -166,10 +171,12 @@ $nssm = Join-Path $InstallRoot "caddy\bin\nssm.exe"
 $caddyExe = Join-Path $InstallRoot "caddy\bin\caddy.exe"
 $caddyfileSrc = Join-Path $InstallRoot "caddy\Caddyfile"
 if (Test-Path $caddyfileSrc) {
-  (Get-Content $caddyfileSrc -Raw) `
+  $templated = (Get-Content $caddyfileSrc -Raw) `
     -replace '\{\$CAMPUS_HOST:localhost\}', $LanHost `
-    -replace '\{\$API_BIND:127\.0\.0\.1:8001\}', $ApiBind |
-    Set-Content -Path $caddyfileSrc -Encoding utf8
+    -replace '\{\$API_BIND:127\.0\.0\.1:8001\}', $ApiBind
+  # same BOM pitfall as the .env write above - Caddy's Caddyfile parser
+  # should not have to tolerate a BOM on its first line either.
+  [System.IO.File]::WriteAllText($caddyfileSrc, $templated, (New-Object System.Text.UTF8Encoding($false)))
   Write-Host "    templated Caddyfile for host '$LanHost', api '$ApiBind'"
 }
 if (-not $SkipServices) {

@@ -39,7 +39,8 @@ cd deploy
 & "C:\...\Inno Setup 6\ISCC.exe" campus.iss
 ```
 
-Output: `dist/installer/Campus-Setup.exe`. Like the `bookkeeping-tool`
+Output: `dist/installer/Campus-Setup.exe` — 266 MB with the third-party
+binaries staged and bundled in, ~37 MB without. Like the `bookkeeping-tool`
 installer, this is never committed — it's a build artifact / GitHub Release
 asset (`dist/`, `build/`, `deploy/_thirdparty/` are all in `.gitignore`).
 
@@ -152,24 +153,24 @@ for a build machine that has staged them — see "Third-party binaries" below.
 
 ```
 iscc campus.iss
-  -> Successful compile (18.6 sec)
-  -> dist/installer/Campus-Setup.exe   (36.7 MB)
+  -> Successful compile
+  -> dist/installer/Campus-Setup.exe   (266 MB, with PostgreSQL/Caddy/NSSM bundled)
 ```
 
-Packages the frozen app, the exported frontend, the Caddyfile, and all four
-deploy scripts. `Campus-Setup.exe` was **not run** this session — installing
-it registers real Windows services and writes to `%ProgramData%` on a real
-machine, which is Damien's call to make, not something to do silently while
-"proving a build compiles." The `[Code]` uninstall logic (a "keep data?"
-prompt, then a clean service teardown via `uninstall-services.ps1`) is
-written but likewise unexercised — that's the acceptance test for whoever
-runs the finished installer for the first time.
+Packages the frozen app, the exported frontend, the Caddyfile, all four
+deploy scripts, and — once staged, see below — the real PostgreSQL/Caddy/NSSM
+binaries. The `[Code]` uninstall logic (a "keep data?" prompt, then a clean
+service teardown via `uninstall-services.ps1`) is written; a fresh install +
+uninstall cycle is the acceptance test for whoever runs the finished
+installer on a target machine.
 
 ## Third-party binaries
 
-Two binaries and one service-shim are **staged by hand**, never fetched or
-committed — `deploy/_thirdparty/` is gitignored, and the placeholder files
-inside it document exactly what replaces them:
+Two binaries and one service-shim are **staged into `deploy/_thirdparty/`
+before compiling** and never committed to the repo (the directory is
+gitignored) — Inno's `[Files]` entries pick them up with
+`skipifsourcedoesntexist`, so the `.iss` compiles either way, but only a
+build with them staged produces a fully self-contained installer:
 
 | What | Where it goes | Get it from | License |
 |---|---|---|---|
@@ -181,9 +182,49 @@ PostgreSQL itself needs no such shim — `pg_ctl register` implements the
 service protocol directly, which is why `install.ps1`'s Postgres path uses
 `pg_ctl register` and its Caddy/App paths use NSSM.
 
-None of these were fetchable in this session (no internet access for binary
-downloads here) — that is the honest boundary of this phase, exactly like
-Phase 8's backup drill couldn't run a live `pg_dump` with no Postgres
-installed. Everything on this side of that boundary — the freeze, the
-installer compile, the secrets/ACL/templating/degradation logic in
-`install.ps1` — was built and proven for real.
+### 4 — the full stack, actually staged and proven end-to-end
+
+A first installer was shipped without these three binaries staged (no
+internet access in that build's dev environment) — `install.ps1` degraded
+exactly as designed (clear skip messages, no crash), but that meant no
+database and no reverse proxy actually came up, so `https://localhost/`
+correctly refused to connect. Once this environment *did* have outbound
+access, all three were fetched for real (PostgreSQL 16.4, Caddy v2.11.4,
+NSSM 2.24) and verified to actually run (`pg_ctl --version`, `caddy
+version`, `nssm version`) before staging.
+
+That surfaced one more real, if minor, bug: `install.ps1`'s `.env` write
+used `Set-Content -Encoding utf8`, which in Windows PowerShell 5.1 emits a
+**UTF-8 BOM** — and django-environ silently treats a BOM-prefixed first
+line as an "Invalid line" and drops it rather than erroring. Harmless today
+only because the dropped line (`CAMPUS_ENV=prod`) isn't read anywhere;
+still a real latent bug, fixed by writing both the `.env` and the templated
+Caddyfile via `[System.IO.File]::WriteAllText(..., UTF8Encoding($false))`
+instead. (Checked the Caddyfile side specifically with `caddy validate` —
+Caddy's own parser tolerates a BOM fine, so that half was hygiene, not a
+live bug; the `.env` half was live.)
+
+With real binaries staged and the fix applied, the entire stack was proven
+end-to-end in one drill — not via the installer's Windows-service path
+(registering real services was left for an actual install, see below), but
+by running the exact same binaries as plain processes against a scratch
+root:
+
+```
+initdb -D pgdata -U postgres -A trust        -> Success.
+pg_ctl start -D pgdata -o "-p 5433 ..."      -> server started, ready to accept connections
+campus-app.exe manage migrate                -> every app's migrations applied against real Postgres
+campus-app.exe serve --port 8001             -> waitress up
+caddy run --config Caddyfile                 -> certificate obtained (local CA), server running on :443
+
+curl https://localhost/api/healthz/  -> 200 {"status": "ok", "service": "campus"}
+curl http://localhost/               -> 308 (HTTP->HTTPS redirect, as designed)
+```
+
+That is the same request path a real install produces once `install.ps1`
+registers Postgres/Caddy/App as Windows services instead of plain
+processes — proof the bundled binaries and the app agree with each other,
+not just that each one runs in isolation. The drill root was torn down
+afterward (processes stopped, Postgres shut down cleanly, directory
+deleted) — nothing persisted outside the repo's own `install.ps1` fix and
+the (gitignored) staged binaries.
