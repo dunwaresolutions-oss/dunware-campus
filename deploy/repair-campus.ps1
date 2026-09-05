@@ -154,8 +154,8 @@ foreach ($try in 1..10) {
 Write-Host ""
 if ($ok) {
   Write-Host "  Campus is up: https://$LanHost/" -ForegroundColor Green
-  Write-Host "  First admin:" -ForegroundColor Green
-  Write-Host ("    & '{0}' manage shell -c ""from apps.accounts.services import bootstrap_superadmin; bootstrap_superadmin(username='admin', email='admin@example.test', password='CHANGE-ME')""" -f $app)
+  Write-Host "  Create the first admin (this build: 'manage create_admin'; older builds: use create-campus-admin.ps1):" -ForegroundColor Green
+  Write-Host ("    & '{0}' manage create_admin" -f $app)
 } else {
   Warn "still not healthy - check $InstallRoot\logs\Campus-App.log and $InstallRoot\logs\Campus-Proxy.log"
 }

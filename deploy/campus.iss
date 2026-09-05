@@ -71,6 +71,7 @@ Source: "_thirdparty\caddy\*"; DestDir: "{app}\caddy\bin"; Flags: recursesubdirs
 ; the first-run wizard + day-2 ops scripts
 Source: "install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "repair-campus.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "create-campus-admin.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "backup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "restore.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "uninstall-services.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion

@@ -299,5 +299,5 @@ if (-not $SkipServices) {
 
 Write-Step "Setup finished"
 Write-Host "    Campus: https://$LanHost/  (trust the LAN certificate on client machines: 'caddy trust')"
-Write-Host "    Create the first admin with:  $appExe manage shell -c ""from apps.accounts.services import bootstrap_superadmin; bootstrap_superadmin(username='admin', email='admin@example.test', password='CHANGE-ME')"""
-Write-Host "    Then sign in and enrol MFA immediately - staff logins are blocked from sensitive endpoints until MFA is confirmed."
+Write-Host "    Create the first admin with:  `"$appExe`" manage create_admin"
+Write-Host "    Then sign in and enrol an authenticator app immediately - staff logins are blocked from sensitive endpoints until MFA is confirmed."
