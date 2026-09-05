@@ -14,7 +14,13 @@
   Idempotent - safe to run again. Does not touch the database beyond
   confirming it answers.
 #>
-param([string]$InstallRoot = "$env:ProgramData\Campus")
+param(
+  [string]$InstallRoot = "$env:ProgramData\Campus",
+  # optional: a freshly-built frontend export to drop in over the installed
+  # one (e.g. D:\Solutions\dunware-campus\frontend\out). Stops Campus Proxy
+  # for the copy so Caddy's file handles don't block it.
+  [string]$RefreshFrontendFrom
+)
 
 $ErrorActionPreference = "Stop"
 function Step($m){ Write-Host "==> $m" -ForegroundColor Cyan }
@@ -125,6 +131,21 @@ Step "Registering Campus App"
 Ensure-Service "Campus App" $app "serve --host 127.0.0.1 --port 8001" (Join-Path $InstallRoot "app")
 Step "Registering Campus Proxy"
 Ensure-Service "Campus Proxy" $caddy ("run --config `"$cfile`"") (Join-Path $InstallRoot "caddy")
+
+# --- 3a. refresh the exported frontend, if asked ------------------
+if ($RefreshFrontendFrom) {
+  Step "Refreshing the frontend export from $RefreshFrontendFrom"
+  if (-not (Test-Path (Join-Path $RefreshFrontendFrom "index.html"))) {
+    throw "no index.html under $RefreshFrontendFrom - build it first (cd frontend; npm run build)"
+  }
+  if ((Get-Service "Campus Proxy" -EA SilentlyContinue).Status -eq "Running") {
+    Stop-Service "Campus Proxy" -Force
+    Start-Sleep 1
+  }
+  & robocopy $RefreshFrontendFrom $webRoot /MIR /NFL /NDL /NJH /NP /R:2 /W:2 | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE)" }
+  Info "frontend_out updated ($((Get-ChildItem $webRoot -Recurse -File).Count) files)"
+}
 
 # --- 3b. app icon (shortcut + browser favicon) --------------------
 Step "Applying the Campus icon"
