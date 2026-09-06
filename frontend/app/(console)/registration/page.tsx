@@ -145,11 +145,13 @@ export default function RegistrationPage() {
           resource="waitlist"
           singular="waitlist entry"
           columns={[
-            { header: "Application", cell: (r) => `#${r.application}` },
+            { header: "Child", cell: (r) => (r.child_name as string) || `#${r.application}` },
             {
               header: "Group",
               cell: (r) =>
-                groups.data?.find((g) => g.id === r.group)?.name ?? r.group,
+                (r.group_name as string) ??
+                groups.data?.find((g) => g.id === r.group)?.name ??
+                r.group,
             },
             { header: "Priority", cell: (r) => (r.priority as number) ?? "—" },
             {
@@ -178,11 +180,13 @@ export default function RegistrationPage() {
           singular="offer"
           canCreate={false}
           columns={[
-            { header: "Application", cell: (r) => `#${r.application}` },
+            { header: "Child", cell: (r) => (r.child_name as string) || `#${r.application}` },
             {
               header: "Group",
               cell: (r) =>
-                groups.data?.find((g) => g.id === r.group)?.name ?? r.group,
+                (r.group_name as string) ??
+                groups.data?.find((g) => g.id === r.group)?.name ??
+                r.group,
             },
             { header: "Start", cell: (r) => date(r.start_date as string) },
             { header: "Expires", cell: (r) => date(r.expires_at as string) },
@@ -218,13 +222,16 @@ export default function RegistrationPage() {
             {
               header: "Student",
               cell: (r) =>
-                students.data?.find((s) => s.id === r.student)?.display_name ??
-                r.student,
+                (r.student_name as string) ||
+                students.data?.find((s) => s.id === r.student)?.display_name ||
+                (r.student as string),
             },
             {
               header: "Group",
               cell: (r) =>
-                groups.data?.find((g) => g.id === r.group)?.name ?? r.group,
+                (r.group_name as string) ??
+                groups.data?.find((g) => g.id === r.group)?.name ??
+                r.group,
             },
             { header: "Start", cell: (r) => date(r.start_date as string) },
             { header: "End", cell: (r) => date(r.end_date as string) },
@@ -283,8 +290,9 @@ export default function RegistrationPage() {
             {
               header: "Student",
               cell: (r) =>
-                students.data?.find((s) => s.id === r.student)?.display_name ??
-                r.student,
+                (r.student_name as string) ||
+                students.data?.find((s) => s.id === r.student)?.display_name ||
+                (r.student as string),
             },
             { header: "Kind", cell: (r) => label(r.kind as string) },
             { header: "Version", cell: (r) => (r.version as number) ?? 1 },

@@ -5,7 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useAll } from "@/lib/hooks";
 import { create, remove } from "@/lib/resource";
 import { apiMessage } from "@/lib/format";
-import { Button, EmptyState, Spinner } from "./ui";
+import { Button, Spinner } from "./ui";
 import { Modal, ConfirmButton } from "./Modal";
 import { RecordForm, type FieldDef } from "./RecordForm";
 import { useToast } from "./Toast";
@@ -62,7 +62,14 @@ export function NestedList<T extends Row>({
       {q.isLoading ? (
         <Spinner />
       ) : rows.length === 0 ? (
-        <EmptyState message={`No ${title.toLowerCase()}.`} />
+        <div className="flex flex-col items-center gap-2 px-3 py-5 text-sm text-[var(--campus-muted)]">
+          <span>No {title.toLowerCase()} yet.</span>
+          {addFields && (
+            <Button size="sm" variant="subtle" onClick={() => setAdding(true)}>
+              + Add {title.toLowerCase()}
+            </Button>
+          )}
+        </div>
       ) : (
         <ul className="divide-y divide-[var(--campus-line)] text-sm">
           {rows.map((r) => (

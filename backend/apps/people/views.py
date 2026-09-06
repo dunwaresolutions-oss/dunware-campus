@@ -113,7 +113,7 @@ class GuardianViewSet(CampusViewSet):
     def get_queryset(self):
         user = self.request.user
         role = getattr(user, "role", None)
-        qs = Guardian.objects.all()
+        qs = Guardian.objects.prefetch_related("links__student")
         if role in _ADMIN_ROLES:
             return qs
         if role in _INSTRUCTOR_ROLES:

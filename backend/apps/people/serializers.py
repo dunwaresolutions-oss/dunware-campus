@@ -55,10 +55,22 @@ class StudentSerializer(serializers.ModelSerializer):
 
 
 class GuardianSerializer(serializers.ModelSerializer):
+    children = serializers.SerializerMethodField()
+
     class Meta:
         model = Guardian
         fields = ["id", "first_name", "last_name", "email", "phone", "address",
-                  "user", "created_at"]
+                  "user", "children", "created_at"]
+
+    def get_children(self, obj) -> list[dict]:
+        return [
+            {
+                "id": str(link.student_id),
+                "name": link.student.display_name,
+                "relationship": link.relationship,
+            }
+            for link in obj.links.select_related("student").all()
+        ]
 
 
 class GuardianLinkSerializer(serializers.ModelSerializer):

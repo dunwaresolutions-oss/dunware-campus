@@ -69,9 +69,27 @@ export function RecordForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setFormError(null);
     setFieldErrors({});
+
+    const missing: Record<string, string> = {};
+    for (const f of fields) {
+      if (!f.required) continue;
+      const empty =
+        f.type === "file"
+          ? !files[f.name]
+          : f.type === "checkbox"
+            ? false
+            : state[f.name] === "" || state[f.name] == null;
+      if (empty) missing[f.name] = "Required.";
+    }
+    if (Object.keys(missing).length > 0) {
+      setFieldErrors(missing);
+      setFormError("Fill in the required fields.");
+      return;
+    }
+
+    setBusy(true);
     const out: Values = {};
     for (const f of fields) {
       out[f.name] =
@@ -145,16 +163,24 @@ export function RecordForm({
                 }
               />
             ) : f.type === "file" ? (
-              <input
-                type="file"
-                className="block w-full text-sm text-[var(--campus-muted)] file:mr-3 file:rounded-md file:border file:border-[var(--campus-line)] file:bg-[var(--campus-input-bg)] file:px-3 file:py-1.5 file:text-sm file:text-[var(--campus-fg)] hover:file:border-[var(--campus-accent)]"
-                onChange={(e) =>
-                  setFiles((s) => ({
-                    ...s,
-                    [f.name]: e.target.files?.[0] ?? null,
-                  }))
-                }
-              />
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-3 text-sm transition-colors hover:border-[var(--campus-accent)]">
+                <span className="rounded-md bg-[var(--campus-accent)] px-3 py-1.5 text-xs font-medium text-white">
+                  Choose file
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[var(--campus-fg)]">
+                  {files[f.name]?.name ?? "No file selected"}
+                </span>
+                <input
+                  type="file"
+                  className="sr-only"
+                  onChange={(e) =>
+                    setFiles((s) => ({
+                      ...s,
+                      [f.name]: e.target.files?.[0] ?? null,
+                    }))
+                  }
+                />
+              </label>
             ) : (
               <input
                 className={inputCls}

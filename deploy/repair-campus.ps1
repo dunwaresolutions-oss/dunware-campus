@@ -11,15 +11,25 @@
   RUN AS ADMINISTRATOR:
     powershell -ExecutionPolicy Bypass -File <path>\repair-campus.ps1
 
+  Optional in-place update of an existing install without a full reinstall:
+    -RefreshFrontendFrom <repo>\frontend\out     swap the exported SPA
+    -RefreshAppFrom      <repo>\dist\campus-app   swap the frozen backend
+  Both keep .env and the database; -RefreshAppFrom re-runs migrate + collectstatic.
+
   Idempotent - safe to run again. Does not touch the database beyond
-  confirming it answers.
+  confirming it answers (and migrate, if -RefreshAppFrom is given).
 #>
 param(
   [string]$InstallRoot = "$env:ProgramData\Campus",
   # optional: a freshly-built frontend export to drop in over the installed
   # one (e.g. D:\Solutions\dunware-campus\frontend\out). Stops Campus Proxy
   # for the copy so Caddy's file handles don't block it.
-  [string]$RefreshFrontendFrom
+  [string]$RefreshFrontendFrom,
+  # optional: a freshly-frozen backend (the dist\campus-app directory built by
+  # deploy\campus.spec, e.g. D:\Solutions\dunware-campus\dist\campus-app). Swaps
+  # campus-app.exe + its libs in place, keeping .env / frontend_out / media /
+  # staticfiles. Stops Campus App for the copy, then re-migrates.
+  [string]$RefreshAppFrom
 )
 
 $ErrorActionPreference = "Stop"
@@ -131,6 +141,26 @@ Step "Registering Campus App"
 Ensure-Service "Campus App" $app "serve --host 127.0.0.1 --port 8001" (Join-Path $InstallRoot "app")
 Step "Registering Campus Proxy"
 Ensure-Service "Campus Proxy" $caddy ("run --config `"$cfile`"") (Join-Path $InstallRoot "caddy")
+
+# --- 3a0. swap in a freshly-frozen backend, if asked -------------
+if ($RefreshAppFrom) {
+  Step "Refreshing the app (frozen backend) from $RefreshAppFrom"
+  if (-not (Test-Path (Join-Path $RefreshAppFrom "campus-app.exe"))) {
+    throw "no campus-app.exe under $RefreshAppFrom - build it first (cd backend; pyinstaller ..\deploy\campus.spec --distpath ..\dist)"
+  }
+  $appDir = Join-Path $InstallRoot "app"
+  foreach ($svc in @("Campus Proxy","Campus App")) {
+    if ((Get-Service $svc -EA SilentlyContinue).Status -eq "Running") { Stop-Service $svc -Force; Start-Sleep 1 }
+  }
+  # /MIR but never purge or overwrite the runtime data that isn't part of the freeze
+  & robocopy $RefreshAppFrom $appDir /MIR /XF ".env" /XD (Join-Path $appDir "frontend_out") (Join-Path $appDir "media") (Join-Path $appDir "staticfiles") /NFL /NDL /NJH /NP /R:2 /W:2 | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE)" }
+  Info "app updated ($((Get-ChildItem $appDir -Recurse -File).Count) files)"
+  $ErrorActionPreference = "Continue"
+  & $app manage migrate --noinput
+  & $app manage collectstatic --noinput
+  $ErrorActionPreference = "Stop"
+}
 
 # --- 3a. refresh the exported frontend, if asked ------------------
 if ($RefreshFrontendFrom) {

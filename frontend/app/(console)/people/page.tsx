@@ -47,7 +47,7 @@ export default function PeoplePage() {
   const groups = useAll<Group>("groups");
   const groupOpts = options(groups.data, (g) => g.name);
   const guardiansAll = useAll<{
-    id: number;
+    id: string;
     first_name: string;
     last_name: string;
   }>("guardians");
@@ -168,6 +168,28 @@ export default function PeoplePage() {
             {
               header: "Name",
               cell: (g) => `${g.first_name} ${g.last_name}`,
+            },
+            {
+              header: "Children",
+              cell: (g) => {
+                const kids = (g.children as
+                  | { id: string; name: string; relationship: string }[]
+                  | undefined) ?? [];
+                if (kids.length === 0)
+                  return <span className="text-[var(--campus-muted)]">—</span>;
+                return (
+                  <span className="flex flex-wrap gap-1">
+                    {kids.map((k) => (
+                      <Badge key={k.id} tone="neutral">
+                        {k.name}
+                        <span className="ml-1 opacity-60">
+                          {label(k.relationship)}
+                        </span>
+                      </Badge>
+                    ))}
+                  </span>
+                );
+              },
             },
             { header: "Email", cell: (g) => (g.email as string) || "—" },
             { header: "Phone", cell: (g) => (g.phone as string) || "—" },
