@@ -14,6 +14,7 @@ import { Card, PageHeader, Spinner, Badge, Button } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
+import { api } from "@/lib/api";
 import { date, datetime, money, label } from "@/lib/format";
 
 export default function PortalPage() {
@@ -170,6 +171,20 @@ function ChildCard({
 }) {
   const toast = useToast();
   const [consenting, setConsenting] = useState<string | null>(null);
+  const [rcPreview, setRcPreview] = useState<string | null>(null);
+  const [rcLoading, setRcLoading] = useState(false);
+
+  async function openReportCard(id: string) {
+    setRcLoading(true);
+    try {
+      const res = await api<{ html: string }>(`/report-cards/${id}/preview/`);
+      setRcPreview(res.html);
+    } catch {
+      toast("error", "Could not open the report card");
+    } finally {
+      setRcLoading(false);
+    }
+  }
 
   return (
     <Card className="p-4">
@@ -220,7 +235,17 @@ function ChildCard({
           ) : (
             <ul className="text-sm">
               {child.released_report_cards.map((r) => (
-                <li key={r.id}>Released {date(r.released_at)}</li>
+                <li key={r.id} className="flex items-center gap-2">
+                  <span>Released {date(r.released_at)}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={rcLoading}
+                    onClick={() => openReportCard(r.id)}
+                  >
+                    View
+                  </Button>
+                </li>
               ))}
             </ul>
           )}
@@ -300,6 +325,23 @@ function ChildCard({
           </div>
         </div>
       )}
+
+      <Modal
+        open={rcPreview != null}
+        onClose={() => setRcPreview(null)}
+        title={`Report card — ${child.display_name}`}
+        wide
+      >
+        {rcPreview == null ? (
+          <Spinner />
+        ) : (
+          <iframe
+            title="Report card"
+            srcDoc={rcPreview}
+            className="h-[70vh] w-full rounded-lg border border-[var(--campus-line)] bg-white"
+          />
+        )}
+      </Modal>
     </Card>
   );
 }

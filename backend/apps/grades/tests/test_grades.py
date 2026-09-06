@@ -149,6 +149,41 @@ def test_teacher_cannot_release_a_report_card(auth_client, staff):
     assert r.status_code == 403
 
 
+def test_release_before_generate_is_rejected(auth_client, admin_user):
+    kid = make_student()
+    card = ReportCard.objects.create(student=kid, term=_term())
+    r = auth_client(admin_user).post(f"/api/report-cards/{card.pk}/release/")
+    assert r.status_code == 409
+    card.refresh_from_db()
+    assert card.status == ReportCard.Status.DRAFT
+
+
+def test_preview_renders_without_changing_status(auth_client, admin_user):
+    kid = make_student()
+    card = ReportCard.objects.create(student=kid, term=_term())
+    ReportCardEntry.objects.create(report_card=card, subject="Numeracy", mark=88, level=3)
+    r = auth_client(admin_user).get(f"/api/report-cards/{card.pk}/preview/")
+    assert r.status_code == 200
+    assert "Numeracy" in r.data["html"]
+    card.refresh_from_db()
+    assert card.status == ReportCard.Status.DRAFT
+    assert card.generated_at is None
+
+
+def test_parent_can_preview_released_card_only(auth_client, admin_user, make_user):
+    kid = make_student()
+    parent = make_user(username="rp2", role="PARENT")
+    link_guardian(kid, user=parent)
+    card = ReportCard.objects.create(student=kid, term=_term())
+    pc = auth_client(parent)
+    assert pc.get(f"/api/report-cards/{card.pk}/preview/").status_code == 404
+
+    admin = auth_client(admin_user)
+    admin.post(f"/api/report-cards/{card.pk}/generate/")
+    admin.post(f"/api/report-cards/{card.pk}/release/")
+    assert pc.get(f"/api/report-cards/{card.pk}/preview/").status_code == 200
+
+
 def test_pdf_engine_helper_raises_when_absent():
     from apps.grades.services import html_to_pdf
 

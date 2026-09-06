@@ -197,15 +197,36 @@ class ReportCardViewSet(CampusViewSet):
             return [MFAVerified()]
         return [FrontOffice(), MFAVerified()]
 
+    @action(detail=True, methods=["get"])
+    def preview(self, request, pk=None):
+        """The rendered report card as HTML, in any status and without
+        changing it — so staff can review before Generate, and a guardian
+        can read a released card in the portal."""
+        from .services import render_report_card_html
+
+        card = self.get_object()
+        return Response({"html": render_report_card_html(card)})
+
     @action(detail=True, methods=["post"])
     def generate(self, request, pk=None):
         card = self.get_object()
+        if card.status == ReportCard.Status.RELEASED:
+            return Response(
+                {"detail": "This report card is released. Nothing further to generate."},
+                status=status.HTTP_409_CONFLICT,
+            )
         result = generate_report_card(card, actor=request.user)
         return Response({**result, "status": card.status}, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"])
     def release(self, request, pk=None):
         card = self.get_object()
+        if card.status != ReportCard.Status.FINALIZED:
+            return Response(
+                {"detail": "Generate the report card first — "
+                           "only a finalized card can be released."},
+                status=status.HTTP_409_CONFLICT,
+            )
         release_report_card(card, actor=request.user)
         return Response(self.get_serializer(card).data)
 
