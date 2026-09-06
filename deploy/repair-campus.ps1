@@ -117,7 +117,15 @@ $caddyfile = @"
 }
 "@
 [System.IO.File]::WriteAllText($cfile, $caddyfile, $utf8NoBom)
-& $caddy validate --config $cfile --adapter caddyfile 2>&1 | Where-Object { $_ -match 'Valid configuration|error' } | ForEach-Object { Info $_ }
+# caddy writes its info logs to stderr; on PS 5.1 with $ErrorActionPreference=Stop,
+# piping a native command's stderr (2>&1) throws NativeCommandError and aborts the
+# script. Drop stderr, key off the exit code instead.
+$ErrorActionPreference = "Continue"
+& $caddy validate --config $cfile --adapter caddyfile 2>$null | Out-Null
+$caddyRc = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($caddyRc -eq 0) { Info "Caddyfile is valid" }
+else { Warn "caddy validate exit $caddyRc - the Caddyfile may be wrong; continuing" }
 
 # --- 3. (re)register the two app-side services ----------------------
 function Ensure-Service($name, $exe, $svcArgs, $dir) {
