@@ -92,7 +92,7 @@ if (-not (Test-Path (Join-Path $webRoot "index.html"))) {
   Warn "no index.html under $webRoot - the SPA can't be served. The exported frontend is missing from this build."
 }
 $caddyfile = @"
-{$LanHost} {
+$LanHost {
 	encode gzip zstd
 
 	@dynamic path /api/* /admin/* /static/* /media/*
