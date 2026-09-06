@@ -84,11 +84,25 @@ def test_retention_sweep_anonymizes_old_leavers_but_not_recent_or_held(superadmi
 
 
 def test_seed_demo_builds_a_graph():
-    call_command("seed_demo", students=6, seed=7, force=True)
-    assert Student.objects.count() >= 6
+    call_command("seed_demo", quick=True, seed=7, force=True)
     from apps.people.models import Group, Guardian
-    assert Group.objects.count() >= 6
+    from apps.scheduling.models import Closure, Term
+
+    assert Student.objects.count() >= 6
+    assert Group.objects.filter(kind=Group.Kind.CLASS).count() == 6  # quick = 6 grades x 1
     assert Guardian.objects.exists()
+    assert Term.objects.count() == 2
+    assert Closure.objects.exists()          # holidays + breaks seeded
+    from apps.grades.models import ReportCard
+
+    assert ReportCard.objects.filter(status=ReportCard.Status.RELEASED).exists()
+
+
+def test_seed_demo_flush_then_reseed_is_idempotent():
+    call_command("seed_demo", quick=True, seed=1, force=True)
+    first = Student.objects.count()
+    call_command("seed_demo", quick=True, seed=1, force=True, flush=True)
+    assert Student.objects.count() == first   # replaced, not stacked
 
 
 def test_seed_demo_refuses_without_debug(settings):
