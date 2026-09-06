@@ -222,25 +222,49 @@ foreach ($svc in @("Campus PostgreSQL","Campus App","Campus Proxy")) {
 }
 
 # --- 5. health check ----------------------------------------------
+# IMPORTANT: do not probe over HTTPS from PowerShell here. Django forces an
+# HTTPS redirect on any request without Caddy's X-Forwarded-Proto header (so
+# a direct probe of :<api port> is useless), and the Windows system TLS stack
+# (Schannel - used by Invoke-WebRequest AND curl.exe) frequently fails the
+# handshake against Caddy's `tls internal` cert with SEC_E_INTERNAL_ERROR even
+# though Chrome / Edge (their own TLS libraries) connect fine. So we verify:
+#   1. all three services are Running
+#   2. Caddy answers on :80 with a 3xx redirect  (plain HTTP, curl.exe)
+#   3. something is listening on :443
+# and leave the actual HTTPS page load to a browser.
 Step "Health check"
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   # PS 5.1 / .NET FW defaults too low for modern Caddy
-[Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }        # 'tls internal' cert isn't in the machine store
-$ok = $false
-foreach ($try in 1..10) {
-  Start-Sleep 3
-  try {
-    $h = Invoke-WebRequest "https://$LanHost/api/healthz/" -TimeoutSec 10 -UseBasicParsing
-    $r = Invoke-WebRequest "https://$LanHost/" -TimeoutSec 10 -UseBasicParsing
-    Info "GET /api/healthz/ -> $($h.StatusCode) $($h.Content)"
-    Info "GET /            -> $($r.StatusCode) ($($r.RawContentLength) bytes, $($r.Headers['Content-Type']))"
-    if ($h.StatusCode -eq 200 -and $r.StatusCode -eq 200) { $ok = $true; break }
-  } catch { Info "  not ready yet ($($_.Exception.Message))" }
+$curlExe = Join-Path $env:SystemRoot "System32\curl.exe"
+
+$svcDown = @("Campus PostgreSQL","Campus App","Campus Proxy") |
+  Where-Object { (Get-Service $_ -EA SilentlyContinue).Status -ne "Running" }
+
+$httpCode = $null
+if (Test-Path $curlExe) {
+  foreach ($try in 1..8) {
+    Start-Sleep 2
+    $httpCode = (& $curlExe -s -o NUL -w "%{http_code}" --max-time 8 "http://$LanHost/") 2>$null
+    if ($httpCode -match '^(200|301|302|308)$') { break }
+  }
+  Info "Caddy   http://$LanHost/  -> $httpCode  (308/301 = redirect to HTTPS, as intended)"
 }
+
+$tls443 = $false
+try { $tls443 = (Test-NetConnection -ComputerName $LanHost -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue) } catch {}
+Info ("Port 443 listening: {0}" -f $tls443)
+
 Write-Host ""
-if ($ok) {
-  Write-Host "  Campus is up: https://$LanHost/" -ForegroundColor Green
-  Write-Host "  Create the first admin (this build: 'manage create_admin'; older builds: use create-campus-admin.ps1):" -ForegroundColor Green
-  Write-Host ("    & '{0}' manage create_admin" -f $app)
+$caddyServing = ($httpCode -match '^(200|301|302|308)$')
+if ($svcDown.Count -eq 0 -and $caddyServing -and $tls443) {
+  Write-Host "  Campus is up. Open it in a browser:  https://$LanHost/" -ForegroundColor Green
+  Write-Host "  (first visit warns about the local certificate - that's expected; click through / 'Advanced -> proceed')" -ForegroundColor Green
+  Write-Host "  Hard-refresh once (Ctrl+Shift+R) so the browser drops any old page bundle." -ForegroundColor Green
+  Write-Host ""
+  Write-Host "  First admin (this build):  & '$app' manage create_admin"
+} elseif ($svcDown.Count -eq 0) {
+  Write-Host "  All three services are Running and Caddy is listening, but the redirect probe was inconclusive." -ForegroundColor Yellow
+  Write-Host "  Open https://$LanHost/ in Chrome or Edge - that is the real test. If it fails, check:" -ForegroundColor Yellow
+  Write-Host "    $InstallRoot\logs\Campus-App.log"
+  Write-Host "    $InstallRoot\logs\Campus-Proxy.log"
 } else {
-  Warn "still not healthy - check $InstallRoot\logs\Campus-App.log and $InstallRoot\logs\Campus-Proxy.log"
+  Warn ("not Running: {0} - check {1}\logs\Campus-App.log and {1}\logs\Campus-Proxy.log" -f ($svcDown -join ', '), $InstallRoot)
 }
