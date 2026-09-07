@@ -280,14 +280,23 @@ Validated with `caddy validate` / `caddy fmt`.
 **Bug — no first-run admin path.** The only way to make the initial
 account was a `manage shell -c "from apps.accounts.services import
 bootstrap_superadmin; …"` one-liner that is near-impossible to quote
-correctly through PowerShell. Fix: a real
+correctly through PowerShell. First fix: a real
 `campus-app.exe manage create_admin` management command
 (`apps/accounts/management/commands/create_admin.py`) — wraps
 `bootstrap_superadmin`, takes `--username/--email/--password` or the
 `CAMPUS_ADMIN_*` env vars or a hidden prompt, runs Django's password
-validators, first-run-only. 4 tests, suite now 147. `install.ps1`'s
-closing message points at it. `deploy/create-campus-admin.ps1` is an
-elevated helper for installs whose frozen exe predates the command.
+validators, first-run-only.
+
+**Then made it a browser flow (2026-09-07).** Requiring an operator to open
+an elevated terminal for the very first step was the wrong first impression.
+`GET /api/auth/setup/status/` (`{needs_setup}`) + `POST /api/auth/setup/admin/`
+(`AllowAny`, `throttle_scope="auth"`, self-disables with 409 once a superadmin
+exists, then signs the new session in) back a `/setup` "Welcome to Campus"
+screen; the login page redirects to it while `needs_setup` is true. The
+`create_admin` command stays as the headless/automation path. `install.ps1`'s
+closing message now points at the URL. Suite 151 → 157 (`test_setup.py`, 6
+cases). `deploy/create-campus-admin.ps1` remains for installs whose frozen
+exe predates either mechanism.
 
 ### `deploy/repair-campus.ps1`
 

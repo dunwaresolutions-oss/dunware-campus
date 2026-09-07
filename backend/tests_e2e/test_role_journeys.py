@@ -189,9 +189,13 @@ def test_parent_journey_dashboard_booking_contact_change_and_consent(
         "title": "Art club", "capacity_per_slot": 3, "duration_minutes": 45,
     }, format="json")
     offering = Offering.objects.get(pk=offering_resp.data["id"])
+    # a week out, so the generated slot is always still "upcoming" regardless
+    # of the wall-clock time the suite runs at
+    slot_day = timezone.localdate() + dt.timedelta(days=7)
     window = AvailabilityWindow.objects.create(
-        offering=offering, weekday=0, start_time=dt.time(15, 0), end_time=dt.time(16, 0),
-        valid_from=dt.date(2026, 9, 7), valid_to=dt.date(2026, 9, 7),
+        offering=offering, weekday=slot_day.weekday(),
+        start_time=dt.time(15, 0), end_time=dt.time(16, 0),
+        valid_from=slot_day, valid_to=slot_day,
     )
     generate_slots(offering, from_date=window.valid_from, to_date=window.valid_to)
     slot_id = str(offering.slots.first().pk)

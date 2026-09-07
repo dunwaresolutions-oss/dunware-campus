@@ -21,12 +21,15 @@ from axes.handlers.proxy import AxesProxyHandler
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django_otp import login as otp_login
 from rest_framework import status
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -45,14 +48,16 @@ from .mfa import (
     qr_data_uri,
     verify_login_token,
 )
+from .models import User
 from .serializers import (
     InviteAcceptSerializer,
     LoginSerializer,
+    SetupAdminSerializer,
     StaffInviteCreateSerializer,
     TOTPTokenSerializer,
     WhoAmISerializer,
 )
-from .services import accept_staff_invite, create_staff_invite
+from .services import accept_staff_invite, bootstrap_superadmin, create_staff_invite
 
 
 def _whoami(user, *, mfa_verified: bool) -> dict:
@@ -186,8 +191,6 @@ class UsersView(APIView):
     permission_classes = [IsAuthenticated, AdminOnly]
 
     def get(self, request):
-        from apps.accounts.models import User
-
         out = [
             {
                 "id": str(u.pk),
@@ -240,3 +243,54 @@ class InviteAcceptView(APIView):
             {"detail": "Account created. Sign in, then set up MFA.", "username": user.username},
             status=status.HTTP_201_CREATED,
         )
+
+
+class SetupStatusView(APIView):
+    """Unauthenticated: does this install still need its first administrator?
+    Drives the browser's first-run screen. Flips to ``needs_setup: false`` the
+    instant a superadmin exists, and stays there."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response(
+            {"needs_setup": not User.objects.filter(is_superuser=True).exists()}
+        )
+
+
+class SetupAdminView(APIView):
+    """First-run only: create the initial SUPERADMIN from the browser and sign
+    that session straight in, so the operator lands on MFA enrolment. Returns
+    409 the moment any superadmin exists (self-disabling). Rate-limited on the
+    ``auth`` scope; ``bootstrap_superadmin`` writes the audit entry."""
+
+    permission_classes = [AllowAny]
+    throttle_scope = "auth"
+
+    def post(self, request):
+        if User.objects.filter(is_superuser=True).exists():
+            return Response(
+                {"detail": "Campus already has an administrator. Sign in instead."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        s = SetupAdminSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        try:
+            validate_password(s.validated_data["password"])
+        except DjangoValidationError as exc:
+            return Response({"password": list(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = bootstrap_superadmin(
+                username=s.validated_data["username"],
+                email=s.validated_data["email"],
+                password=s.validated_data["password"],
+            )
+        except (DjangoValidationError, DRFValidationError) as exc:
+            detail = getattr(exc, "messages", None) or getattr(exc, "detail", str(exc))
+            if isinstance(detail, (list, tuple)):
+                detail = "; ".join(str(d) for d in detail)
+            return Response({"detail": str(detail)}, status=status.HTTP_400_BAD_REQUEST)
+        # the user was created directly (not via authenticate()), so name the
+        # real backend explicitly — axes' standalone backend is lockout-only.
+        django_login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+        return Response(_whoami(user, mfa_verified=False), status=status.HTTP_201_CREATED)

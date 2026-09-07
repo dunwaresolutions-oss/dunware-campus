@@ -50,11 +50,19 @@ service manager.
    telling the operator to point `.env` at an existing Postgres instead.
 4. If step 3 produced a reachable database: runs the frozen Django's
    `migrate` and `collectstatic`. Otherwise: skipped, with the exact command
-   to run by hand once a database is reachable. Either way, the first admin
-   is **not** created interactively by the installer — run it once, by hand,
-   right after (`campus-app.exe manage shell -c
-   "from apps.accounts.services import bootstrap_superadmin; ..."`, printed
-   at the end of setup) — and enrol MFA immediately after signing in.
+   to run by hand once a database is reachable.
+
+   **First administrator:** the installer does *not* create it. Instead, the
+   first visit to `https://<host>/` shows a **"Welcome to Campus"** screen
+   (`/setup`) that creates the initial SUPERADMIN and signs that browser in.
+   The `POST /api/auth/setup/admin/` endpoint is unauthenticated but
+   self-disabling — it returns 409 the instant any superadmin exists, and
+   `GET /api/auth/setup/status/` drives the redirect. Complete it promptly
+   after install (single-tenant LAN appliance; the window is the minutes
+   between install and first admin). A headless alternative remains:
+   `campus-app.exe manage create_admin` (or `deploy/create-campus-admin.ps1`).
+   Enrol MFA immediately after — staff cannot reach any record until it is
+   confirmed.
 5. Templates the Caddyfile with the chosen LAN hostname + API bind
    (verified: `{$CAMPUS_HOST:localhost}`/`{$API_BIND:...}` correctly
    replaced). If Caddy + NSSM are staged, registers **Campus Proxy** as a

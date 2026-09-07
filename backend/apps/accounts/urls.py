@@ -8,6 +8,8 @@ from .views import (
     MFAConfirmView,
     MFASetupView,
     MFAStatusView,
+    SetupAdminView,
+    SetupStatusView,
     StaffInviteView,
     UsersView,
     WhoAmIView,
@@ -17,6 +19,8 @@ app_name = "accounts"
 
 urlpatterns = [
     path("csrf/", CSRFView.as_view(), name="csrf"),
+    path("setup/status/", SetupStatusView.as_view(), name="setup-status"),
+    path("setup/admin/", SetupAdminView.as_view(), name="setup-admin"),
     path("login/", LoginView.as_view(), name="login"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("whoami/", WhoAmIView.as_view(), name="whoami"),

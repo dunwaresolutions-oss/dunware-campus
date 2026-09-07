@@ -79,6 +79,31 @@ export async function logout(): Promise<void> {
   await api("/auth/logout/", { method: "POST" });
 }
 
+/* ----------------------------------------------------- first-run setup */
+
+/** Unauthenticated: is the initial administrator still to be created? */
+export async function setupStatus(): Promise<{ needs_setup: boolean }> {
+  try {
+    return await api<{ needs_setup: boolean }>("/auth/setup/status/");
+  } catch {
+    return { needs_setup: false };
+  }
+}
+
+/** First-run only: create the initial SUPERADMIN. On success the session is
+ *  already signed in, so route straight to MFA enrolment. */
+export async function createFirstAdmin(input: {
+  username: string;
+  email: string;
+  password: string;
+}): Promise<CurrentUser> {
+  await ensureCsrf();
+  return api<CurrentUser>("/auth/setup/admin/", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 /** Begin TOTP enrolment — returns the QR + secret to show the user. */
 export async function mfaSetup(): Promise<MfaSetup> {
   await ensureCsrf();

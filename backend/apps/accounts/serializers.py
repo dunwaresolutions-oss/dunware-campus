@@ -37,3 +37,13 @@ class InviteAcceptSerializer(serializers.Serializer):
     password = serializers.CharField(
         style={"input_type": "password"}, trim_whitespace=False, min_length=12
     )
+
+
+class SetupAdminSerializer(serializers.Serializer):
+    """The browser's first-run form: create the initial SUPERADMIN."""
+
+    username = serializers.CharField(min_length=3, max_length=150, trim_whitespace=True)
+    email = serializers.EmailField()
+    password = serializers.CharField(
+        style={"input_type": "password"}, trim_whitespace=False, min_length=12
+    )

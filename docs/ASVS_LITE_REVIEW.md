@@ -32,6 +32,7 @@ a named phase · **N/A** — doesn't apply to this system's shape.
 | 2.5.2 | Secrets never printed/logged | Pass | `PIIScrubFilter` redacts `password`/`token`/`secret`/`authorization` key=value pairs (`core/logging.py`, tested) |
 | 2.6.1–2.6.3 | Time-based OTP MFA, standard algorithm, resistant to replay | Pass | `django-otp` TOTP, RFC 6238; a session must clear `is_verified()` before any sensitive endpoint answers (`accounts/mfa.py`, `core/permissions.py MFAVerified`) |
 | 2.7 | Out-of-band / recovery flow doesn't bypass MFA | Partial | No self-service MFA reset exists yet — an admin re-enrolls via `mfa/setup`; acceptable for a small on-site staff, revisit if the parent portal ever needs MFA |
+| 2.10.x | Registration / first-account bootstrap not abusable | Pass (with note) | There is no open self-registration. The only unauthenticated account-creation path is `POST /api/auth/setup/admin/` — it creates the *initial* SUPERADMIN, returns 409 the instant any superadmin exists (self-disabling), is on the `auth` rate-limit scope, and `bootstrap_superadmin` audits it. The residual exposure is the minutes between install and first-admin creation on a single-tenant LAN appliance; the operator is instructed to complete `/setup` immediately, and `create_admin` remains a headless alternative. |
 
 ## V3 — Session management
 

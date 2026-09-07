@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { isStaff, login } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import { isStaff, login, setupStatus } from "@/lib/auth";
 import { Button, Card, ErrorNote } from "@/components/ui";
 
 export default function LoginPage() {
@@ -13,6 +13,13 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    // Fresh install with no administrator yet -> the first-run screen.
+    setupStatus().then((s) => {
+      if (s.needs_setup) router.replace("/setup/");
+    });
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

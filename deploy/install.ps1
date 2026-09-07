@@ -301,6 +301,9 @@ if (-not $SkipServices) {
 }
 
 Write-Step "Setup finished"
-Write-Host "    Campus: https://$LanHost/  (trust the LAN certificate on client machines: 'caddy trust')"
-Write-Host "    Create the first admin with:  `"$appExe`" manage create_admin"
-Write-Host "    Then sign in and enrol an authenticator app immediately - staff logins are blocked from sensitive endpoints until MFA is confirmed."
+Write-Host "    Open Campus:  https://$LanHost/" -ForegroundColor Green
+Write-Host "    The first visit shows a 'Welcome to Campus' screen - create your"
+Write-Host "    administrator account there, then set up an authenticator app when"
+Write-Host "    prompted (staff logins are blocked from records until MFA is confirmed)."
+Write-Host "    (Headless alternative:  `"$appExe`" manage create_admin )"
+Write-Host "    Trust the LAN certificate on client machines with:  caddy trust"
