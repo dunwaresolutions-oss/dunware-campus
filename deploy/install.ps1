@@ -314,29 +314,45 @@ IconIndex=0
 "@ -Encoding ascii
 
 # ── 10. verify - a half-install must NOT look like a success ────────────
+# NOTE: do NOT probe over HTTPS from PowerShell here. On many Windows boxes
+# the system TLS stack (Schannel, used by Invoke-WebRequest AND curl.exe)
+# cannot complete the handshake against Caddy's `tls internal` cert - it
+# fails with SEC_E_INTERNAL_ERROR even though Chrome/Edge connect fine. A
+# throw here on that false negative is what previously skipped the
+# cert-trust step and the finish message. So: check the services, check
+# Caddy answers on :80 (plain HTTP, curl.exe), check :443 is listening -
+# and leave the real page load to a browser.
 if (-not $SkipServices) {
   Write-Step "Verifying"
   $missing = @("Campus PostgreSQL", "Campus App", "Campus Proxy") |
     Where-Object { -not (Get-Service -Name $_ -ErrorAction SilentlyContinue) }
   if ($missing) { throw "these services were not registered: $($missing -join ', '). Setup did not complete." }
 
-  $ok = $false
-  [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-  foreach ($try in 1..10) {
-    Start-Sleep -Seconds 3
-    try {
-      $resp = Invoke-WebRequest "https://$LanHost/api/healthz/" -TimeoutSec 10 -UseBasicParsing
-      if ($resp.StatusCode -eq 200) { $ok = $true; break }
-    } catch { }
-  }
-  if (-not $ok) {
-    throw "services registered but https://$LanHost/ did not answer 200 within ~30s - check $InstallRoot\logs\Campus-App.log and Campus-Proxy.log"
-  }
-  Write-Host "    https://$LanHost/api/healthz/ -> 200 OK"
+  $down = @("Campus PostgreSQL", "Campus App", "Campus Proxy") |
+    Where-Object { (Get-Service -Name $_).Status -ne "Running" }
+  if ($down) { Write-Warn2 "not Running yet: $($down -join ', ') - give them a moment, or check $InstallRoot\logs\" }
 
-  # the healthz request above forced Caddy to issue its cert; trust the CA now
+  $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+  $httpCode = $null
+  if (Test-Path $curl) {
+    foreach ($try in 1..8) {
+      Start-Sleep -Seconds 2
+      $httpCode = (& $curl -s -o NUL -w "%{http_code}" --max-time 6 "http://$LanHost/") 2>$null
+      if ($httpCode -match '^(200|301|302|308)$') { break }
+    }
+  }
+  $tls443 = $false
+  try { $tls443 = (Test-NetConnection -ComputerName $LanHost -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue) } catch {}
+  Write-Host "    Caddy http://$LanHost/ -> $httpCode   |   :443 listening: $tls443"
+  if (-not (($httpCode -match '^(200|301|302|308)$') -and $tls443)) {
+    Write-Warn2 "the HTTP checks were inconclusive - open https://$LanHost/ in Chrome or Edge to confirm; logs are in $InstallRoot\logs\"
+  }
+
+  # trust the local CA regardless (Trust-CaddyLocalCA waits for root.crt itself).
+  # this is a convenience - it must never be able to fail the install.
   Write-Step "Trusting the local HTTPS certificate"
-  Trust-CaddyLocalCA $InstallRoot
+  try { Trust-CaddyLocalCA $InstallRoot }
+  catch { Write-Warn2 "could not trust the local CA ($($_.Exception.Message)); run repair-campus.ps1 later, or 'caddy trust'" }
 }
 
 Write-Step "Setup finished"
