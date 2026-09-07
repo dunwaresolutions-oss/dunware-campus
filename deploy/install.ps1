@@ -129,6 +129,41 @@ function Register-CampusService([string]$name, [string]$nssmPath, [string]$targe
   return $true
 }
 
+function Trust-CaddyLocalCA([string]$root) {
+  <#  Add the root of Caddy's internal CA to the machine-wide Trusted Root
+      store so Edge/Chrome stop flagging the LAN HTTPS as "Not secure". Caddy
+      runs as a SYSTEM service and can't do this itself. Also leaves a copy at
+      <root>\campus-local-ca.crt for other LAN machines. #>
+  $sys = "$env:SystemRoot\System32\config\systemprofile\AppData\Roaming\Caddy"
+  $candidates = @(
+    (Join-Path $root "caddy\data\caddy\pki\authorities\local\root.crt"),
+    (Join-Path $sys "pki\authorities\local\root.crt"),
+    "$env:ProgramData\Caddy\pki\authorities\local\root.crt",
+    "$env:APPDATA\Caddy\pki\authorities\local\root.crt"
+  )
+  $crt = $null
+  foreach ($try in 1..8) {
+    $crt = $candidates | Where-Object { Test-Path $_ } |
+      Get-Item | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($crt) { break }
+    Start-Sleep -Seconds 2
+  }
+  if (-not $crt) {
+    Write-Warn2 "Caddy's local CA was not found - open https://$LanHost/ once in a browser to issue it, then run repair-campus.ps1 to trust it."
+    return
+  }
+  try {
+    $c = Import-Certificate -FilePath $crt.FullName -CertStoreLocation Cert:\LocalMachine\Root -ErrorAction Stop
+    Write-Host "    trusted local CA: $($c.Subject)"
+  } catch {
+    & certutil.exe -f -addstore Root "`"$($crt.FullName)`"" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warn2 "could not trust the local CA automatically ($($_.Exception.Message)); run 'caddy trust' by hand"; return }
+    Write-Host "    trusted local CA (certutil): $($crt.FullName)"
+  }
+  Copy-Item $crt.FullName (Join-Path $root "campus-local-ca.crt") -Force
+  Write-Host "    other LAN machines: import $root\campus-local-ca.crt into 'Trusted Root Certification Authorities'"
+}
+
 Write-Step "Campus first-run setup - $InstallRoot"
 
 # ── 1. prerequisites (warn-only) ────────────────────────────────────────
@@ -298,6 +333,10 @@ if (-not $SkipServices) {
     throw "services registered but https://$LanHost/ did not answer 200 within ~30s - check $InstallRoot\logs\Campus-App.log and Campus-Proxy.log"
   }
   Write-Host "    https://$LanHost/api/healthz/ -> 200 OK"
+
+  # the healthz request above forced Caddy to issue its cert; trust the CA now
+  Write-Step "Trusting the local HTTPS certificate"
+  Trust-CaddyLocalCA $InstallRoot
 }
 
 Write-Step "Setup finished"
@@ -306,4 +345,6 @@ Write-Host "    The first visit shows a 'Welcome to Campus' screen - create your
 Write-Host "    administrator account there, then set up an authenticator app when"
 Write-Host "    prompted (staff logins are blocked from records until MFA is confirmed)."
 Write-Host "    (Headless alternative:  `"$appExe`" manage create_admin )"
-Write-Host "    Trust the LAN certificate on client machines with:  caddy trust"
+Write-Host "    This machine already trusts the HTTPS certificate. For other LAN"
+Write-Host "    machines, import  $InstallRoot\campus-local-ca.crt  into their"
+Write-Host "    Trusted Root store (or push it by Group Policy)."

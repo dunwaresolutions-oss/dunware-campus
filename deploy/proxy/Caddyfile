@@ -2,8 +2,17 @@
 # install.ps1 templates {$CAMPUS_HOST}, {$API_BIND} and {$CAMPUS_WEB_ROOT}
 # from the first-run wizard. Caddy runs as a Windows service.
 #
-# For a LAN host with no public DNS, Caddy's internal CA (self-signed,
-# trusted after `caddy trust` on client machines) via `tls internal`.
+# For a LAN host with no public DNS, Caddy's internal CA (self-signed) via
+# `tls internal`. install.ps1 / repair-campus.ps1 add that CA to the machine
+# trust store after Caddy has generated it.
+
+{
+	# Caddy runs here as a SYSTEM service and cannot write to the Windows
+	# certificate store itself ("the request is not supported"); the install
+	# scripts do it with certutil / Import-Certificate instead. Stop Caddy
+	# retrying (and logging an error) on every start.
+	skip_install_trust
+}
 
 {$CAMPUS_HOST:localhost} {
 	encode gzip zstd

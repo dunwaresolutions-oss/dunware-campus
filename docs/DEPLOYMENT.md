@@ -69,11 +69,31 @@ service manager.
    service; otherwise skipped with a message naming what's missing.
 6. If NSSM is staged, registers **Campus App** (waitress) as a service.
 7. Sets every service that *was* registered to **Automatic** and starts it.
-8. Drops Start Menu + Desktop shortcuts and a small launcher that opens
+8. **Trusts the local HTTPS certificate.** After the health check (which
+   forces Caddy to issue its cert), the installer finds the root of Caddy's
+   internal CA and adds it to this machine's **Trusted Root Certification
+   Authorities** store, so Edge/Chrome show a padlock instead of "Not
+   secure". Caddy runs as a SYSTEM service and can't do this itself
+   (`skip_install_trust` is set in the Caddyfile so it stops trying). A copy
+   is left at `%ProgramData%\Campus\campus-local-ca.crt`.
+9. Drops Start Menu + Desktop shortcuts and a small launcher that opens
    `https://<host>/`.
 
 Every skip above prints exactly what's missing and where to get it (this
 table) — setup finishes either way rather than aborting partway through.
+
+### Other machines on the LAN
+
+They still need the CA once. Push `%ProgramData%\Campus\campus-local-ca.crt`
+to each client's **Trusted Root Certification Authorities** — by Group Policy
+(*Computer Configuration → Policies → Windows Settings → Security Settings →
+Public Key Policies*), or `certutil -addstore -f Root campus-local-ca.crt`
+elevated, or `caddy trust` if Caddy is on that box. Browse Campus by the
+**hostname you chose at install**, not a bare IP — the certificate covers the
+name (and loopback for `localhost`), not arbitrary addresses. Restart the
+browser fully after importing.
+
+`repair-campus.ps1` re-runs the trust step on an existing install.
 
 ## Day 2
 

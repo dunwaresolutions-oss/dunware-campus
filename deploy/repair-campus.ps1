@@ -37,6 +37,52 @@ function Step($m){ Write-Host "==> $m" -ForegroundColor Cyan }
 function Info($m){ Write-Host "    $m" }
 function Warn($m){ Write-Host "    ! $m" -ForegroundColor Yellow }
 
+function Trust-CaddyLocalCA {
+  <#  Find the root certificate of Caddy's internal CA (Caddy generates it on
+      first TLS handshake; running as a SYSTEM service it can't add it to the
+      Windows store itself) and put it in the machine-wide Trusted Root store,
+      so Edge/Chrome stop showing "Not secure". Also drops a copy at
+      <InstallRoot>\campus-local-ca.crt for pushing to other LAN machines. #>
+  param([Parameter(Mandatory)][string]$InstallRoot)
+
+  $sys = "$env:SystemRoot\System32\config\systemprofile\AppData\Roaming\Caddy"
+  $candidates = @(
+    (Join-Path $InstallRoot "caddy\data\caddy\pki\authorities\local\root.crt"),
+    (Join-Path $sys "pki\authorities\local\root.crt"),
+    "$env:ProgramData\Caddy\pki\authorities\local\root.crt",
+    "$env:APPDATA\Caddy\pki\authorities\local\root.crt",
+    "$env:LOCALAPPDATA\Caddy\pki\authorities\local\root.crt"
+  )
+  $root = $null
+  foreach ($try in 1..8) {
+    $root = $candidates | Where-Object { Test-Path $_ } |
+      Get-Item | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($root) { break }
+    Start-Sleep 2   # the CA is created lazily on the first HTTPS request
+  }
+  if (-not $root) {
+    Warn "Caddy's local CA (pki\authorities\local\root.crt) was not found yet."
+    Warn "Open https:// once in a browser to make Caddy issue it, then re-run this script."
+    return
+  }
+
+  try {
+    $imported = Import-Certificate -FilePath $root.FullName `
+      -CertStoreLocation Cert:\LocalMachine\Root -ErrorAction Stop
+    Info "trusted: $($imported.Subject)  (thumbprint $($imported.Thumbprint))"
+  } catch {
+    & certutil.exe -f -addstore Root "`"$($root.FullName)`"" | Out-Null
+    if ($LASTEXITCODE -ne 0) { Warn "could not add the CA to the trust store ($($_.Exception.Message))"; return }
+    Info "trusted via certutil: $($root.FullName)"
+  }
+
+  $shareCopy = Join-Path $InstallRoot "campus-local-ca.crt"
+  Copy-Item $root.FullName $shareCopy -Force
+  Info "copy for other machines: $shareCopy"
+  Info "  -> import it into 'Trusted Root Certification Authorities' on each LAN PC"
+  Info "  -> restart the browser fully (not just refresh) for the badge to clear"
+}
+
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not (New-Object Security.Principal.WindowsPrincipal($id)).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -92,6 +138,10 @@ if (-not (Test-Path (Join-Path $webRoot "index.html"))) {
   Warn "no index.html under $webRoot - the SPA can't be served. The exported frontend is missing from this build."
 }
 $caddyfile = @"
+{
+	skip_install_trust
+}
+
 $LanHost {
 	encode gzip zstd
 
@@ -220,6 +270,10 @@ foreach ($svc in @("Campus PostgreSQL","Campus App","Campus Proxy")) {
   Start-Sleep 1
   Info ("{0,-18} {1}" -f $svc, (Get-Service $svc).Status)
 }
+
+# --- 4b. trust Caddy's local CA (kills the browser "Not secure" badge) ---
+Step "Trusting the local HTTPS certificate on this machine"
+Trust-CaddyLocalCA -InstallRoot $InstallRoot
 
 # --- 5. health check ----------------------------------------------
 # IMPORTANT: do not probe over HTTPS from PowerShell here. Django forces an
