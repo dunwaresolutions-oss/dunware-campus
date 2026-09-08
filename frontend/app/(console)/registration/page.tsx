@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useAll, options } from "@/lib/hooks";
+import { useEffect, useState } from "react";
+import { useAll, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
 import { PageHeader, Tabs, Badge } from "@/components/ui";
@@ -19,6 +19,10 @@ interface Student {
 
 export default function RegistrationPage() {
   const [tab, setTab] = useState("applications");
+  const paramTab = useQueryParam("tab");
+  useEffect(() => {
+    if (paramTab) setTab(paramTab);
+  }, [paramTab]);
   const groups = useAll<Group>("groups");
   const students = useAll<Student>("students");
   const groupOpts = options(groups.data, (g) => g.name);

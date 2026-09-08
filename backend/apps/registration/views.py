@@ -170,11 +170,17 @@ class ConsentViewSet(CampusViewSet):
 
     def get_queryset(self):
         qs = Consent.objects.select_related("student", "granted_by").order_by("-recorded_at")
-        if getattr(self.request.user, "role", None) in _FRONT_OFFICE:
-            return qs
-        if getattr(self.request.user, "role", None) == Role.PARENT:
-            return qs.filter(student__in=Student.visible_queryset(self.request.user))
-        return qs.none()
+        role = getattr(self.request.user, "role", None)
+        if role in _FRONT_OFFICE:
+            pass
+        elif role == Role.PARENT:
+            qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
+        else:
+            return qs.none()
+        student = self.request.query_params.get("student")
+        if student:
+            qs = qs.filter(student_id=student)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)

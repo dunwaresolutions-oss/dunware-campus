@@ -10,6 +10,8 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
 
+from apps.core.search import SearchView
+
 
 def healthz(_request):
     return JsonResponse({"status": "ok", "service": "campus"})
@@ -17,6 +19,7 @@ def healthz(_request):
 
 api_patterns = [
     path("healthz/", healthz, name="healthz"),
+    path("search/", SearchView.as_view(), name="search"),
     path("auth/", include("apps.accounts.urls")),
     path("", include("apps.people.urls")),
     path("", include("apps.health.urls")),

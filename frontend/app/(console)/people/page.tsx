@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useAll, useList, options } from "@/lib/hooks";
+import { useEffect, useState } from "react";
+import { useAll, useList, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { NestedList } from "@/components/NestedList";
 import { ActionButton } from "@/components/ActionButton";
@@ -15,7 +15,8 @@ import {
   Table,
 } from "@/components/ui";
 import { Modal } from "@/components/Modal";
-import { act } from "@/lib/resource";
+import { RecordForm } from "@/components/RecordForm";
+import { act, create, retrieve } from "@/lib/resource";
 import { useQueryClient } from "@tanstack/react-query";
 import { date, datetime, label } from "@/lib/format";
 
@@ -44,6 +45,17 @@ const statusTone = (s: string) =>
 export default function PeoplePage() {
   const [tab, setTab] = useState("students");
   const [detail, setDetail] = useState<Student | null>(null);
+  const paramTab = useQueryParam("tab");
+  const focusId = useQueryParam("focus");
+
+  useEffect(() => {
+    if (paramTab) setTab(paramTab);
+  }, [paramTab]);
+  useEffect(() => {
+    if (!focusId) return;
+    setTab("students");
+    retrieve<Student>("students", focusId).then(setDetail).catch(() => {});
+  }, [focusId]);
   const groups = useAll<Group>("groups");
   const groupOpts = options(groups.data, (g) => g.name);
   const guardiansAll = useAll<{
@@ -527,8 +539,107 @@ export default function PeoplePage() {
                 { name: "file", label: "File", type: "file", required: true },
               ]}
             />
+
+            <StudentConsents studentId={detail.id} />
           </div>
         )}
+      </Modal>
+    </div>
+  );
+}
+
+const CONSENT_KINDS = [
+  "PHOTO",
+  "MEDIA",
+  "FIELD_TRIP",
+  "DATA_SHARING",
+  "MEDICAL_TREATMENT",
+  "TECHNOLOGY",
+  "SUNSCREEN",
+];
+
+function StudentConsents({ studentId }: { studentId: string }) {
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const q = useList<{
+    id: string;
+    kind: string;
+    version: string;
+    granted: boolean;
+    granted_by_name: string;
+    recorded_at: string;
+  }>("consents", { student: studentId });
+  const rows = q.data?.results ?? [];
+  const reload = () =>
+    qc.invalidateQueries({ queryKey: ["list", "consents"] });
+
+  return (
+    <div className="rounded-md border border-[var(--campus-line)]">
+      <div className="flex items-center justify-between border-b border-[var(--campus-line)] px-3 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
+          Consents
+        </span>
+        <Button size="sm" variant="subtle" onClick={() => setAdding(true)}>
+          + Record
+        </Button>
+      </div>
+
+      {q.isLoading ? (
+        <Spinner />
+      ) : rows.length === 0 ? (
+        <div className="px-3 py-5 text-center text-sm text-[var(--campus-muted)]">
+          No consent decisions recorded.
+        </div>
+      ) : (
+        <ul className="divide-y divide-[var(--campus-line)] text-sm">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-2">
+              <span>
+                {label(r.kind)}
+                {r.version && r.version !== "1" ? ` · v${r.version}` : ""}
+                {r.granted_by_name ? (
+                  <span className="text-[var(--campus-muted)]"> · {r.granted_by_name}</span>
+                ) : null}
+              </span>
+              <span className="flex items-center gap-2">
+                <Badge tone={r.granted ? "green" : "red"}>
+                  {r.granted ? "Granted" : "Withheld"}
+                </Badge>
+                <span className="text-xs text-[var(--campus-muted)]">
+                  {date(r.recorded_at)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Modal open={adding} onClose={() => setAdding(false)} title="Record a consent decision">
+        <RecordForm
+          fields={[
+            {
+              name: "kind",
+              label: "Kind",
+              type: "select",
+              required: true,
+              options: CONSENT_KINDS.map((v) => ({ value: v, label: label(v) })),
+            },
+            { name: "granted", label: "Granted", type: "checkbox" },
+            { name: "granted_by_name", label: "Recorded on behalf of" },
+            { name: "version", label: "Form version", placeholder: "1" },
+          ]}
+          submitLabel="Record"
+          onSubmit={async (values) => {
+            await create("consents", {
+              ...values,
+              student: studentId,
+              version: values.version || "1",
+            });
+            setAdding(false);
+            reload();
+          }}
+          onCancel={() => setAdding(false)}
+        />
       </Modal>
     </div>
   );

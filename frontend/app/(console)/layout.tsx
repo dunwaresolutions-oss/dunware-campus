@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { isStaff, logout, whoami } from "@/lib/auth";
 import { label } from "@/lib/format";
+import { CommandPalette } from "@/components/CommandPalette";
 
 const NAV = [
   ["/", "Dashboard"],
@@ -61,6 +62,18 @@ export default function ConsoleLayout({
           <span className="text-base font-semibold tracking-tight">Campus</span>
         </div>
 
+        <div className="px-2.5 pt-2.5">
+          <button
+            onClick={() => window.dispatchEvent(new Event("campus:search"))}
+            className="flex w-full items-center justify-between rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm text-[var(--campus-muted)] transition-colors hover:border-[var(--campus-accent)]"
+          >
+            <span>Search…</span>
+            <kbd className="rounded border border-[var(--campus-line)] px-1.5 text-[11px]">
+              Ctrl K
+            </kbd>
+          </button>
+        </div>
+
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5 text-sm">
           {NAV.map(([href, text]) => {
             const on = active(href);
@@ -107,6 +120,8 @@ export default function ConsoleLayout({
           {children}
         </div>
       </main>
+
+      <CommandPalette />
     </div>
   );
 }

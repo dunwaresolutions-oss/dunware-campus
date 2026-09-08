@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAll, options } from "@/lib/hooks";
+import { useAll, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { NestedList } from "@/components/NestedList";
 import { Modal } from "@/components/Modal";
@@ -27,6 +27,19 @@ export default function GradesPage() {
   const [tab, setTab] = useState("assessments");
   const [openCard, setOpenCard] = useState<ReportCardRow | null>(null);
   const toast = useToast();
+  const paramTab = useQueryParam("tab");
+  const focusId = useQueryParam("focus");
+
+  useEffect(() => {
+    if (paramTab) setTab(paramTab);
+  }, [paramTab]);
+  useEffect(() => {
+    if (!focusId) return;
+    setTab("reportcards");
+    retrieve<ReportCardRow>("report-cards", focusId)
+      .then(setOpenCard)
+      .catch(() => {});
+  }, [focusId]);
   const groups = useAll<{ id: number; name: string }>("groups");
   const terms = useAll<{ id: number; name: string }>("terms");
   const schemes = useAll<{ id: number; name: string }>("assessment-schemes");

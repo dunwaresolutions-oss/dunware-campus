@@ -1,7 +1,22 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { list, listAll, type Query } from "./resource";
+
+/** Read one URL query param, client-side only — no <Suspense> needed, which
+ *  keeps `output: export` happy. Updates on back/forward. */
+export function useQueryParam(name: string): string | null {
+  const [value, setValue] = useState<string | null>(null);
+  useEffect(() => {
+    const read = () =>
+      setValue(new URLSearchParams(window.location.search).get(name));
+    read();
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, [name]);
+  return value;
+}
 
 /** Paged list for a table. */
 export function useList<T>(resource: string, query?: Query, enabled = true) {

@@ -1,9 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { inviteStaff, listUsers } from "@/lib/auth";
-import { useAll, options } from "@/lib/hooks";
+import { useAll, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import {
   PageHeader,
@@ -21,6 +21,10 @@ const INVITE_ROLES = ["ADMIN", "TEACHER", "TUTOR", "FRONT_DESK"];
 
 export default function StaffPage() {
   const [tab, setTab] = useState("directory");
+  const paramTab = useQueryParam("tab");
+  useEffect(() => {
+    if (paramTab) setTab(paramTab);
+  }, [paramTab]);
   const toast = useToast();
   const users = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const groups = useAll<{ id: number; name: string }>("groups");
