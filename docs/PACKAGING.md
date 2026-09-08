@@ -9,7 +9,7 @@ running the frozen build — not just writing the freeze scripts.
 ```
 frontend/          npm run build              -> frontend/out/            (static SPA)
 backend/            pyinstaller campus.spec     -> dist/campus-app/         (frozen Django + waitress)
-deploy/_thirdparty/  (staged by hand, see below) -> pgsql/, caddy/, nssm.exe
+deploy/_thirdparty/  (staged by hand, see below) -> pgsql/, caddy/, nssm.exe[, remote/]
 deploy/campus.iss   iscc campus.iss             -> dist/installer/Campus-Setup.exe
 ```
 
@@ -17,8 +17,17 @@ deploy/campus.iss   iscc campus.iss             -> dist/installer/Campus-Setup.e
 `campus-app.exe serve` (what the "Campus App" Windows service runs) or
 `campus-app.exe manage <django command>` (what `install.ps1` uses for
 `migrate`/`collectstatic`, and what an operator uses for
-`run_retention`/`export_student`/`erase_student` after install — there is no
+`run_retention`/`export_student`/`erase_student` — and now
+`support_bundle`/`support_tail`/`support_sql` — after install; there is no
 Python on the target machine to run `manage.py` directly).
+
+Before it dispatches, `main()` calls `_apply_hotfix_overlay()`: if
+`%ProgramData%\Campus\app\hotfix\` holds any `.py`, a narrow meta-path finder is
+inserted ahead of PyInstaller's frozen importer so a corrected module at its
+real package path shadows the bundled one. Empty dir → no-op. This is the
+sanctioned on-site fix path for a logic bug; active overlays print to the
+service log and are flagged by `manage check` (`core.W001`). See
+`docs/DEPLOYMENT.md#field-support`.
 
 ## Build it yourself
 

@@ -20,6 +20,7 @@ a named phase · **N/A** — doesn't apply to this system's shape.
 | 1.5 | Deny-by-default access control | Pass | DRF default `IsAuthenticated` (`settings.base`); `RoleRequired` denies an unlisted role, including a viewset that forgot to subclass it (`apps/core/tests/test_permissions.py`) |
 | 1.9 | Single, vetted authentication/access-control library | Pass | Django's own auth + `django-otp` + `django-axes` — no bespoke crypto or session handling |
 | 1.14 | Segregated architecture tiers | Pass | Static SPA / DRF API / Postgres are separate processes even in the single-box installer (`docs/ARCHITECTURE.md`) |
+| 1.8 | Trust boundaries documented, incl. optional remote access | Pass (with note) | Base case has no public exposure. **Optional** off-premises access (`deploy/remote-setup.ps1`) adds one trust boundary: <br>• **Cloudflare Tunnel** — Cloudflare's edge terminates TLS to enforce Access, so request/response plaintext is *transiently* processable there (not stored; connection metadata logged). Compensating controls: Cloudflare Access is a mandatory auth gate *before* Campus; Campus login + staff MFA still apply; `RemoteClientIPMiddleware` restores the true client IP for axes/audit **only from a loopback peer** (`apps/core/remote_proxy.py`, `test_remote_proxy.py`); `/admin` stays on the `127.0.0.1` allow-list and is unreachable off-LAN; the feature is `.env`-gated and reversible. <br>• **WireGuard / plain gateway** — TLS terminates on the Campus box; no third party sees plaintext. <br>Data at rest never leaves the box in any mode (`docs/REMOTE_ACCESS_AND_YOUR_DATA.md`). |
 
 ## V2 — Authentication
 
@@ -97,6 +98,7 @@ a named phase · **N/A** — doesn't apply to this system's shape.
 |---|---|---|---|
 | 9.1.1 | TLS for all communication carrying sensitive data | Pass (prod) | Caddy `tls internal` + `SECURE_SSL_REDIRECT`/HSTS in `settings/prod.py`; dev is plaintext localhost by design (documented) |
 | 9.1.2 | Old/weak TLS versions and ciphers disabled | Pass | Delegated to Caddy's modern defaults (TLS 1.2+); no custom cipher config to get wrong |
+| 9.2.1 | Third parties in the connection path are trusted deliberately, not by default | Pass (with note) | LAN-only by default — no third party. If a site opts into **Cloudflare Tunnel** via `remote-setup.ps1`, Cloudflare is a deliberate, documented, opt-in intermediary that terminates TLS at its edge; the school signs off on transient in-transit visibility and metadata logging on non-domestic infrastructure (`docs/REMOTE_ACCESS_AND_YOUR_DATA.md`). WireGuard and gateway modes exist precisely for a site that will not accept this — TLS then terminates only on the Campus box. |
 
 ## V10 — Malicious code / supply chain
 

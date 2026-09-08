@@ -13,8 +13,10 @@ what a machine needs before install, and what to do after.
 - ~4 GB free disk for the app + a growing database.
 - **Disk encryption on** (BitLocker). The installer checks and warns loudly if
   not — this box will hold children's PII.
-- LAN-only by default. If remote access is wanted, that is the operator's VPN,
-  not an internet-exposed port.
+- LAN-only by default. Off-premises access is **opt-in**, provisioned
+  separately with `deploy\remote-setup.ps1` (Cloudflare Tunnel / WireGuard /
+  plain gateway) — see **Remote access** below and
+  `docs/REMOTE_ACCESS_AND_YOUR_DATA.md`.
 
 ## Third-party binaries (stage before a real install)
 
@@ -30,6 +32,7 @@ being registered — see `docs/PACKAGING.md` for the drill that proved this.
 | PostgreSQL 16, portable Windows zip build | `deploy/_thirdparty/pgsql/` (`pgsql/bin/initdb.exe` etc.) | https://www.enterprisedb.com/download-postgresql-binaries | PostgreSQL License |
 | Caddy, Windows amd64 | `deploy/_thirdparty/caddy/caddy.exe` | https://caddyserver.com/download | Apache 2.0 |
 | NSSM — wraps `caddy.exe`/`campus-app.exe` as Windows services (neither speaks the Windows Service Control Protocol itself; `pg_ctl register` does, so Postgres needs no such shim) | `deploy/_thirdparty/caddy/nssm.exe` | https://nssm.cc/download | Public domain / permissive |
+| **Remote access only** — `cloudflared.exe` and/or `wireguard.exe` + `wg.exe`. Needed *only* for a site that will run `remote-setup.ps1`; a LAN-only install ignores their absence exactly like the row above. | `deploy/_thirdparty/remote/` → `{app}\remote\bin` | https://github.com/cloudflare/cloudflared/releases · https://www.wireguard.com/install/ | Apache 2.0 · GPLv2 |
 
 Stage all three before running Inno Setup (`deploy/campus.iss`) and the
 installer's `[Files]` step bundles them in; `install.ps1` picks them up
@@ -94,6 +97,53 @@ name (and loopback for `localhost`), not arbitrary addresses. Restart the
 browser fully after importing.
 
 `repair-campus.ps1` re-runs the trust step on an existing install.
+
+## Remote access (optional)
+
+Campus is LAN-only until a technician runs `deploy\remote-setup.ps1` (laid down
+by the installer at `%ProgramData%\Campus\scripts\`), elevated, on the box.
+Stage the binaries from the table above first. All three modes keep the
+database, files and backups on-premises — see
+`docs/REMOTE_ACCESS_AND_YOUR_DATA.md` for what differs (in-transit visibility)
+and for the language to give a school's privacy officer.
+
+| Mode | Command (fill the brackets) | Needs |
+|---|---|---|
+| **Cloudflare Tunnel** — easiest for parents, nothing to install | `remote-setup.ps1 -Mode Tunnel -Hostname <portal.school.edu.bs> [-AccessEmails "a@x,b@y"]` | a Cloudflare account + a domain in Cloudflare; then set up Cloudflare Access on the hostname (the script prints the steps) |
+| **WireGuard** — best for staff, ciphertext-only in transit | `remote-setup.ps1 -Mode WireGuard`, then per device `-Mode WireGuard -AddPeer "<name>" -Endpoint <public-ip-or-ddns>` | one **UDP** port forwarded to the box |
+| **Gateway** — own domain, own Let's Encrypt cert, TLS ends on the box | `remote-setup.ps1 -Mode Gateway -Hostname <portal.school.edu.bs> -AcmeEmail <admin@school.edu.bs>` | ports **80 + 443** forwarded, public DNS A record |
+| **Status / Off** | `remote-setup.ps1 -Mode Status` · `-Mode Off` | — (`Off` always leaves a working LAN install) |
+
+The Django side is inert until this runs: `REMOTE_ACCESS_ENABLED` in `.env`
+gates a middleware that restores the real client IP from the fronting layer's
+header (`CF-Connecting-IP` etc.) **only when the peer is loopback**, so axes
+lockout and the audit log attribute remote users correctly. Tunnel mode adds a
+4th Windows service, **Campus Remote** (`cloudflared`, outbound-only). The
+superadmin console has a read-only **Remote access** page showing the current
+state. `/admin` is never reachable off-LAN, in any mode.
+
+## Field support
+
+Run these in the elevated shell on the box (`campus-app.exe` is at
+`%ProgramData%\Campus\app\`):
+
+- `campus-app.exe manage support_bundle` → one **redacted** ZIP (logs, health,
+  service states, `.env` with secrets stripped, table row counts). Contains no
+  student data — safe to email before a visit or carry away after one.
+- `campus-app.exe manage support_tail app|proxy|db|remote [-n N]` → tail a
+  service log.
+- `campus-app.exe manage support_sql "<query>" --operator "<name>" [--write]`
+  → read-only unless `--write` (always rolls back otherwise); writes one
+  append-only audit entry per run.
+
+**Hotfix overlay** — to fix a logic bug on site without a full rebuild: drop the
+corrected `.py` under `%ProgramData%\Campus\app\hotfix\` at its real package
+path (e.g. `hotfix\apps\grades\services.py`), restart **Campus App**, verify.
+It shadows the frozen copy. Active hotfixes are logged at startup, flagged by
+`manage check` (`core.W001`), and shown in `support_bundle` + the Remote access
+page — so a patched box is never invisible. Fold the fix into a real release
+and clear the folder once it ships. Cannot add a dependency or change a model
+(those need a patched build via `repair-campus.ps1 -RefreshAppFrom`).
 
 ## Day 2
 
