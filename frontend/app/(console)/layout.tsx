@@ -5,23 +5,29 @@ import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { isStaff, logout, whoami } from "@/lib/auth";
+import { isStaff, logout, whoami, type Role } from "@/lib/auth";
 import { label } from "@/lib/format";
 import { CommandPalette } from "@/components/CommandPalette";
 
-const NAV = [
+const OFFICE: Role[] = ["SUPERADMIN", "ADMIN", "FRONT_DESK"];
+const ADMIN: Role[] = ["SUPERADMIN", "ADMIN"];
+const INSTRUCT: Role[] = ["SUPERADMIN", "ADMIN", "TEACHER", "TUTOR"];
+
+/** [href, label, roles?] — no `roles` means every staff role sees it. */
+const NAV: [string, string, Role[]?][] = [
   ["/", "Dashboard"],
   ["/people/", "Students"],
-  ["/registration/", "Registration"],
+  ["/registration/", "Registration", OFFICE],
   ["/scheduling/", "Scheduling"],
   ["/attendance/", "Attendance"],
-  ["/lessons/", "Lessons"],
+  ["/lessons/", "Lessons", INSTRUCT],
   ["/grades/", "Grades"],
   ["/booking/", "Booking"],
   ["/communication/", "Messages"],
-  ["/billing/", "Billing"],
-  ["/staff/", "Staff"],
-] as const;
+  ["/billing/", "Billing", OFFICE],
+  ["/staff/", "Staff", ADMIN],
+  ["/audit/", "Audit log", ADMIN],
+];
 
 export default function ConsoleLayout({
   children,
@@ -32,12 +38,26 @@ export default function ConsoleLayout({
   const pathname = usePathname();
   const { data: me, isLoading } = useQuery({ queryKey: ["me"], queryFn: whoami });
 
+  const nav = NAV.filter(
+    ([, , roles]) => !roles || (me?.role != null && roles.includes(me.role)),
+  );
+
   useEffect(() => {
     if (isLoading) return;
-    if (!isStaff(me?.role)) router.replace("/login/");
-    else if (me?.mfa_enrollment_required || (me?.must_use_mfa && !me?.mfa_verified))
+    if (!isStaff(me?.role)) {
+      router.replace("/login/");
+      return;
+    }
+    if (me?.mfa_enrollment_required || (me?.must_use_mfa && !me?.mfa_verified)) {
       router.replace("/mfa/");
-  }, [isLoading, me, router]);
+      return;
+    }
+    // a role that reaches a page not in its nav (typed URL) -> home
+    const allowed = nav.some(([href]) =>
+      href === "/" ? pathname === "/" : pathname.startsWith(href),
+    );
+    if (!allowed) router.replace("/");
+  }, [isLoading, me, router, pathname, nav]);
 
   if (isLoading || !isStaff(me?.role)) return null;
   if (me?.mfa_enrollment_required || (me?.must_use_mfa && !me?.mfa_verified))
@@ -75,7 +95,7 @@ export default function ConsoleLayout({
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2.5 text-sm">
-          {NAV.map(([href, text]) => {
+          {nav.map(([href, text]) => {
             const on = active(href);
             return (
               <Link

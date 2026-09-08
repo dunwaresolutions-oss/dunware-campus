@@ -21,6 +21,7 @@ api_patterns = [
     path("healthz/", healthz, name="healthz"),
     path("search/", SearchView.as_view(), name="search"),
     path("auth/", include("apps.accounts.urls")),
+    path("", include("apps.audit.urls")),
     path("", include("apps.people.urls")),
     path("", include("apps.health.urls")),
     path("", include("apps.registration.urls")),
