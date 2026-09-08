@@ -31,6 +31,30 @@ DEBUG = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["https://localhost"])
 
+# ── Optional off-premises remote access (docs/REMOTE_ACCESS_AND_YOUR_DATA.md) ──
+# Everything here is inert on a normal LAN-only install. The companion tool
+# deploy/remote-setup.ps1 sets these when a school opts in: a public hostname is
+# routed to the bundled Caddy at localhost through a Cloudflare Tunnel, a VPN, or
+# a plain gateway. No student data is stored anywhere but this box either way.
+REMOTE_ACCESS_ENABLED = env.bool("REMOTE_ACCESS_ENABLED", default=False)
+REMOTE_ACCESS_HOSTS = env.list("REMOTE_ACCESS_HOSTS", default=[])
+# Header the fronting layer puts the true client IP in (see apps/core/remote_proxy.py).
+# Cloudflare Tunnel -> "CF-Connecting-IP"; WireGuard/VPN -> "" ; gateway -> "X-Forwarded-For".
+REMOTE_ACCESS_CLIENT_IP_HEADER = env("REMOTE_ACCESS_CLIENT_IP_HEADER", default="")
+# REMOTE_ADDR values allowed to assert that header — the tunnel client and Caddy
+# both connect from this box's loopback.
+REMOTE_ACCESS_TRUSTED_PROXIES = env.list(
+    "REMOTE_ACCESS_TRUSTED_PROXIES", default=["127.0.0.1", "::1"]
+)
+
+if REMOTE_ACCESS_ENABLED and REMOTE_ACCESS_HOSTS:
+    ALLOWED_HOSTS = list(dict.fromkeys([*ALLOWED_HOSTS, *REMOTE_ACCESS_HOSTS]))
+    CSRF_TRUSTED_ORIGINS = list(
+        dict.fromkeys(
+            [*CSRF_TRUSTED_ORIGINS, *(f"https://{h}" for h in REMOTE_ACCESS_HOSTS)]
+        )
+    )
+
 # 32-byte base64 key for AES-GCM field encryption (apps/core/fields.py).
 # Never logged, never in the DB, never in the repo.
 FIELD_ENCRYPTION_KEY = env("FIELD_ENCRYPTION_KEY", default="")
@@ -93,6 +117,7 @@ MIDDLEWARE = [
     "django_otp.middleware.OTPMiddleware",           # MFA state per request
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.remote_proxy.RemoteClientIPMiddleware",  # remote-access real IP
     "apps.audit.middleware.AuditContextMiddleware",  # actor/IP for the audit log
     "apps.core.admin_guard.AdminBreakGlassMiddleware",  # /admin: superuser + MFA + IP allow-list
     "axes.middleware.AxesMiddleware",                # keep last
