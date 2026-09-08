@@ -11,6 +11,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 
 const OFFICE: Role[] = ["SUPERADMIN", "ADMIN", "FRONT_DESK"];
 const ADMIN: Role[] = ["SUPERADMIN", "ADMIN"];
+const SUPER: Role[] = ["SUPERADMIN"];
 const INSTRUCT: Role[] = ["SUPERADMIN", "ADMIN", "TEACHER", "TUTOR"];
 
 /** [href, label, roles?] — no `roles` means every staff role sees it. */
@@ -27,6 +28,7 @@ const NAV: [string, string, Role[]?][] = [
   ["/billing/", "Billing", OFFICE],
   ["/staff/", "Staff", ADMIN],
   ["/audit/", "Audit log", ADMIN],
+  ["/remote-access/", "Remote access", SUPER],
 ];
 
 export default function ConsoleLayout({

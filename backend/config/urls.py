@@ -11,6 +11,7 @@ from django.http import JsonResponse
 from django.urls import include, path
 
 from apps.core.search import SearchView
+from apps.core.views import RemoteAccessStatusView
 
 
 def healthz(_request):
@@ -20,6 +21,7 @@ def healthz(_request):
 api_patterns = [
     path("healthz/", healthz, name="healthz"),
     path("search/", SearchView.as_view(), name="search"),
+    path("remote-access/status/", RemoteAccessStatusView.as_view(), name="remote-access-status"),
     path("auth/", include("apps.accounts.urls")),
     path("", include("apps.audit.urls")),
     path("", include("apps.people.urls")),

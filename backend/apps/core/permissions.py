@@ -57,6 +57,13 @@ class AdminOnly(RoleRequired):
     allowed_roles = ("SUPERADMIN", "ADMIN")
 
 
+class SuperadminOnly(RoleRequired):
+    """Deployment-level surfaces (remote-access config, break-glass) — the one
+    role that owns how the box is run, not day-to-day administration."""
+
+    allowed_roles = ("SUPERADMIN",)
+
+
 class PortalUser(RoleRequired):
     allowed_roles = ("PARENT", "STUDENT")
 
