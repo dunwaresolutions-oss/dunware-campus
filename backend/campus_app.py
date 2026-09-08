@@ -20,8 +20,43 @@ BASE_DIR from sys.executable when frozen — see the `sys.frozen` check there).
 """
 from __future__ import annotations
 
+import importlib.util
 import os
 import sys
+from pathlib import Path
+
+
+def _apply_hotfix_overlay() -> None:
+    """Let a corrected ``.py`` dropped under ``<exe dir>\\hotfix`` at its real
+    package path shadow the frozen copy — the sanctioned way to fix a logic bug
+    on a customer site without a full re-freeze (see docs/DEPLOYMENT.md and
+    apps/core/hotfix.py). A frozen build serves modules from the PYZ via a
+    meta-path importer that outranks ``sys.path``; this puts a narrow
+    filesystem finder ahead of it that only claims names actually present in
+    the hotfix dir, so everything else is untouched. No-op when the dir is
+    absent or empty. Active overlays are printed to stderr (-> the service log)
+    and re-surfaced by the ``core.W001`` system check.
+    """
+    root = Path(sys.executable).resolve().parent / "hotfix" if getattr(
+        sys, "frozen", False
+    ) else Path(__file__).resolve().parent / "hotfix"
+    if not root.is_dir():
+        return
+    overlaid = sorted(p.relative_to(root).as_posix() for p in root.rglob("*.py"))
+    if not overlaid:
+        return
+
+    class _HotfixFinder:
+        @staticmethod
+        def find_spec(fullname, path=None, target=None):
+            rel = fullname.replace(".", os.sep)
+            for cand in (root / rel / "__init__.py", root / f"{rel}.py"):
+                if cand.is_file():
+                    return importlib.util.spec_from_file_location(fullname, str(cand))
+            return None
+
+    sys.meta_path.insert(0, _HotfixFinder)
+    print(f"campus: HOTFIX OVERLAY ACTIVE — {', '.join(overlaid)}", file=sys.stderr, flush=True)
 
 
 def _bootstrap_django() -> None:
@@ -77,6 +112,7 @@ def cmd_manage(argv: list[str]) -> None:
 
 
 def main() -> None:
+    _apply_hotfix_overlay()
     if len(sys.argv) < 2 or sys.argv[1] not in ("serve", "manage"):
         print(__doc__)
         raise SystemExit(2)

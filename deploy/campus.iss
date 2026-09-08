@@ -68,10 +68,14 @@ Source: "proxy\Caddyfile"; DestDir: "{app}\caddy"; Flags: ignoreversion
 ; their presence at install time either way.
 Source: "_thirdparty\pgsql\*"; DestDir: "{app}\pgsql"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
 Source: "_thirdparty\caddy\*"; DestDir: "{app}\caddy\bin"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
+; remote-access helpers (cloudflared / WireGuard) - staged only for sites that
+; buy off-premises access; optional here exactly like caddy/pgsql above.
+Source: "_thirdparty\remote\*"; DestDir: "{app}\remote\bin"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
 
 ; the first-run wizard + day-2 ops scripts
 Source: "install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "repair-campus.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "remote-setup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "create-campus-admin.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "campus.ico"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "backup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
@@ -88,6 +92,11 @@ Source: "campus.ico"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{app}\pgdata"; Permissions: admins-full system-full
 Name: "{app}\media"; Permissions: admins-full system-full
 Name: "{app}\logs"
+; a technician drops a corrected .py here (at its real package path) to shadow
+; the frozen build on site - see docs/DEPLOYMENT.md and apps/core/hotfix.py
+Name: "{app}\app\hotfix"
+; remote-setup.ps1 writes tunnel/VPN config here when a site opts in
+Name: "{app}\remote"
 
 [Icons]
 Name: "{group}\Campus"; Filename: "{app}\launch-campus.url"; IconFilename: "{app}\campus.ico"

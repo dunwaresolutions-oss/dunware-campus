@@ -41,6 +41,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from apps.core.hotfix import active_hotfixes
 from apps.core.support import install_root as _install_root
 from apps.core.version import build_stamp
 
@@ -157,13 +158,7 @@ class Command(BaseCommand):
         except OSError as exc:  # noqa: BLE001
             lines.append(f"disk         : (unavailable: {exc})")
 
-        hotfix_dir = root / "app" / "hotfix"
-        if hotfix_dir.is_dir():
-            active = [
-                f.relative_to(hotfix_dir).as_posix()
-                for f in sorted(hotfix_dir.rglob("*.py"))
-            ]
-            lines.append(f"hotfixes     : {active or 'none'}")
+        lines.append(f"hotfixes     : {active_hotfixes() or 'none'}")
 
         if sys.platform == "win32":
             lines.append("")

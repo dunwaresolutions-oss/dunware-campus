@@ -182,7 +182,7 @@ try {
 }
 
 # ── 2. directory layout ──────────────────────────────────────────────────
-foreach ($d in @("pgdata", "logs", "media")) {
+foreach ($d in @("pgdata", "logs", "media", "app\hotfix", "remote")) {
   New-Item -ItemType Directory -Force -Path (Join-Path $InstallRoot $d) | Out-Null
 }
 

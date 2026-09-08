@@ -6,3 +6,6 @@ class CoreConfig(AppConfig):
     name = "apps.core"
     label = "core"
     verbose_name = "Campus - Core"
+
+    def ready(self):
+        from apps.core import checks  # noqa: F401 - registers core.W001
