@@ -76,6 +76,8 @@ Source: "_thirdparty\remote\*"; DestDir: "{app}\remote\bin"; Flags: recursesubdi
 Source: "install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "repair-campus.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "remote-setup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "remote-setup.lib.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "remote-setup-ui.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "create-campus-admin.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "campus.ico"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "backup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
@@ -101,6 +103,8 @@ Name: "{app}\remote"
 [Icons]
 Name: "{group}\Campus"; Filename: "{app}\launch-campus.url"; IconFilename: "{app}\campus.ico"
 Name: "{commondesktop}\Campus"; Filename: "{app}\launch-campus.url"; IconFilename: "{app}\campus.ico"; Tasks: desktopicon
+; the off-premises access setup window (self-elevates); the .ps1 stays for scripted runs
+Name: "{group}\Campus - Remote Access Setup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\remote-setup-ui.ps1"""; IconFilename: "{app}\campus.ico"; Comment: "Turn off-site access to Campus on or off"
 
 [Run]
 ; NO runascurrentuser here - install.ps1 registers Windows services (nssm,

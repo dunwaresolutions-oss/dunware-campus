@@ -100,19 +100,25 @@ browser fully after importing.
 
 ## Remote access (optional)
 
-Campus is LAN-only until a technician runs `deploy\remote-setup.ps1` (laid down
-by the installer at `%ProgramData%\Campus\scripts\`), elevated, on the box.
-Stage the binaries from the table above first. All three modes keep the
-database, files and backups on-premises — see
+Campus is LAN-only until someone deliberately turns off-premises access on. The
+way to do it is the **Start Menu → "Campus — Remote Access Setup"** window on
+the box (it self-elevates): pick a mode, fill the fields, click **Apply**;
+progress and the follow-up steps show in the log pane, and a **Turn OFF** option
+reverts to LAN-only. Stage the binaries from the table above first. All three
+modes keep the database, files and backups on-premises — see
 `docs/REMOTE_ACCESS_AND_YOUR_DATA.md` for what differs (in-transit visibility)
 and for the language to give a school's privacy officer.
 
-| Mode | Command (fill the brackets) | Needs |
+`scripts\remote-setup.ps1` is the same actions without the window, for scripted
+runs (`-Mode Tunnel|WireGuard|Gateway|Status|Off`); both share
+`remote-setup.lib.ps1`.
+
+| Mode | What you fill in | Needs |
 |---|---|---|
-| **Cloudflare Tunnel** — easiest for parents, nothing to install | `remote-setup.ps1 -Mode Tunnel -Hostname <portal.school.edu.bs> [-AccessEmails "a@x,b@y"]` | a Cloudflare account + a domain in Cloudflare; then set up Cloudflare Access on the hostname (the script prints the steps) |
-| **WireGuard** — best for staff, ciphertext-only in transit | `remote-setup.ps1 -Mode WireGuard`, then per device `-Mode WireGuard -AddPeer "<name>" -Endpoint <public-ip-or-ddns>` | one **UDP** port forwarded to the box |
-| **Gateway** — own domain, own Let's Encrypt cert, TLS ends on the box | `remote-setup.ps1 -Mode Gateway -Hostname <portal.school.edu.bs> -AcmeEmail <admin@school.edu.bs>` | ports **80 + 443** forwarded, public DNS A record |
-| **Status / Off** | `remote-setup.ps1 -Mode Status` · `-Mode Off` | — (`Off` always leaves a working LAN install) |
+| **Cloudflare Tunnel** — easiest for parents, nothing to install | public hostname, allowed emails (optional); a **Sign in to Cloudflare** button opens the browser | a Cloudflare account + a domain in Cloudflare; finish the Cloudflare Access policy in the dashboard (the log prints the steps) |
+| **WireGuard** — best for staff, ciphertext-only in transit | listen port; then per device a name + the school's public IP/DDNS → **Create device config** writes a `.conf` to import | one **UDP** port forwarded to the box |
+| **Gateway** — own domain, own Let's Encrypt cert, TLS ends on the box | public hostname, Let's Encrypt email | ports **80 + 443** forwarded, public DNS A record |
+| **Turn OFF** | — | always leaves a working LAN install |
 
 The Django side is inert until this runs: `REMOTE_ACCESS_ENABLED` in `.env`
 gates a middleware that restores the real client IP from the fronting layer's

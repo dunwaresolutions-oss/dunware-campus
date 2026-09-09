@@ -68,9 +68,10 @@ class RemoteAccessStatusView(APIView):
                 "hotfixes": active_hotfixes(),
                 "build": build_stamp(),
                 "manage_hint": (
-                    "Change this with deploy\\remote-setup.ps1 "
-                    "(-Mode Tunnel | WireGuard | Gateway | Status | Off), run "
-                    "elevated on the Campus box."
+                    "To change this, open “Campus - Remote Access Setup” "
+                    "from the Start menu on the Campus box (it asks for "
+                    "administrator rights). The scripted equivalent is "
+                    "scripts\\remote-setup.ps1."
                 ),
             }
         )

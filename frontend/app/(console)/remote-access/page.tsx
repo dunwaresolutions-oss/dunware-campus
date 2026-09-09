@@ -25,7 +25,7 @@ export default function RemoteAccessPage() {
     <div>
       <PageHeader
         title="Remote access"
-        subtitle="Off-premises access to Campus. Read-only here — a technician turns it on or off on the box with deploy\\remote-setup.ps1."
+        subtitle="Off-premises access to Campus. Read-only here — to change it, open “Campus · Remote Access Setup” from the Start menu on the server."
       />
 
       {q.isLoading ? (
@@ -81,7 +81,10 @@ export default function RemoteAccessPage() {
             </div>
           </Card>
 
-          <p className="text-xs text-[var(--campus-muted)]">{q.data!.manage_hint}</p>
+          <p className="text-xs text-[var(--campus-muted)]">
+            To turn remote access on or off, open <b>Campus · Remote Access Setup</b> from
+            the Start menu on the server (it asks for administrator rights).
+          </p>
           <p className="text-xs text-[var(--campus-muted)]">
             Data at rest never leaves this box in any mode. In Cloudflare Tunnel
             mode, connections pass through Cloudflare&rsquo;s network in transit —
