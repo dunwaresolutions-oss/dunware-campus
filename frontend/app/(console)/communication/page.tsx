@@ -81,6 +81,7 @@ export default function CommunicationPage() {
           <CrudPanel<AnnRow>
             resource="announcements"
             singular="announcement"
+            onRowOpen={setOpenAnn}
             columns={[
               { header: "Title", cell: (r) => r.title },
               { header: "Audience", cell: (r) => label(r.audience) },
@@ -110,30 +111,25 @@ export default function CommunicationPage() {
               { name: "group", label: "Group (for GROUP audience)", type: "select", options: groupOpts },
               { name: "pinned", label: "Pinned", type: "checkbox" },
             ]}
-            extraRowActions={(row, reload) => (
-              <>
-                <Button size="sm" variant="ghost" onClick={() => setOpenAnn(row)}>
-                  Open
+            extraRowActions={(row, reload) =>
+              !row.published_at ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    try {
+                      await act("announcements", row.id, "publish");
+                      toast("success", "Published & emailed");
+                      reload();
+                    } catch (e) {
+                      toast("error", apiMessage(e));
+                    }
+                  }}
+                >
+                  Publish
                 </Button>
-                {!row.published_at && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={async () => {
-                      try {
-                        await act("announcements", row.id, "publish");
-                        toast("success", "Published & emailed");
-                        reload();
-                      } catch (e) {
-                        toast("error", apiMessage(e));
-                      }
-                    }}
-                  >
-                    Publish
-                  </Button>
-                )}
-              </>
-            )}
+              ) : null
+            }
           />
         </>
       )}
@@ -154,6 +150,7 @@ export default function CommunicationPage() {
           <CrudPanel<IncRow>
             resource="incident-reports"
             singular="incident report"
+            onRowOpen={setOpenInc}
             columns={[
               { header: "Student", cell: (r) => studentName(r.student) },
               { header: "Category", cell: (r) => label(r.category) },
@@ -213,30 +210,25 @@ export default function CommunicationPage() {
               { name: "description", label: "Description (encrypted)", type: "textarea", required: true },
               { name: "action_taken", label: "Action taken (encrypted)", type: "textarea" },
             ]}
-            extraRowActions={(row, reload) => (
-              <>
-                <Button size="sm" variant="ghost" onClick={() => setOpenInc(row)}>
-                  Open
+            extraRowActions={(row, reload) =>
+              row.status === "DRAFT" ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={async () => {
+                    try {
+                      await act("incident-reports", row.id, "notify");
+                      toast("success", "Guardians notified");
+                      reload();
+                    } catch (e) {
+                      toast("error", apiMessage(e));
+                    }
+                  }}
+                >
+                  Notify guardians
                 </Button>
-                {row.status === "DRAFT" && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={async () => {
-                      try {
-                        await act("incident-reports", row.id, "notify");
-                        toast("success", "Guardians notified");
-                        reload();
-                      } catch (e) {
-                        toast("error", apiMessage(e));
-                      }
-                    }}
-                  >
-                    Notify guardians
-                  </Button>
-                )}
-              </>
-            )}
+              ) : null
+            }
           />
         </>
       )}

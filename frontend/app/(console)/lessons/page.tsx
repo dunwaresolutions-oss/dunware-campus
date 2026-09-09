@@ -95,6 +95,7 @@ export default function LessonsPage() {
           <CrudPanel<PlanRow>
             resource="lesson-plans"
             singular="lesson plan"
+            onRowOpen={setOpenPlan}
             columns={[
               { header: "Title", cell: (r) => r.title },
               { header: "Date", cell: (r) => date(r.date) },
@@ -131,11 +132,6 @@ export default function LessonsPage() {
                 help: "The run of the session. There is more room for this on Open.",
               },
             ]}
-            extraRowActions={(row) => (
-              <Button size="sm" variant="ghost" onClick={() => setOpenPlan(row)}>
-                Open
-              </Button>
-            )}
           />
         </>
       )}
@@ -153,6 +149,7 @@ export default function LessonsPage() {
           <CrudPanel<UnitRow>
             resource="curriculum-units"
             singular="unit"
+            onRowOpen={setOpenUnit}
             columns={[
               { header: "Seq", cell: (r) => r.sequence ?? "—" },
               { header: "Title", cell: (r) => r.title },
@@ -185,11 +182,6 @@ export default function LessonsPage() {
                 help: "Orders this unit against the group's others (1, 2, 3 …).",
               },
             ]}
-            extraRowActions={(row) => (
-              <Button size="sm" variant="ghost" onClick={() => setOpenUnit(row)}>
-                Open
-              </Button>
-            )}
           />
         </>
       )}
@@ -243,6 +235,19 @@ export default function LessonsPage() {
               { name: "title", label: "Title", required: true },
               { name: "url", label: "URL", help: "For a link resource." },
               { name: "body", label: "Note", type: "textarea", help: "For a note resource." },
+            ]}
+            detailTitle={(r) => `Resource — ${r.title as string}`}
+            detailFields={[
+              { label: "Title", value: (r) => r.title as string },
+              { label: "Kind", value: (r) => label(r.kind as string) },
+              {
+                label: "Lesson plan",
+                value: (r) =>
+                  plans.data?.find((p) => p.id === r.lesson)?.title ??
+                  String(r.lesson),
+              },
+              { label: "URL", value: (r) => (r.url as string) || "—" },
+              { label: "Note", value: (r) => (r.body as string) || "—", long: true },
             ]}
           />
         </>

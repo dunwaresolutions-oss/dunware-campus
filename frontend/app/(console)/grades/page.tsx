@@ -105,6 +105,20 @@ export default function GradesPage() {
               })),
             },
           ]}
+          detailTitle={(r) => `Scheme — ${r.name as string}`}
+          detailFields={[
+            { label: "Name", value: (r) => r.name as string },
+            { label: "Kind", value: (r) => label(r.kind as string) },
+            {
+              label: "Group",
+              value: (r) =>
+                groups.data?.find((g) => g.id === r.group)?.name ?? "—",
+            },
+            {
+              label: "Term",
+              value: (r) => terms.data?.find((t) => t.id === r.term)?.name ?? "—",
+            },
+          ]}
         />
       )}
 
@@ -136,6 +150,29 @@ export default function GradesPage() {
             { name: "title", label: "Title", required: true },
             { name: "date", label: "Date", type: "date", required: true },
             { name: "max_mark", label: "Max mark", type: "number" },
+          ]}
+          detailTitle={(r) => `Assessment — ${r.title as string}`}
+          detailFields={[
+            { label: "Title", value: (r) => r.title as string },
+            {
+              label: "Scheme",
+              value: (r) =>
+                schemes.data?.find((s) => s.id === r.scheme)?.name ?? "—",
+            },
+            {
+              label: "Group",
+              value: (r) =>
+                groups.data?.find((g) => g.id === r.group)?.name ?? "—",
+            },
+            { label: "Date", value: (r) => date(r.date as string) },
+            { label: "Max mark", value: (r) => (r.max_mark as number) ?? "—" },
+            {
+              label: "Released to parents",
+              value: (r) =>
+                r.released
+                  ? `Yes${r.released_at ? ` (${date(r.released_at as string)})` : ""}`
+                  : "No — still a draft",
+            },
           ]}
           extraRowActions={(row, reload) =>
             !row.released ? (
@@ -180,6 +217,28 @@ export default function GradesPage() {
             { name: "level", label: "Level", type: "number" },
             { name: "narrative", label: "Narrative (encrypted)", type: "textarea" },
           ]}
+          detailTitle={() => "Result"}
+          detailFields={[
+            {
+              label: "Assessment",
+              value: (r) =>
+                assessments.data?.find((a) => a.id === r.assessment)?.title ??
+                String(r.assessment),
+            },
+            {
+              label: "Student",
+              value: (r) =>
+                students.data?.find((s) => s.id === r.student)?.display_name ??
+                String(r.student),
+            },
+            { label: "Mark", value: (r) => (r.mark as string) ?? "—" },
+            { label: "Level", value: (r) => (r.level as number) ?? "—" },
+            {
+              label: "Narrative",
+              long: true,
+              value: (r) => (r.narrative as string) || "—",
+            },
+          ]}
         />
       )}
 
@@ -187,6 +246,7 @@ export default function GradesPage() {
         <CrudPanel<ReportCardRow>
           resource="report-cards"
           singular="report card"
+          onRowOpen={setOpenCard}
           columns={[
             {
               header: "Student",
@@ -221,11 +281,6 @@ export default function GradesPage() {
             { name: "term", label: "Term", type: "select", required: true, options: termOpts },
             { name: "summary_narrative", label: "Summary (encrypted)", type: "textarea" },
           ]}
-          extraRowActions={(row) => (
-            <Button size="sm" variant="ghost" onClick={() => setOpenCard(row)}>
-              Open
-            </Button>
-          )}
         />
       )}
 

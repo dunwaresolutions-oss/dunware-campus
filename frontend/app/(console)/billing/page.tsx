@@ -248,7 +248,11 @@ function Invoices({
           </thead>
           <tbody>
             {(q.data?.results ?? []).map((inv) => (
-              <tr key={inv.id} className="border-b border-[var(--campus-line)]">
+              <tr
+                key={inv.id}
+                onClick={() => setDetailId(inv.id)}
+                className="cursor-pointer border-b border-[var(--campus-line)] transition-colors hover:bg-[var(--campus-accent-soft)]/60"
+              >
                 <td className="px-3 py-2.5">{studentName(inv.student)}</td>
                 <td className="px-3 py-2.5">{money(inv.total_cents)}</td>
                 <td className="px-3 py-2.5">{money(inv.balance_cents)}</td>
@@ -267,14 +271,10 @@ function Invoices({
                   </Badge>
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  <span className="flex justify-end gap-1">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setDetailId(inv.id)}
-                    >
-                      Open
-                    </Button>
+                  <span
+                    className="flex justify-end gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     {inv.status === "DRAFT" && (
                       <ActionButton
                         label="Issue"

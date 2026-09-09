@@ -37,6 +37,7 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   emptyText,
   detailFields,
   detailTitle,
+  onRowOpen,
 }: {
   resource: string;
   columns: Column<T>[];
@@ -53,9 +54,11 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   extraRowActions?: (row: T, reload: () => void) => ReactNode;
   headerActions?: ReactNode;
   emptyText?: string;
-  /** when set, every row gets an "Open" action showing these fields read-only */
+  /** built-in read-only preview: row-click opens it, edit moves to a button */
   detailFields?: DetailField[];
   detailTitle?: (row: T) => string;
+  /** bespoke preview: row-click calls this instead of opening the edit form */
+  onRowOpen?: (row: T) => void;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -68,8 +71,12 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   const reload = () =>
     qc.invalidateQueries({ queryKey: ["list", resource] });
 
+  // Row-click opens the preview when there is one; edit becomes a button.
+  const rowOpensPreview = !!(onRowOpen || detailFields);
+  const showEditButton = rowOpensPreview && canEdit && !!fields;
+
   const cols: Column<T>[] = [...columns];
-  if (canDelete || extraRowActions || detailFields) {
+  if (canDelete || extraRowActions || showEditButton) {
     cols.push({
       header: "",
       className: "text-right whitespace-nowrap",
@@ -78,12 +85,12 @@ export function CrudPanel<T extends { id: string | number } = Row>({
           className="flex justify-end gap-1"
           onClick={(e) => e.stopPropagation()}
         >
-          {detailFields && (
-            <Button size="sm" variant="ghost" onClick={() => setDetail(row)}>
-              Open
+          {extraRowActions?.(row, reload)}
+          {showEditButton && (
+            <Button size="sm" variant="ghost" onClick={() => setEditing(row)}>
+              Edit
             </Button>
           )}
-          {extraRowActions?.(row, reload)}
           {canDelete && (
             <ConfirmButton
               variant="ghost"
@@ -146,7 +153,13 @@ export function CrudPanel<T extends { id: string | number } = Row>({
             rows={q.data?.results ?? []}
             empty={emptyText ?? `No ${singular} records yet.`}
             onRowClick={
-              canEdit && fields ? (row) => setEditing(row) : undefined
+              onRowOpen
+                ? (row) => onRowOpen(row)
+                : detailFields
+                  ? (row) => setDetail(row)
+                  : canEdit && fields
+                    ? (row) => setEditing(row)
+                    : undefined
             }
           />
           <Paginator

@@ -6,7 +6,7 @@ import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
 import { Modal } from "@/components/Modal";
-import { PageHeader, Tabs, Badge, Button, Spinner } from "@/components/ui";
+import { PageHeader, Tabs, Badge, Spinner } from "@/components/ui";
 import { date, time, weekday, label, apiMessage, yn, WEEKDAYS } from "@/lib/format";
 import { act } from "@/lib/resource";
 import { api } from "@/lib/api";
@@ -366,6 +366,7 @@ export default function SchedulingPage() {
             singular="session"
             canCreate={false}
             canEdit={false}
+            onRowOpen={setOpenSession}
             columns={[
               { header: "Date", cell: (r) => date(r.date) },
               {
@@ -384,15 +385,6 @@ export default function SchedulingPage() {
                 ),
               },
             ]}
-            extraRowActions={(row) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setOpenSession(row)}
-              >
-                Open
-              </Button>
-            )}
           />
         </>
       )}

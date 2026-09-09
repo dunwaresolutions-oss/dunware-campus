@@ -69,6 +69,7 @@ export default function BookingPage() {
           <CrudPanel<OfferingRow>
             resource="offerings"
             singular="offering"
+            onRowOpen={setOpenOffering}
             columns={[
               { header: "Title", cell: (r) => r.title },
               { header: "Kind", cell: (r) => label(r.kind) },
@@ -99,25 +100,16 @@ export default function BookingPage() {
               { name: "active", label: "Active", type: "checkbox" },
             ]}
             extraRowActions={(row, reload) => (
-              <>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setOpenOffering(row)}
-                >
-                  Open
-                </Button>
-                <ActionButton
-                  label="Generate slots"
-                  title="Generate bookable slots for this offering"
-                  fields={[
-                    { name: "from_date", label: "From", type: "date", required: true },
-                    { name: "to_date", label: "Through", type: "date", required: true },
-                  ]}
-                  onRun={(v) => act("offerings", row.id, "generate_slots", v)}
-                  onDone={reload}
-                />
-              </>
+              <ActionButton
+                label="Generate slots"
+                title="Generate bookable slots for this offering"
+                fields={[
+                  { name: "from_date", label: "From", type: "date", required: true },
+                  { name: "to_date", label: "Through", type: "date", required: true },
+                ]}
+                onRun={(v) => act("offerings", row.id, "generate_slots", v)}
+                onDone={reload}
+              />
             )}
           />
         </>

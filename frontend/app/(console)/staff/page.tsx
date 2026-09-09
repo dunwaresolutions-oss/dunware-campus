@@ -145,6 +145,22 @@ export default function StaffPage() {
         <CrudPanel
           resource="group-staff"
           singular="assignment"
+          detailTitle={() => "Group assignment"}
+          detailFields={[
+            {
+              label: "Group",
+              value: (r) =>
+                groups.data?.find((g) => g.id === r.group)?.name ?? String(r.group),
+            },
+            {
+              label: "Staff member",
+              value: (r) =>
+                users.data?.find((u) => u.id === String(r.user))?.username ??
+                String(r.user),
+            },
+            { label: "Role in group", value: (r) => label(r.role as string) },
+            { label: "Active", value: (r) => (r.active ? "Yes" : "No") },
+          ]}
           columns={[
             {
               header: "Group",

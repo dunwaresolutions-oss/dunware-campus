@@ -85,6 +85,7 @@ export default function RegistrationPage() {
           <CrudPanel<AppRow>
             resource="applications"
             singular="application"
+            onRowOpen={setOpenApp}
             columns={[
               {
                 header: "Child",
@@ -115,13 +116,6 @@ export default function RegistrationPage() {
               const s = row.status;
               return (
                 <>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setOpenApp(row)}
-                  >
-                    Open
-                  </Button>
                   {s === "SUBMITTED" && (
                     <ActionButton
                       label="Review"
@@ -216,6 +210,26 @@ export default function RegistrationPage() {
               { name: "priority", label: "Priority", type: "number" },
               { name: "active", label: "Active", type: "checkbox" },
             ]}
+            detailTitle={(r) =>
+              `Waitlist — ${(r.child_name as string) || `application #${r.application}`}`
+            }
+            detailFields={[
+              {
+                label: "Child",
+                value: (r) =>
+                  (r.child_name as string) || `application #${r.application}`,
+              },
+              {
+                label: "Group",
+                value: (r) =>
+                  (r.group_name as string) ?? groupName(r.group as number),
+              },
+              {
+                label: "Priority",
+                value: (r) => `${(r.priority as number) ?? 100} (lower sorts first)`,
+              },
+              { label: "Active", value: (r) => (r.active ? "Yes" : "No") },
+            ]}
           />
         </>
       )}
@@ -233,6 +247,33 @@ export default function RegistrationPage() {
             {
               header: "Status",
               cell: (r) => <Badge>{label(r.status as string)}</Badge>,
+            },
+          ]}
+          detailTitle={(r) =>
+            `Offer — ${(r.child_name as string) || `application #${r.application}`}`
+          }
+          detailFields={[
+            {
+              label: "Child",
+              value: (r) =>
+                (r.child_name as string) || `application #${r.application}`,
+            },
+            {
+              label: "Group",
+              value: (r) =>
+                (r.group_name as string) ?? groupName(r.group as number),
+            },
+            { label: "Status", value: (r) => label(r.status as string) },
+            { label: "Start date", value: (r) => date(r.start_date as string) },
+            { label: "Expires", value: (r) => datetime(r.expires_at as string) },
+            {
+              label: "Still open",
+              value: (r) => (r.is_open ? "Yes" : "No"),
+            },
+            {
+              label: "Answered",
+              value: (r) =>
+                r.responded_at ? datetime(r.responded_at as string) : "—",
             },
           ]}
           extraRowActions={(row, reload) => (

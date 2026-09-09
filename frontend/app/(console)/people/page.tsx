@@ -115,6 +115,7 @@ export default function PeoplePage() {
           resource="students"
           singular="student"
           fields={studentFields}
+          onRowOpen={setDetail}
           columns={[
             { header: "Name", cell: (s) => s.display_name || `${s.first_name} ${s.last_name}` },
             { header: "DOB", cell: (s) => date(s.date_of_birth) },
@@ -133,11 +134,6 @@ export default function PeoplePage() {
               ),
             },
           ]}
-          extraRowActions={(row) => (
-            <Button size="sm" variant="ghost" onClick={() => setDetail(row)}>
-              Open
-            </Button>
-          )}
         />
       )}
 
@@ -735,6 +731,7 @@ function ChangeRequests({
         <Table
           rows={q.data?.results ?? []}
           empty={`No ${label(status).toLowerCase()} requests.`}
+          onRowClick={(r) => setDetail(r)}
           columns={[
             { header: "Guardian", cell: (r) => guardianName(r.guardian) },
             { header: "Field", cell: (r) => label(r.field) },
@@ -753,13 +750,6 @@ function ChangeRequests({
                   className="flex justify-end gap-1"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setDetail(r)}
-                  >
-                    Open
-                  </Button>
                   {r.status === "PENDING" ? (
                     <>
                       <ActionButton
