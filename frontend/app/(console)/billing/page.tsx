@@ -9,7 +9,7 @@ import { PageHeader, Tabs, Badge, Button, Card, Spinner } from "@/components/ui"
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
-import { money, date, label, apiMessage } from "@/lib/format";
+import { money, date, datetime, label, apiMessage, yn } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface Student {
@@ -105,6 +105,25 @@ export default function BillingPage() {
               { name: "group", label: "Group (optional)", type: "select", options: groupOpts },
               { name: "active", label: "Active", type: "checkbox" },
             ]}
+            detailTitle={(r) => `Fee schedule — ${r.name as string}`}
+            detailFields={[
+              { label: "Name", value: (r) => r.name as string },
+              { label: "Amount", value: (r) => money(r.amount_cents as number) },
+              { label: "Frequency", value: (r) => label(r.frequency as string) },
+              {
+                label: "Group",
+                value: (r) =>
+                  r.group
+                    ? (groups.data?.find((g) => g.id === r.group)?.name ?? "one group")
+                    : "Any group",
+              },
+              { label: "Active", value: (r) => yn(r.active) },
+              {
+                label: "Description",
+                value: (r) => (r.description as string) || "—",
+                long: true,
+              },
+            ]}
           />
         </>
       )}
@@ -128,6 +147,19 @@ export default function BillingPage() {
               { header: "Method", cell: (r) => label(r.method as string) },
               { header: "Reference", cell: (r) => (r.reference as string) || "—" },
               { header: "Received", cell: (r) => date(r.received_at as string) },
+            ]}
+            detailTitle={(r) => `Payment — ${money(r.amount_cents as number)}`}
+            detailFields={[
+              { label: "Invoice", value: (r) => `#${r.invoice}` },
+              { label: "Amount", value: (r) => money(r.amount_cents as number) },
+              { label: "Method", value: (r) => label(r.method as string) },
+              { label: "Reference", value: (r) => (r.reference as string) || "—" },
+              {
+                label: "Received",
+                value: (r) =>
+                  r.received_at ? datetime(r.received_at as string) : "—",
+              },
+              { label: "Note", value: (r) => (r.note as string) || "—", long: true },
             ]}
           />
         </>

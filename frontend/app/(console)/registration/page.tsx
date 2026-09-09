@@ -10,7 +10,7 @@ import { Modal } from "@/components/Modal";
 import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
 import { act, patch, retrieve } from "@/lib/resource";
 import { useToast } from "@/components/Toast";
-import { apiMessage, date, label, today } from "@/lib/format";
+import { apiMessage, date, datetime, label, today } from "@/lib/format";
 
 interface Group {
   id: number;
@@ -295,6 +295,34 @@ export default function RegistrationPage() {
             },
             { name: "start_date", label: "Start date", type: "date", required: true },
           ]}
+          detailTitle={(r) =>
+            `Enrolment — ${
+              (r.student_name as string) ||
+              students.data?.find((s) => s.id === r.student)?.display_name ||
+              "student"
+            }`
+          }
+          detailFields={[
+            {
+              label: "Student",
+              value: (r) =>
+                (r.student_name as string) ||
+                students.data?.find((s) => s.id === r.student)?.display_name ||
+                String(r.student),
+            },
+            {
+              label: "Group",
+              value: (r) =>
+                (r.group_name as string) ?? groupName(r.group as number),
+            },
+            { label: "Status", value: (r) => label(r.status as string) },
+            { label: "Start date", value: (r) => date(r.start_date as string) },
+            { label: "End date", value: (r) => date(r.end_date as string) },
+            {
+              label: "From application",
+              value: (r) => (r.source_application ? "Yes" : "Added directly"),
+            },
+          ]}
           extraRowActions={(row, reload) =>
             row.status === "ACTIVE" ? (
               <ActionButton
@@ -364,6 +392,29 @@ export default function RegistrationPage() {
               ].map((v) => ({ value: v, label: label(v) })),
             },
             { name: "granted", label: "Granted", type: "checkbox" },
+          ]}
+          detailTitle={(r) => `Consent — ${label(r.kind as string)}`}
+          detailFields={[
+            {
+              label: "Student",
+              value: (r) =>
+                (r.student_name as string) ||
+                students.data?.find((s) => s.id === r.student)?.display_name ||
+                String(r.student),
+            },
+            { label: "Kind", value: (r) => label(r.kind as string) },
+            { label: "Decision", value: (r) => (r.granted ? "Granted" : "Withheld") },
+            { label: "Form version", value: (r) => (r.version as string) ?? "1" },
+            {
+              label: "Recorded on behalf of",
+              value: (r) => (r.granted_by_name as string) || "—",
+            },
+            {
+              label: "Recorded",
+              value: (r) =>
+                r.recorded_at ? datetime(r.recorded_at as string) : "—",
+            },
+            { label: "Notes", value: (r) => (r.notes as string) || "—", long: true },
           ]}
         />
       )}

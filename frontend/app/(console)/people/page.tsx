@@ -17,8 +17,9 @@ import {
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
 import { act, create, retrieve } from "@/lib/resource";
+import { RecordDetail } from "@/components/RecordDetail";
 import { useQueryClient } from "@tanstack/react-query";
-import { date, datetime, label } from "@/lib/format";
+import { date, datetime, label, yn } from "@/lib/format";
 
 interface Group {
   id: number;
@@ -169,6 +170,18 @@ export default function PeoplePage() {
             { name: "capacity", label: "Capacity", type: "number" },
             { name: "active", label: "Active", type: "checkbox" },
           ]}
+          detailTitle={(g) => `Group — ${g.name as string}`}
+          detailFields={[
+            { label: "Name", value: (g) => g.name as string },
+            { label: "Kind", value: (g) => label(g.kind as string) },
+            { label: "Stage label", value: (g) => (g.stage_label as string) || "—" },
+            { label: "Capacity", value: (g) => (g.capacity as number) ?? "—" },
+            {
+              label: "Enrolled now",
+              value: (g) => (g.active_enrolment_count as number) ?? 0,
+            },
+            { label: "Active", value: (g) => yn(g.active) },
+          ]}
         />
       )}
 
@@ -217,6 +230,35 @@ export default function PeoplePage() {
             { name: "email", label: "Email" },
             { name: "phone", label: "Phone (encrypted)" },
             { name: "address", label: "Address (encrypted)", type: "textarea" },
+          ]}
+          detailTitle={(g) => `Guardian — ${g.first_name} ${g.last_name}`}
+          detailFields={[
+            {
+              label: "Name",
+              value: (g) => `${g.first_name} ${g.last_name}`.trim(),
+            },
+            { label: "Email", value: (g) => (g.email as string) || "—" },
+            { label: "Phone", value: (g) => (g.phone as string) || "—" },
+            {
+              label: "Portal login",
+              value: (g) => (g.user ? "Yes" : "No — use Create portal login"),
+            },
+            {
+              label: "Children",
+              long: true,
+              value: (g) => {
+                const kids =
+                  (g.children as
+                    | { id: string; name: string; relationship: string }[]
+                    | undefined) ?? [];
+                return kids.length
+                  ? kids
+                      .map((k) => `${k.name} (${label(k.relationship)})`)
+                      .join("\n")
+                  : "—";
+              },
+            },
+            { label: "Address", value: (g) => (g.address as string) || "—", long: true },
           ]}
           extraRowActions={(row, reload) =>
             row.user ? null : (
@@ -645,6 +687,18 @@ function StudentConsents({ studentId }: { studentId: string }) {
   );
 }
 
+interface ChangeReq {
+  id: string;
+  guardian: string;
+  field: string;
+  current_value: string | null;
+  proposed_value: string;
+  reason: string;
+  status: string;
+  review_note?: string;
+  reviewed_at?: string | null;
+}
+
 function ChangeRequests({
   guardianName,
 }: {
@@ -652,15 +706,8 @@ function ChangeRequests({
 }) {
   const qc = useQueryClient();
   const [status, setStatus] = useState("PENDING");
-  const q = useList<{
-    id: string;
-    guardian: string;
-    field: string;
-    current_value: string | null;
-    proposed_value: string;
-    reason: string;
-    status: string;
-  }>("portal/contact-change-requests", { status });
+  const [detail, setDetail] = useState<ChangeReq | null>(null);
+  const q = useList<ChangeReq>("portal/contact-change-requests", { status });
   const reload = () =>
     qc.invalidateQueries({ queryKey: ["list", "portal/contact-change-requests"] });
 
@@ -701,48 +748,92 @@ function ChangeRequests({
             {
               header: "",
               className: "text-right whitespace-nowrap",
-              cell: (r) =>
-                r.status === "PENDING" ? (
-                  <span
-                    className="flex justify-end gap-1"
-                    onClick={(e) => e.stopPropagation()}
+              cell: (r) => (
+                <span
+                  className="flex justify-end gap-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setDetail(r)}
                   >
-                    <ActionButton
-                      label="Approve"
-                      confirm="Apply this change to the guardian's record?"
-                      onRun={() =>
-                        act(
-                          "portal/contact-change-requests",
-                          r.id,
-                          "approve",
-                        )
-                      }
-                      onDone={reload}
-                    />
-                    <ActionButton
-                      label="Reject"
-                      variant="ghost"
-                      fields={[{ name: "note", label: "Note (optional)" }]}
-                      onRun={(v) =>
-                        act(
-                          "portal/contact-change-requests",
-                          r.id,
-                          "reject",
-                          v,
-                        )
-                      }
-                      onDone={reload}
-                    />
-                  </span>
-                ) : (
-                  <Badge tone={r.status === "APPROVED" ? "green" : "red"}>
-                    {label(r.status)}
-                  </Badge>
-                ),
+                    Open
+                  </Button>
+                  {r.status === "PENDING" ? (
+                    <>
+                      <ActionButton
+                        label="Approve"
+                        confirm="Apply this change to the guardian's record?"
+                        onRun={() =>
+                          act("portal/contact-change-requests", r.id, "approve")
+                        }
+                        onDone={reload}
+                      />
+                      <ActionButton
+                        label="Reject"
+                        variant="ghost"
+                        fields={[{ name: "note", label: "Note (optional)" }]}
+                        onRun={(v) =>
+                          act("portal/contact-change-requests", r.id, "reject", v)
+                        }
+                        onDone={reload}
+                      />
+                    </>
+                  ) : (
+                    <Badge tone={r.status === "APPROVED" ? "green" : "red"}>
+                      {label(r.status)}
+                    </Badge>
+                  )}
+                </span>
+              ),
             },
           ]}
         />
       )}
+
+      <Modal
+        open={!!detail}
+        onClose={() => setDetail(null)}
+        title="Contact-change request"
+        wide
+      >
+        {detail && (
+          <RecordDetail
+            fields={[
+              { label: "Guardian", value: () => guardianName(detail.guardian) },
+              { label: "Field", value: () => label(detail.field) },
+              { label: "Status", value: () => label(detail.status) },
+              {
+                label: "Reviewed",
+                value: () =>
+                  detail.reviewed_at ? datetime(detail.reviewed_at) : "—",
+              },
+              {
+                label: "Current value",
+                long: true,
+                value: () => detail.current_value || "—",
+              },
+              {
+                label: "Proposed value",
+                long: true,
+                value: () => detail.proposed_value || "—",
+              },
+              {
+                label: "Reason given",
+                long: true,
+                value: () => detail.reason || "—",
+              },
+              {
+                label: "Review note",
+                long: true,
+                value: () => detail.review_note || "—",
+              },
+            ]}
+            row={detail as unknown as Record<string, unknown>}
+          />
+        )}
+      </Modal>
     </Card>
   );
 }

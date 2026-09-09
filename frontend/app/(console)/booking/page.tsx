@@ -9,7 +9,7 @@ import { Modal } from "@/components/Modal";
 import { PageHeader, Tabs, Badge, Button, Spinner } from "@/components/ui";
 import { act, patch, retrieve } from "@/lib/resource";
 import { useToast } from "@/components/Toast";
-import { datetime, date, money, time, label, apiMessage, WEEKDAYS } from "@/lib/format";
+import { datetime, date, money, time, label, apiMessage, yn, WEEKDAYS } from "@/lib/format";
 
 interface OfferingRow {
   id: number;
@@ -157,6 +157,24 @@ export default function BookingPage() {
               { name: "valid_to", label: "Valid to", type: "date" },
               { name: "active", label: "Active", type: "checkbox" },
             ]}
+            detailTitle={() => "Availability window"}
+            detailFields={[
+              {
+                label: "Offering",
+                value: (r) =>
+                  offerings.data?.find((o) => o.id === r.offering)?.title ??
+                  String(r.offering),
+              },
+              { label: "Weekday", value: (r) => WEEKDAYS[r.weekday as number] ?? "—" },
+              {
+                label: "Time",
+                value: (r) =>
+                  `${time(r.start_time as string)}–${time(r.end_time as string)}`,
+              },
+              { label: "Valid from", value: (r) => date(r.valid_from as string) },
+              { label: "Valid to", value: (r) => date(r.valid_to as string) },
+              { label: "Active", value: (r) => yn(r.active) },
+            ]}
           />
         </>
       )}
@@ -186,6 +204,19 @@ export default function BookingPage() {
                 header: "Status",
                 cell: (r) => <Badge>{label(r.status as string)}</Badge>,
               },
+            ]}
+            detailTitle={(r) => `Slot — ${(r.offering_title as string) ?? "activity"}`}
+            detailFields={[
+              {
+                label: "Offering",
+                value: (r) => (r.offering_title as string) ?? String(r.offering),
+              },
+              { label: "Starts", value: (r) => datetime(r.starts_at as string) },
+              { label: "Ends", value: (r) => datetime(r.ends_at as string) },
+              { label: "Capacity", value: (r) => (r.capacity as number) ?? "—" },
+              { label: "Confirmed", value: (r) => (r.confirmed_count as number) ?? 0 },
+              { label: "Seats left", value: (r) => (r.seats_left as number) ?? 0 },
+              { label: "Status", value: (r) => label(r.status as string) },
             ]}
             extraRowActions={(row, reload) =>
               row.status !== "CANCELLED" ? (
@@ -246,6 +277,38 @@ export default function BookingPage() {
             fields={[
               { name: "slot", label: "Slot id", type: "number", required: true },
               { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+            ]}
+            detailTitle={(r) => `Booking — ${(r.student_name as string) ?? "student"}`}
+            detailFields={[
+              {
+                label: "Student",
+                value: (r) => (r.student_name as string) ?? String(r.student),
+              },
+              {
+                label: "Offering",
+                value: (r) => (r.offering_title as string) ?? "—",
+              },
+              { label: "Slot starts", value: (r) => datetime(r.starts_at as string) },
+              {
+                label: "Status",
+                value: (r) =>
+                  `${label(r.status as string)}${
+                    r.status === "WAITLISTED" && r.waitlist_position
+                      ? ` (#${r.waitlist_position})`
+                      : ""
+                  }`,
+              },
+              { label: "Booked", value: (r) => date(r.created_at as string) },
+              {
+                label: "Cancelled",
+                value: (r) =>
+                  r.cancelled_at ? datetime(r.cancelled_at as string) : "—",
+              },
+              {
+                label: "Cancellation note",
+                value: (r) => (r.cancellation_note as string) || "—",
+                long: true,
+              },
             ]}
             extraRowActions={(row, reload) =>
               row.status === "CONFIRMED" || row.status === "WAITLISTED" ? (

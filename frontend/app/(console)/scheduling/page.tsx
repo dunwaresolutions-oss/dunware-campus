@@ -7,7 +7,7 @@ import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
 import { Modal } from "@/components/Modal";
 import { PageHeader, Tabs, Badge, Button, Spinner } from "@/components/ui";
-import { date, time, weekday, label, apiMessage, WEEKDAYS } from "@/lib/format";
+import { date, time, weekday, label, apiMessage, yn, WEEKDAYS } from "@/lib/format";
 import { act } from "@/lib/resource";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/Toast";
@@ -103,6 +103,13 @@ export default function SchedulingPage() {
               { name: "capacity", label: "Capacity", type: "number" },
               { name: "active", label: "Active", type: "checkbox" },
             ]}
+            detailTitle={(r) => `Room — ${r.name}`}
+            detailFields={[
+              { label: "Name", value: (r) => r.name as string },
+              { label: "Kind", value: (r) => label(r.kind as string) },
+              { label: "Capacity", value: (r) => (r.capacity as number) ?? "—" },
+              { label: "Active", value: (r) => yn(r.active) },
+            ]}
           />
         </>
       )}
@@ -132,6 +139,13 @@ export default function SchedulingPage() {
               { name: "start_date", label: "Start date", type: "date", required: true },
               { name: "end_date", label: "End date", type: "date", required: true },
               { name: "is_current", label: "Current year", type: "checkbox" },
+            ]}
+            detailTitle={(r) => `Academic year — ${r.name}`}
+            detailFields={[
+              { label: "Name", value: (r) => r.name as string },
+              { label: "Starts", value: (r) => date(r.start_date as string) },
+              { label: "Ends", value: (r) => date(r.end_date as string) },
+              { label: "Current year", value: (r) => yn(r.is_current) },
             ]}
           />
         </>
@@ -177,6 +191,18 @@ export default function SchedulingPage() {
               { name: "start_date", label: "Start date", type: "date", required: true },
               { name: "end_date", label: "End date", type: "date", required: true },
             ]}
+            detailTitle={(r) => `Term — ${r.name}`}
+            detailFields={[
+              { label: "Name", value: (r) => r.name as string },
+              {
+                label: "Academic year",
+                value: (r) =>
+                  years.data?.find((y) => y.id === r.academic_year)?.name ?? "—",
+              },
+              { label: "Kind", value: (r) => label(r.kind as string) },
+              { label: "Starts", value: (r) => date(r.start_date as string) },
+              { label: "Ends", value: (r) => date(r.end_date as string) },
+            ]}
           />
         </>
       )}
@@ -210,6 +236,20 @@ export default function SchedulingPage() {
                 type: "select",
                 options: groupOpts,
               },
+            ]}
+            detailTitle={() => "Closure"}
+            detailFields={[
+              { label: "From", value: (r) => date(r.start_date as string) },
+              { label: "To", value: (r) => date(r.end_date as string) },
+              {
+                label: "Scope",
+                value: (r) =>
+                  r.group
+                    ? (groups.data?.find((g) => g.id === r.group)?.name ??
+                      "one group")
+                    : "Site-wide",
+              },
+              { label: "Reason", value: (r) => (r.reason as string) || "—", long: true },
             ]}
           />
         </>
@@ -270,6 +310,32 @@ export default function SchedulingPage() {
               { name: "start_time", label: "Start", type: "time", required: true },
               { name: "end_time", label: "End", type: "time", required: true },
               { name: "title", label: "Title" },
+            ]}
+            detailTitle={(r) =>
+              `Template — ${groups.data?.find((g) => g.id === r.group)?.name ?? "class"}`
+            }
+            detailFields={[
+              {
+                label: "Group",
+                value: (r) =>
+                  groups.data?.find((g) => g.id === r.group)?.name ?? String(r.group),
+              },
+              {
+                label: "Term",
+                value: (r) => terms.data?.find((t) => t.id === r.term)?.name ?? "—",
+              },
+              {
+                label: "Room",
+                value: (r) => rooms.data?.find((x) => x.id === r.room)?.name ?? "—",
+              },
+              { label: "Weekday", value: (r) => weekday(r.weekday as number) },
+              {
+                label: "Time",
+                value: (r) =>
+                  `${time(r.start_time as string)}–${time(r.end_time as string)}`,
+              },
+              { label: "Title", value: (r) => (r.title as string) || "—" },
+              { label: "Active", value: (r) => yn(r.active) },
             ]}
             extraRowActions={(row, reload) => (
               <ActionButton

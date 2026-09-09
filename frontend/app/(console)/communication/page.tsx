@@ -275,6 +275,36 @@ export default function CommunicationPage() {
                   ),
               },
             ]}
+            detailTitle={(r) => `Email — ${(r.subject as string) || "message"}`}
+            detailFields={[
+              { label: "Sent", value: (r) => datetime(r.sent_at as string) },
+              { label: "Kind", value: (r) => label(r.kind as string) },
+              { label: "Subject", value: (r) => (r.subject as string) || "—" },
+              {
+                label: "Result",
+                value: (r) => (r.error ? "Failed" : "Sent"),
+              },
+              {
+                label: "About",
+                value: (r) =>
+                  r.object_type
+                    ? `${r.object_type}${r.object_id ? ` #${String(r.object_id).slice(0, 8)}` : ""}`
+                    : "—",
+              },
+              {
+                label: "Recipients",
+                long: true,
+                value: (r) =>
+                  Array.isArray(r.to) && (r.to as string[]).length
+                    ? (r.to as string[]).join("\n")
+                    : String(r.to ?? "—"),
+              },
+              {
+                label: "Error",
+                long: true,
+                value: (r) => (r.error as string) || "—",
+              },
+            ]}
           />
         </>
       )}
@@ -608,6 +638,15 @@ function IncidentDrawer({
   );
 }
 
+interface ThreadRow {
+  id: string;
+  subject: string;
+  student: string | null;
+  closed: boolean;
+  message_count?: number;
+  last_message_at: string | null;
+}
+
 function Threads({
   studentOpts,
 }: {
@@ -615,23 +654,17 @@ function Threads({
 }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [open, setOpen] = useState<string | null>(null);
+  const [openThread, setOpenThread] = useState<ThreadRow | null>(null);
   const [creating, setCreating] = useState(false);
-  const threads = useList<{
-    id: string;
-    subject: string;
-    student: string | null;
-    closed: boolean;
-    message_count?: number;
-    last_message_at: string | null;
-  }>("message-threads");
+  const threads = useList<ThreadRow>("message-threads");
 
   return (
     <>
       <p className="mb-3 text-sm text-[var(--campus-muted)]">
         A <b>thread</b> is a private staff ↔ parent conversation, optionally about
         one child. Only the participants (and admins) can read it; message bodies
-        are encrypted at rest. Click a thread to expand it and reply inline.
+        are encrypted at rest. Press <b>Open</b> to read the conversation and
+        reply.
       </p>
       <Card>
         <div className="flex justify-end border-b border-[var(--campus-line)] p-3">
@@ -644,18 +677,24 @@ function Threads({
         ) : (
           <ul className="divide-y divide-[var(--campus-line)] text-sm">
             {(threads.data?.results ?? []).map((t) => (
-              <li key={t.id} className="px-4 py-3">
-                <button
-                  className="flex w-full items-center justify-between text-left"
-                  onClick={() => setOpen(open === t.id ? null : t.id)}
-                >
+              <li
+                key={t.id}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
+                <span className="min-w-0">
                   <span className="font-medium">{t.subject}</span>
-                  <span className="text-xs text-[var(--campus-muted)]">
+                  <span className="block text-xs text-[var(--campus-muted)]">
                     {t.message_count ?? 0} msg · {datetime(t.last_message_at)}
                     {t.closed && " · closed"}
                   </span>
-                </button>
-                {open === t.id && <ThreadMessages threadId={t.id} />}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setOpenThread(t)}
+                >
+                  Open
+                </Button>
               </li>
             ))}
             {(threads.data?.results ?? []).length === 0 && (
@@ -683,6 +722,24 @@ function Threads({
             }}
             onCancel={() => setCreating(false)}
           />
+        </Modal>
+
+        <Modal
+          open={!!openThread}
+          onClose={() => setOpenThread(null)}
+          title={openThread ? openThread.subject : "Thread"}
+          wide
+        >
+          {openThread && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-3 text-sm text-[var(--campus-muted)]">
+                <span>{openThread.message_count ?? 0} messages</span>
+                <span>last activity {datetime(openThread.last_message_at)}</span>
+                {openThread.closed && <span>· closed</span>}
+              </div>
+              <ThreadMessages threadId={openThread.id} />
+            </div>
+          )}
         </Modal>
       </Card>
     </>

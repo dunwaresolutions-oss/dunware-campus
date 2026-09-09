@@ -31,6 +31,9 @@ export const time = (v: string | null | undefined): string => {
 export const label = (v: string | null | undefined): string =>
   v ? v.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "—";
 
+/** boolean -> "Yes" / "No" (for read-only detail views) */
+export const yn = (v: unknown): string => (v ? "Yes" : "No");
+
 export const WEEKDAYS = [
   "Monday",
   "Tuesday",

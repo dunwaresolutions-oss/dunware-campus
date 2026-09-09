@@ -16,6 +16,7 @@ import {
 } from "./ui";
 import { Modal, ConfirmButton } from "./Modal";
 import { RecordForm, type FieldDef } from "./RecordForm";
+import { RecordDetail, type DetailField } from "./RecordDetail";
 import { useToast } from "./Toast";
 
 type Row = { id: string | number; [k: string]: unknown };
@@ -34,6 +35,8 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   extraRowActions,
   headerActions,
   emptyText,
+  detailFields,
+  detailTitle,
 }: {
   resource: string;
   columns: Column<T>[];
@@ -50,19 +53,23 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   extraRowActions?: (row: T, reload: () => void) => ReactNode;
   headerActions?: ReactNode;
   emptyText?: string;
+  /** when set, every row gets an "Open" action showing these fields read-only */
+  detailFields?: DetailField[];
+  detailTitle?: (row: T) => string;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<T | null>(null);
   const [creating, setCreating] = useState(false);
+  const [detail, setDetail] = useState<T | null>(null);
 
   const q = useList<T>(resource, { ...query, page });
   const reload = () =>
     qc.invalidateQueries({ queryKey: ["list", resource] });
 
   const cols: Column<T>[] = [...columns];
-  if (canDelete || extraRowActions) {
+  if (canDelete || extraRowActions || detailFields) {
     cols.push({
       header: "",
       className: "text-right whitespace-nowrap",
@@ -71,6 +78,11 @@ export function CrudPanel<T extends { id: string | number } = Row>({
           className="flex justify-end gap-1"
           onClick={(e) => e.stopPropagation()}
         >
+          {detailFields && (
+            <Button size="sm" variant="ghost" onClick={() => setDetail(row)}>
+              Open
+            </Button>
+          )}
           {extraRowActions?.(row, reload)}
           {canDelete && (
             <ConfirmButton
@@ -170,6 +182,62 @@ export function CrudPanel<T extends { id: string | number } = Row>({
               setEditing(null);
             }}
           />
+        </Modal>
+      )}
+
+      {detailFields && (
+        <Modal
+          open={!!detail}
+          onClose={() => setDetail(null)}
+          title={
+            detail && detailTitle
+              ? detailTitle(detail)
+              : `${singular[0].toUpperCase()}${singular.slice(1)}`
+          }
+          wide
+        >
+          {detail && (
+            <div className="space-y-4">
+              <RecordDetail
+                fields={detailFields}
+                row={detail as Record<string, unknown>}
+              />
+              {(canEdit && fields) || canDelete ? (
+                <div className="flex justify-end gap-2 border-t border-[var(--campus-line)] pt-3">
+                  {canEdit && fields && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditing(detail);
+                        setDetail(null);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <ConfirmButton
+                      variant="ghost"
+                      message={`Delete this ${singular}?`}
+                      onConfirm={async () => {
+                        try {
+                          await remove(resource, detail.id);
+                          toast("success", `${singular} deleted`);
+                          setDetail(null);
+                          reload();
+                        } catch (err) {
+                          toast("error", apiMessage(err));
+                        }
+                      }}
+                    >
+                      Delete
+                    </ConfirmButton>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
         </Modal>
       )}
     </Card>
