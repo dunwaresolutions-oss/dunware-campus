@@ -1,29 +1,62 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAll, useList, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
-import { create, act } from "@/lib/resource";
+import { create, act, patch, retrieve } from "@/lib/resource";
 import { PageHeader, Tabs, Badge, Button, Card, Spinner } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
-import { datetime, apiMessage, label } from "@/lib/format";
+import { datetime, date, apiMessage, label } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
+
+interface Student {
+  id: string;
+  display_name: string;
+}
+interface AnnRow {
+  id: number;
+  title: string;
+  body: string;
+  audience: string;
+  group: number | null;
+  pinned: boolean;
+  published_at: string | null;
+  email_sent_at: string | null;
+}
+interface IncRow {
+  id: number;
+  student: string;
+  occurred_at: string;
+  location: string;
+  category: string;
+  severity: number | null;
+  description: string;
+  action_taken: string;
+  first_aid_given: boolean;
+  status: string;
+  guardians_notified_at: string | null;
+  acknowledged_count?: number;
+}
 
 export default function CommunicationPage() {
   const [tab, setTab] = useState("threads");
+  const [openAnn, setOpenAnn] = useState<AnnRow | null>(null);
+  const [openInc, setOpenInc] = useState<IncRow | null>(null);
   const toast = useToast();
   const groups = useAll<{ id: number; name: string }>("groups");
-  const students = useAll<{ id: string; display_name: string }>("students");
+  const students = useAll<Student>("students");
   const groupOpts = options(groups.data, (g) => g.name);
   const studentOpts = options(students.data, (s) => s.display_name);
+  const studentName = (id: string) =>
+    students.data?.find((s) => s.id === id)?.display_name ?? id;
 
   return (
     <div>
       <PageHeader
         title="Messages"
-        subtitle="Announcements, staff â†” parent threads, incident reports with acknowledgement, and the outbound email log. Email only."
+        subtitle="Announcements (write once, publish to email an audience), staff ↔ parent threads, incident reports with per-guardian acknowledgement, and the outbound email log. Email only — no SMS. Press Open on an announcement or incident to read the whole thing."
       />
       <Tabs
         active={tab}
@@ -37,181 +70,541 @@ export default function CommunicationPage() {
       />
 
       {tab === "announcements" && (
-        <CrudPanel
-          resource="announcements"
-          singular="announcement"
-          columns={[
-            { header: "Title", cell: (r) => r.title as string },
-            { header: "Audience", cell: (r) => label(r.audience as string) },
-            {
-              header: "Published",
-              cell: (r) =>
-                r.published_at ? (
-                  <Badge tone="green">{datetime(r.published_at as string)}</Badge>
-                ) : (
-                  <Badge>Draft</Badge>
+        <>
+          <p className="mb-3 text-sm text-[var(--campus-muted)]">
+            An <b>announcement</b> is a one-to-many notice. Choose an audience —
+            all staff / all parents / one group / whole site — then <b>Publish</b>,
+            which stamps it and emails everyone in the audience. Before Publish it
+            is a draft only staff can see; there is no un-publish. Press{" "}
+            <b>Open</b> to read the body and see the audience and send state.
+          </p>
+          <CrudPanel<AnnRow>
+            resource="announcements"
+            singular="announcement"
+            columns={[
+              { header: "Title", cell: (r) => r.title },
+              { header: "Audience", cell: (r) => label(r.audience) },
+              { header: "Pinned", cell: (r) => (r.pinned ? "Yes" : "—") },
+              {
+                header: "Published",
+                cell: (r) =>
+                  r.published_at ? (
+                    <Badge tone="green">{datetime(r.published_at)}</Badge>
+                  ) : (
+                    <Badge>Draft</Badge>
+                  ),
+              },
+            ]}
+            fields={[
+              { name: "title", label: "Title", required: true },
+              { name: "body", label: "Body", type: "textarea", required: true },
+              {
+                name: "audience",
+                label: "Audience",
+                type: "select",
+                required: true,
+                options: ["ALL_STAFF", "ALL_PARENTS", "GROUP", "WHOLE_SITE"].map(
+                  (v) => ({ value: v, label: label(v) }),
                 ),
-            },
-          ]}
-          fields={[
-            { name: "title", label: "Title", required: true },
-            { name: "body", label: "Body", type: "textarea", required: true },
-            {
-              name: "audience",
-              label: "Audience",
-              type: "select",
-              required: true,
-              options: [
-                "ALL_STAFF",
-                "ALL_PARENTS",
-                "GROUP",
-                "WHOLE_SITE",
-              ].map((v) => ({ value: v, label: label(v) })),
-            },
-            { name: "group", label: "Group (for GROUP audience)", type: "select", options: groupOpts },
-            { name: "pinned", label: "Pinned", type: "checkbox" },
-          ]}
-          extraRowActions={(row, reload) =>
-            !row.published_at ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={async () => {
-                  try {
-                    await act("announcements", row.id as number, "publish");
-                    toast("success", "Published & emailed");
-                    reload();
-                  } catch (e) {
-                    toast("error", apiMessage(e));
-                  }
-                }}
-              >
-                Publish
-              </Button>
-            ) : null
-          }
-        />
+              },
+              { name: "group", label: "Group (for GROUP audience)", type: "select", options: groupOpts },
+              { name: "pinned", label: "Pinned", type: "checkbox" },
+            ]}
+            extraRowActions={(row, reload) => (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setOpenAnn(row)}>
+                  Open
+                </Button>
+                {!row.published_at && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      try {
+                        await act("announcements", row.id, "publish");
+                        toast("success", "Published & emailed");
+                        reload();
+                      } catch (e) {
+                        toast("error", apiMessage(e));
+                      }
+                    }}
+                  >
+                    Publish
+                  </Button>
+                )}
+              </>
+            )}
+          />
+        </>
       )}
 
       {tab === "threads" && <Threads studentOpts={studentOpts} />}
 
       {tab === "incidents" && (
-        <CrudPanel
-          resource="incident-reports"
-          singular="incident report"
-          columns={[
-            {
-              header: "Student",
-              cell: (r) =>
-                students.data?.find((s) => s.id === r.student)?.display_name ??
-                r.student,
-            },
-            { header: "Category", cell: (r) => label(r.category as string) },
-            { header: "When", cell: (r) => datetime(r.occurred_at as string) },
-            {
-              header: "Status",
-              cell: (r) => (
-                <Badge
-                  tone={
-                    r.status === "ACKNOWLEDGED"
-                      ? "green"
-                      : r.status === "SENT"
-                        ? "amber"
-                        : "neutral"
-                  }
-                >
-                  {label(r.status as string)}
-                </Badge>
-              ),
-            },
-          ]}
-          fields={[
-            { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
-            { name: "occurred_at", label: "When", type: "datetime", required: true },
-            { name: "location", label: "Location" },
-            {
-              name: "category",
-              label: "Category",
-              type: "select",
-              required: true,
-              options: [
-                "INJURY",
-                "BEHAVIOUR",
-                "ILLNESS",
-                "ALLERGY",
-                "SAFEGUARDING",
-                "OTHER",
-              ].map((v) => ({ value: v, label: label(v) })),
-            },
-            {
-              name: "severity",
-              label: "Severity (1 minor – 5 serious)",
-              type: "select",
-              options: [
-                { value: 1, label: "1 – minor" },
-                { value: 2, label: "2" },
-                { value: 3, label: "3 – moderate" },
-                { value: 4, label: "4" },
-                { value: 5, label: "5 – serious" },
-              ],
-            },
-            { name: "first_aid_given", label: "First aid given", type: "checkbox" },
-            { name: "description", label: "Description (encrypted)", type: "textarea", required: true },
-            { name: "action_taken", label: "Action taken (encrypted)", type: "textarea" },
-          ]}
-          extraRowActions={(row, reload) =>
-            row.status === "DRAFT" ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={async () => {
-                  try {
-                    await act("incident-reports", row.id as number, "notify");
-                    toast("success", "Guardians notified");
-                    reload();
-                  } catch (e) {
-                    toast("error", apiMessage(e));
-                  }
-                }}
-              >
-                Notify guardians
-              </Button>
-            ) : null
-          }
-        />
+        <>
+          <p className="mb-3 text-sm text-[var(--campus-muted)]">
+            An <b>incident report</b> is a structured record of something that
+            happened to a child. Description and action taken are encrypted at
+            rest. It starts as <b>Draft</b>; <b>Notify guardians</b> emails every
+            communications-guardian and moves it to <b>Sent</b>. Once every one of
+            them has acknowledged it from the portal it flips itself to{" "}
+            <b>Acknowledged</b>. Press <b>Open</b> to read it and see who has
+            acknowledged.
+          </p>
+          <CrudPanel<IncRow>
+            resource="incident-reports"
+            singular="incident report"
+            columns={[
+              { header: "Student", cell: (r) => studentName(r.student) },
+              { header: "Category", cell: (r) => label(r.category) },
+              {
+                header: "Severity",
+                cell: (r) => (r.severity ? `${r.severity}/5` : "—"),
+              },
+              { header: "When", cell: (r) => datetime(r.occurred_at) },
+              {
+                header: "Status",
+                cell: (r) => (
+                  <Badge
+                    tone={
+                      r.status === "ACKNOWLEDGED"
+                        ? "green"
+                        : r.status === "SENT"
+                          ? "amber"
+                          : "neutral"
+                    }
+                  >
+                    {label(r.status)}
+                  </Badge>
+                ),
+              },
+            ]}
+            fields={[
+              { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+              { name: "occurred_at", label: "When", type: "datetime", required: true },
+              { name: "location", label: "Location" },
+              {
+                name: "category",
+                label: "Category",
+                type: "select",
+                required: true,
+                options: [
+                  "INJURY",
+                  "BEHAVIOUR",
+                  "ILLNESS",
+                  "ALLERGY",
+                  "SAFEGUARDING",
+                  "OTHER",
+                ].map((v) => ({ value: v, label: label(v) })),
+              },
+              {
+                name: "severity",
+                label: "Severity (1 minor – 5 serious)",
+                type: "select",
+                options: [
+                  { value: 1, label: "1 – minor" },
+                  { value: 2, label: "2" },
+                  { value: 3, label: "3 – moderate" },
+                  { value: 4, label: "4" },
+                  { value: 5, label: "5 – serious" },
+                ],
+              },
+              { name: "first_aid_given", label: "First aid given", type: "checkbox" },
+              { name: "description", label: "Description (encrypted)", type: "textarea", required: true },
+              { name: "action_taken", label: "Action taken (encrypted)", type: "textarea" },
+            ]}
+            extraRowActions={(row, reload) => (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setOpenInc(row)}>
+                  Open
+                </Button>
+                {row.status === "DRAFT" && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={async () => {
+                      try {
+                        await act("incident-reports", row.id, "notify");
+                        toast("success", "Guardians notified");
+                        reload();
+                      } catch (e) {
+                        toast("error", apiMessage(e));
+                      }
+                    }}
+                  >
+                    Notify guardians
+                  </Button>
+                )}
+              </>
+            )}
+          />
+        </>
       )}
 
       {tab === "email" && (
-        <CrudPanel
-          resource="outbound-emails"
-          singular="email"
-          canCreate={false}
-          canEdit={false}
-          canDelete={false}
-          columns={[
-            { header: "Sent", cell: (r) => datetime(r.sent_at as string) },
-            { header: "Kind", cell: (r) => label(r.kind as string) },
-            { header: "Subject", cell: (r) => r.subject as string },
-            {
-              header: "To",
-              cell: (r) =>
-                Array.isArray(r.to)
-                  ? (r.to as string[]).length + " recipient(s)"
-                  : String(r.to ?? "—"),
-            },
-            {
-              header: "Result",
-              cell: (r) =>
-                r.error ? (
-                  <Badge tone="red">error</Badge>
-                ) : (
-                  <Badge tone="green">sent</Badge>
-                ),
-            },
-          ]}
-        />
+        <>
+          <p className="mb-3 text-sm text-[var(--campus-muted)]">
+            The <b>email log</b> records every message Campus sent — kind,
+            subject, recipient count, time, and whether it failed. The body is
+            never stored; this is a delivery record, not an archive.
+          </p>
+          <CrudPanel
+            resource="outbound-emails"
+            singular="email"
+            canCreate={false}
+            canEdit={false}
+            canDelete={false}
+            columns={[
+              { header: "Sent", cell: (r) => datetime(r.sent_at as string) },
+              { header: "Kind", cell: (r) => label(r.kind as string) },
+              { header: "Subject", cell: (r) => r.subject as string },
+              {
+                header: "To",
+                cell: (r) =>
+                  Array.isArray(r.to)
+                    ? (r.to as string[]).length + " recipient(s)"
+                    : String(r.to ?? "—"),
+              },
+              {
+                header: "Result",
+                cell: (r) =>
+                  r.error ? (
+                    <Badge tone="red">error</Badge>
+                  ) : (
+                    <Badge tone="green">sent</Badge>
+                  ),
+              },
+            ]}
+          />
+        </>
       )}
+
+      <AnnouncementDrawer
+        ann={openAnn}
+        onClose={() => setOpenAnn(null)}
+        groupName={
+          groups.data?.find((g) => g.id === openAnn?.group)?.name ?? ""
+        }
+      />
+      <IncidentDrawer
+        inc={openInc}
+        onClose={() => setOpenInc(null)}
+        studentName={openInc ? studentName(openInc.student) : ""}
+      />
     </div>
+  );
+}
+
+/* --------------------------------------------------- announcement drawer */
+
+function AnnouncementDrawer({
+  ann,
+  onClose,
+  groupName,
+}: {
+  ann: AnnRow | null;
+  onClose: () => void;
+  groupName: string;
+}) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [live, setLive] = useState<AnnRow | null>(ann);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLive(ann);
+    setBody(ann?.body ?? "");
+  }, [ann]);
+
+  if (!ann || !live) return null;
+
+  const published = !!live.published_at;
+
+  async function refresh() {
+    if (!ann) return;
+    const fresh = await retrieve<AnnRow>("announcements", ann.id);
+    setLive(fresh);
+    setBody(fresh.body ?? "");
+    qc.invalidateQueries({ queryKey: ["list", "announcements"] });
+  }
+
+  async function withBusy(key: string, fn: () => Promise<void>) {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (e) {
+      toast("error", apiMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Modal open={!!ann} onClose={onClose} title={`Announcement — ${live.title}`} wide>
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          {published ? (
+            <Badge tone="green">Published {datetime(live.published_at)}</Badge>
+          ) : (
+            <Badge>Draft</Badge>
+          )}
+          <span className="text-[var(--campus-muted)]">
+            Audience: {label(live.audience)}
+            {live.audience === "GROUP" && groupName ? ` — ${groupName}` : ""}
+          </span>
+          {live.pinned && <span className="text-[var(--campus-muted)]">Pinned</span>}
+          {live.email_sent_at && (
+            <span className="text-[var(--campus-muted)]">
+              emailed {datetime(live.email_sent_at)}
+            </span>
+          )}
+        </div>
+
+        <section>
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
+            Body
+          </h3>
+          <textarea
+            className="w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm text-[var(--campus-fg)]"
+            rows={8}
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+          />
+          <div className="mt-1 flex justify-end">
+            <Button
+              size="sm"
+              variant="subtle"
+              disabled={busy === "body" || body === (live.body ?? "")}
+              onClick={() =>
+                withBusy("body", async () => {
+                  await patch("announcements", ann.id, { body });
+                  toast("success", "Saved");
+                  await refresh();
+                })
+              }
+            >
+              {busy === "body" ? "Saving…" : "Save body"}
+            </Button>
+          </div>
+        </section>
+
+        <div className="flex items-center justify-between border-t border-[var(--campus-line)] pt-3">
+          <p className="text-xs text-[var(--campus-muted)]">
+            {published
+              ? "Published. Editing the body here will not re-send the email."
+              : "Publishing stamps it and emails the whole audience. There is no un-publish."}
+          </p>
+          {!published && (
+            <Button
+              disabled={busy === "publish"}
+              onClick={() =>
+                withBusy("publish", async () => {
+                  await act("announcements", ann.id, "publish");
+                  toast("success", "Published & emailed");
+                  await refresh();
+                })
+              }
+            >
+              Publish
+            </Button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ------------------------------------------------------- incident drawer */
+
+function IncidentDrawer({
+  inc,
+  onClose,
+  studentName,
+}: {
+  inc: IncRow | null;
+  onClose: () => void;
+  studentName: string;
+}) {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const [live, setLive] = useState<IncRow | null>(inc);
+  const [description, setDescription] = useState("");
+  const [actionTaken, setActionTaken] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const acks = useAll<{
+    id: string;
+    incident: number;
+    guardian: number | null;
+    signature_name: string;
+    note: string;
+    created_at: string;
+  }>("incident-acknowledgements");
+
+  useEffect(() => {
+    setLive(inc);
+    setDescription(inc?.description ?? "");
+    setActionTaken(inc?.action_taken ?? "");
+  }, [inc]);
+
+  if (!inc || !live) return null;
+
+  const mineAcks = (acks.data ?? []).filter((a) => a.incident === inc.id);
+  const dirty =
+    description !== (live.description ?? "") ||
+    actionTaken !== (live.action_taken ?? "");
+
+  async function refresh() {
+    if (!inc) return;
+    const fresh = await retrieve<IncRow>("incident-reports", inc.id);
+    setLive(fresh);
+    setDescription(fresh.description ?? "");
+    setActionTaken(fresh.action_taken ?? "");
+    qc.invalidateQueries({ queryKey: ["list", "incident-reports"] });
+    qc.invalidateQueries({ queryKey: ["all", "incident-acknowledgements"] });
+  }
+
+  async function withBusy(key: string, fn: () => Promise<void>) {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (e) {
+      toast("error", apiMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const box =
+    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm text-[var(--campus-fg)]";
+
+  return (
+    <Modal
+      open={!!inc}
+      onClose={onClose}
+      title={`Incident — ${studentName}`}
+      wide
+    >
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Badge
+            tone={
+              live.status === "ACKNOWLEDGED"
+                ? "green"
+                : live.status === "SENT"
+                  ? "amber"
+                  : "neutral"
+            }
+          >
+            {label(live.status)}
+          </Badge>
+          <span className="text-[var(--campus-muted)]">{datetime(live.occurred_at)}</span>
+          <span className="text-[var(--campus-muted)]">{label(live.category)}</span>
+          {live.severity && (
+            <span className="text-[var(--campus-muted)]">severity {live.severity}/5</span>
+          )}
+          {live.location && (
+            <span className="text-[var(--campus-muted)]">at {live.location}</span>
+          )}
+          {live.first_aid_given && (
+            <span className="text-[var(--campus-muted)]">first aid given</span>
+          )}
+        </div>
+
+        <section>
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
+            What happened <span className="normal-case font-normal">(encrypted)</span>
+          </h3>
+          <textarea
+            className={box}
+            rows={5}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </section>
+        <section>
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
+            Action taken <span className="normal-case font-normal">(encrypted)</span>
+          </h3>
+          <textarea
+            className={box}
+            rows={4}
+            value={actionTaken}
+            onChange={(e) => setActionTaken(e.target.value)}
+          />
+        </section>
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            variant="subtle"
+            disabled={!dirty || busy === "save"}
+            onClick={() =>
+              withBusy("save", async () => {
+                await patch("incident-reports", inc.id, {
+                  description,
+                  action_taken: actionTaken,
+                });
+                toast("success", "Saved");
+                await refresh();
+              })
+            }
+          >
+            {busy === "save" ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
+            Guardian acknowledgements ({mineAcks.length})
+          </h3>
+          {acks.isLoading ? (
+            <Spinner />
+          ) : mineAcks.length === 0 ? (
+            <p className="text-sm text-[var(--campus-muted)]">
+              {live.guardians_notified_at
+                ? `Notified ${datetime(live.guardians_notified_at)}. No guardian has acknowledged yet.`
+                : "Not notified yet — use Notify guardians below."}
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--campus-line)] rounded-md border border-[var(--campus-line)] text-sm">
+              {mineAcks.map((a) => (
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2"
+                >
+                  <span>
+                    {a.signature_name || `guardian #${a.guardian ?? "?"}`}
+                    {a.note ? (
+                      <span className="text-[var(--campus-muted)]"> — {a.note}</span>
+                    ) : null}
+                  </span>
+                  <span className="text-xs text-[var(--campus-muted)]">
+                    {date(a.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {live.status === "DRAFT" && (
+          <div className="flex justify-end border-t border-[var(--campus-line)] pt-3">
+            <Button
+              disabled={busy === "notify"}
+              onClick={() =>
+                withBusy("notify", async () => {
+                  await act("incident-reports", inc.id, "notify");
+                  toast("success", "Guardians notified");
+                  await refresh();
+                })
+              }
+            >
+              Notify guardians
+            </Button>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -234,59 +627,65 @@ function Threads({
   }>("message-threads");
 
   return (
-    <Card>
-      <div className="flex justify-end border-b border-[var(--campus-line)] p-3">
-        <Button size="sm" onClick={() => setCreating(true)}>
-          New thread
-        </Button>
-      </div>
-      {threads.isLoading ? (
-        <Spinner />
-      ) : (
-        <ul className="divide-y divide-[var(--campus-line)] text-sm">
-          {(threads.data?.results ?? []).map((t) => (
-            <li key={t.id} className="px-4 py-3">
-              <button
-                className="flex w-full items-center justify-between text-left"
-                onClick={() => setOpen(open === t.id ? null : t.id)}
-              >
-                <span className="font-medium">{t.subject}</span>
-                <span className="text-xs text-[var(--campus-muted)]">
-                  {t.message_count ?? 0} msg ·{" "}
-                  {datetime(t.last_message_at)}
-                  {t.closed && " · closed"}
-                </span>
-              </button>
-              {open === t.id && <ThreadMessages threadId={t.id} />}
-            </li>
-          ))}
-          {(threads.data?.results ?? []).length === 0 && (
-            <li className="p-4 text-[var(--campus-muted)]">No threads yet.</li>
-          )}
-        </ul>
-      )}
+    <>
+      <p className="mb-3 text-sm text-[var(--campus-muted)]">
+        A <b>thread</b> is a private staff ↔ parent conversation, optionally about
+        one child. Only the participants (and admins) can read it; message bodies
+        are encrypted at rest. Click a thread to expand it and reply inline.
+      </p>
+      <Card>
+        <div className="flex justify-end border-b border-[var(--campus-line)] p-3">
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New thread
+          </Button>
+        </div>
+        {threads.isLoading ? (
+          <Spinner />
+        ) : (
+          <ul className="divide-y divide-[var(--campus-line)] text-sm">
+            {(threads.data?.results ?? []).map((t) => (
+              <li key={t.id} className="px-4 py-3">
+                <button
+                  className="flex w-full items-center justify-between text-left"
+                  onClick={() => setOpen(open === t.id ? null : t.id)}
+                >
+                  <span className="font-medium">{t.subject}</span>
+                  <span className="text-xs text-[var(--campus-muted)]">
+                    {t.message_count ?? 0} msg · {datetime(t.last_message_at)}
+                    {t.closed && " · closed"}
+                  </span>
+                </button>
+                {open === t.id && <ThreadMessages threadId={t.id} />}
+              </li>
+            ))}
+            {(threads.data?.results ?? []).length === 0 && (
+              <li className="p-4 text-[var(--campus-muted)]">No threads yet.</li>
+            )}
+          </ul>
+        )}
 
-      <Modal
-        open={creating}
-        onClose={() => setCreating(false)}
-        title="New message thread"
-      >
-        <RecordForm
-          fields={[
-            { name: "subject", label: "Subject", required: true },
-            { name: "student", label: "About student", type: "select", options: studentOpts },
-          ]}
-          submitLabel="Create thread"
-          onSubmit={async (v) => {
-            await create("message-threads", v);
-            toast("success", "Thread created");
-            setCreating(false);
-            qc.invalidateQueries({ queryKey: ["list", "message-threads"] });
-          }}
-          onCancel={() => setCreating(false)}
-        />
-      </Modal>
-    </Card>
+        <Modal
+          open={creating}
+          onClose={() => setCreating(false)}
+          title="New message thread"
+        >
+          <RecordForm
+            fields={[
+              { name: "subject", label: "Subject", required: true },
+              { name: "student", label: "About student", type: "select", options: studentOpts },
+            ]}
+            submitLabel="Create thread"
+            onSubmit={async (v) => {
+              await create("message-threads", v);
+              toast("success", "Thread created");
+              setCreating(false);
+              qc.invalidateQueries({ queryKey: ["list", "message-threads"] });
+            }}
+            onCancel={() => setCreating(false)}
+          />
+        </Modal>
+      </Card>
+    </>
   );
 }
 
@@ -301,7 +700,9 @@ function ThreadMessages({ threadId }: { threadId: string }) {
     <div className="mt-3 space-y-2 rounded-md bg-black/[0.03] dark:bg-white/[0.04] p-3">
       {(msgs.data?.results ?? []).map((m) => (
         <div key={m.id} className="text-sm">
-          <span className="text-[var(--campus-muted)]">{datetime(m.created_at)} — </span>
+          <span className="text-[var(--campus-muted)]">
+            {datetime(m.created_at)} —{" "}
+          </span>
           {m.body}
         </div>
       ))}
