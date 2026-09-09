@@ -60,8 +60,14 @@ Source: "..\dist\campus-app\*"; DestDir: "{app}\app"; Flags: recursesubdirs igno
 ; the exported Next.js SPA - built separately, may not exist on a bare checkout
 Source: "..\frontend\out\*"; DestDir: "{app}\app\frontend_out"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
 
-; the reverse proxy front door (templated by install.ps1 at first run)
-Source: "proxy\Caddyfile"; DestDir: "{app}\caddy"; Flags: ignoreversion
+; the reverse proxy front door. install.ps1 templates {app}\caddy\Caddyfile in
+; place on first run; repair-campus.ps1 rewrites it thereafter. A REINSTALL must
+; NOT clobber the live (templated) file - if install.ps1's [Run] step then
+; fails, you're left with a broken proxy and no services (this actually bit a
+; real install). So the live file is written once (onlyifdoesntexist) and a
+; pristine reference copy always ships alongside it.
+Source: "proxy\Caddyfile"; DestDir: "{app}\caddy"; DestName: "Caddyfile.template"; Flags: ignoreversion
+Source: "proxy\Caddyfile"; DestDir: "{app}\caddy"; Flags: onlyifdoesntexist uninsneveruninstall
 
 ; third-party binaries, staged manually per docs/DEPLOYMENT.md - optional
 ; here so this .iss compiles before they're staged; install.ps1 checks for

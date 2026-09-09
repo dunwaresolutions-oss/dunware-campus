@@ -261,7 +261,15 @@ if ($dbReady -and (Test-Path $appExe)) {
 $nssm = Join-Path $InstallRoot "caddy\bin\nssm.exe"
 $caddyExe = Join-Path $InstallRoot "caddy\bin\caddy.exe"
 $caddyfileSrc = Join-Path $InstallRoot "caddy\Caddyfile"
+$caddyfileTpl = Join-Path $InstallRoot "caddy\Caddyfile.template"
 $webRoot = Join-Path $InstallRoot "app\frontend_out"
+# The bundled Caddyfile is written once (campus.iss: onlyifdoesntexist) so a
+# reinstall never clobbers a live templated one. If it is somehow missing, seed
+# it from the pristine reference copy that always ships.
+if (-not (Test-Path $caddyfileSrc) -and (Test-Path $caddyfileTpl)) {
+  Copy-Item $caddyfileTpl $caddyfileSrc -Force
+  Write-Host "    seeded caddy\Caddyfile from Caddyfile.template"
+}
 if (Test-Path $caddyfileSrc) {
   # Caddy wants forward slashes even on Windows; a bare backslash path in a
   # Caddyfile `root` directive is read as an escape.
