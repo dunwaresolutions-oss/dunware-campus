@@ -3,7 +3,8 @@
 Part of the Phase 8 hardening pass: a self-review against a representative
 slice of the [OWASP Application Security Verification Standard](https://owasp.org/www-project-application-security-verification-standard/)
 (v4), levels 1–2, picking the requirements that matter for an on-site PII
-system with no public internet exposure. "Lite" means: every row cites the
+system with no public internet exposure by default (optional off-premises
+access and its trust boundary are covered in V1.8 / V9.2.1). "Lite" means: every row cites the
 actual code or test that satisfies it, not a checkbox — and a row marked
 **Deferred** says exactly which phase closes it, not "later."
 

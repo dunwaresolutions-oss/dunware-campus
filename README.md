@@ -34,7 +34,7 @@ Security and privacy are part of the data model, not a later pass: mandatory TOT
 
 ## Design commitments
 
-- **On-site only.** All data on the client's server. No SaaS, no cloud database, no vendor access. Single-tenant per install.
+- **On-site only.** Every record — database, uploaded files, backups — lives on the client's own server. No SaaS, no cloud database, no vendor access. Single-tenant per install. Off-premises access is opt-in and set up separately (Cloudflare Tunnel / WireGuard / plain gateway); even then no third party *stores* any data — see [`docs/REMOTE_ACCESS_AND_YOUR_DATA.md`](docs/REMOTE_ACCESS_AND_YOUR_DATA.md).
 - **One installer.** `Campus-Setup.exe` bundles everything — a frozen Django app, the Next.js static build, a portable PostgreSQL, and Caddy — installs to `%ProgramData%\Campus`, runs as Windows services, and starts on boot. No Docker, Python, or Node needed on the target. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and [`docs/PACKAGING.md`](docs/PACKAGING.md).
 - **Security built first.** The encryption layer, roles, permissions, and audit log landed in Phase 1, before any feature code. See [`docs/PII_SECURITY.md`](docs/PII_SECURITY.md) and [`docs/ASVS_LITE_REVIEW.md`](docs/ASVS_LITE_REVIEW.md).
 - **API-first.** Every screen — staff console and parent portal alike — talks to the same DRF API with explicit per-view permission classes.

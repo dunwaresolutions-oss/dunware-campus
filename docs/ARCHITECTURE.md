@@ -41,6 +41,10 @@ Background jobs: `django-q2` (own Windows service), DB-backed broker — no Redi
 5. `django-otp` middleware marks the request verified; Phase-1 mixins refuse staff endpoints for an unverified session.
 6. `AuditContextMiddleware` puts the actor + IP in a context var; `apps.audit.services.record()` and the Phase-1 automatic hooks write the log.
 
+## Optional off-premises access
+
+LAN-only by default. `deploy/remote-setup-ui.ps1` (a Start-Menu window; `remote-setup.ps1` is the scripted equivalent) can add a **Cloudflare Tunnel**, a **WireGuard** endpoint, or a **plain public gateway** — the first adds a 4th outbound-only Windows service, `Campus Remote` (`cloudflared`). Django stays inert until `REMOTE_ACCESS_ENABLED` is set: then `RemoteClientIPMiddleware` restores the real client IP from the fronting layer's header **only when the peer is loopback**, and the opted-in hostname is added to `ALLOWED_HOSTS`/`CSRF_TRUSTED_ORIGINS`. Data at rest never leaves the box in any mode; `docs/REMOTE_ACCESS_AND_YOUR_DATA.md` covers the in-transit trade-offs.
+
 ## App boundaries
 
 `core` (shared: `EncryptedField`, base models, permission mixins, PII log scrub) · `accounts` (User + roles + MFA) · `audit` (append-only log + middleware) · then the domain apps: `people`, `health` (encrypted, stricter), `registration`, `scheduling`, `attendance`, `lessons`, `grades`, `booking`, `communication` (email only), `billing` (placeholder), `reporting` (export / erasure / retention jobs).

@@ -13,9 +13,10 @@ student record, a report card, a health note, or an attendance mark.
 What remote access changes is the **path a connection takes** to reach that
 computer from outside — not where anything is kept.
 
-Remote access is **optional**, set up separately by a technician, and can be
-**switched off at any time**, which returns Campus to a state where nothing
-leaves the building at all.
+Remote access is **optional**, set up from a dedicated window on the server
+(*Start menu → "Campus — Remote Access Setup"*), and can be **switched off at
+any time**, which returns Campus to a state where nothing leaves the building
+at all.
 
 ## The three ways to do it
 
@@ -67,9 +68,10 @@ school's own computer.
 
 ## Turning it off
 
-A technician runs one command on the school's computer
-(`deploy\remote-setup.ps1 -Mode Off`). The tunnel/VPN stops, the setting is
-cleared, Campus restarts LAN-only. **Nothing is removed from the database.**
+Open *Campus — Remote Access Setup* on the server, choose **Turn OFF**, click
+Apply (or run `scripts\remote-setup.ps1 -Mode Off`). The tunnel/VPN stops, the
+setting is cleared, Campus restarts LAN-only. **Nothing is removed from the
+database.**
 
 ## The one sentence that changes in our materials
 

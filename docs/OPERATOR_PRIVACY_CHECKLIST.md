@@ -60,7 +60,13 @@ operator can own. Work through it **before go-live** and review it yearly.
 - [ ] The Campus server has **full-disk encryption** on.
 - [ ] **Backups** run on a schedule, are encrypted, and are stored off the
       Campus box. A **restore has been tested**.
-- [ ] Campus is **not reachable from the internet** (LAN only, or behind your
-      VPN).
+- [ ] **Remote access decision made.** Campus is LAN-only out of the box. If
+      staff or families need off-premises access, it is enabled deliberately
+      from the *Campus — Remote Access Setup* window (Cloudflare Tunnel /
+      WireGuard / plain gateway). Before enabling the Cloudflare Tunnel mode,
+      the school's privacy officer has read `REMOTE_ACCESS_AND_YOUR_DATA.md`
+      and signed off on traffic transiting a third-party network (data at rest
+      still never leaves the box). WireGuard and gateway modes keep the whole
+      path on-premises.
 - [ ] The server's OS is patched; only trusted staff have local admin.
 - [ ] When the server is retired, its disks are wiped or destroyed.

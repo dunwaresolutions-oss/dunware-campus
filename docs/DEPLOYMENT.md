@@ -13,9 +13,9 @@ what a machine needs before install, and what to do after.
 - ~4 GB free disk for the app + a growing database.
 - **Disk encryption on** (BitLocker). The installer checks and warns loudly if
   not — this box will hold children's PII.
-- LAN-only by default. Off-premises access is **opt-in**, provisioned
-  separately with `deploy\remote-setup.ps1` (Cloudflare Tunnel / WireGuard /
-  plain gateway) — see **Remote access** below and
+- LAN-only by default. Off-premises access is **opt-in**, set up separately
+  from the *Campus — Remote Access Setup* window (Cloudflare Tunnel / WireGuard
+  / plain gateway) — see **Remote access** below and
   `docs/REMOTE_ACCESS_AND_YOUR_DATA.md`.
 
 ## Third-party binaries (stage before a real install)
