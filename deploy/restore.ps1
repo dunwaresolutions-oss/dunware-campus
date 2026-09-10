@@ -2,8 +2,9 @@
   Campus - restore from an encrypted backup (Phase 8).
 
   Decrypt (gpg) -> expand -> [stop the Campus App service] -> pg_restore
-  --clean --if-exists -> restore media -> `manage.py migrate` (in case the
-  backup predates a schema change) -> [start the service] -> verify.
+  --clean --if-exists -> restore media -> `campus-app.exe manage migrate`
+  (in case the backup predates a schema change) -> [start the service] ->
+  verify.
 
   Part of the Phase 8 test plan: every release must pass a
   backup -> wipe -> restore -> "everything still there" drill - see
@@ -86,8 +87,16 @@ try {
       robocopy $mediaExpanded $mediaDest /MIR | Out-Null
     }
 
-    Push-Location (Join-Path $InstallRoot "app")
-    try { & .\manage.py migrate } finally { Pop-Location }
+    # Apply any migrations the backup predates. The frozen install has no
+    # Python / manage.py - it is campus-app.exe manage <cmd> (same as
+    # repair-campus.ps1); fall back to manage.py only on a dev checkout.
+    if (Test-Path $script:AppExe) {
+      & $script:AppExe manage migrate --noinput
+    } else {
+      Push-Location (Join-Path $InstallRoot "app")
+      try { & python manage.py migrate --noinput } finally { Pop-Location }
+    }
+    if ($LASTEXITCODE -ne 0) { throw "post-restore migrate exited with code $LASTEXITCODE" }
 
     if (-not $SkipServiceRestart) {
       Write-Host "Starting Campus App service ..."
