@@ -10,8 +10,10 @@
   Where the binaries come from:
     - pg_dump: $InstallRoot\pgsql\bin\pg_dump.exe (the bundled portable
       PostgreSQL, present from Phase 9 on) falling back to PATH.
-    - gpg: expected on PATH (bundled in the installer in Phase 9; on a dev
-      box, Git for Windows / Gpg4win already provide it).
+    - gpg: $InstallRoot\gpg\bin\gpg.exe (bundled GnuPG 2.4 portable) falling
+      back to a gpg on PATH (Git for Windows / Gpg4win on a dev box).
+      GNUPGHOME is pointed at $InstallRoot\gpg\home so no user profile is
+      touched and the run needs no interaction.
 
   On a box with no pg_dump yet (this repo, before Phase 9 bundles Postgres),
   pass -Simulate to exercise the full archive -> encrypt pipeline against a
@@ -47,6 +49,14 @@ function Resolve-PgDump {
   return $null
 }
 
+function Resolve-Gpg {
+  $bundled = Join-Path $InstallRoot "gpg\bin\gpg.exe"
+  if (Test-Path $bundled) { return $bundled }
+  $onPath = Get-Command gpg -ErrorAction SilentlyContinue
+  if ($onPath) { return $onPath.Source }
+  return $null
+}
+
 # Report the run into Campus so the console can show backup health. Best
 # effort only - a reporting failure never fails the backup itself.
 $script:AppExe = Join-Path $InstallRoot "app\campus-app.exe"
@@ -72,9 +82,13 @@ try {
   if (-not $Passphrase) {
     throw "No backup passphrase. Pass -Passphrase or set CAMPUS_BACKUP_PASSPHRASE."
   }
-  if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) {
-    throw "gpg was not found on PATH. Install Gpg4win (or Git for Windows) or bundle gpg.exe."
+  $gpg = Resolve-Gpg
+  if (-not $gpg) {
+    throw "gpg was not found (looked in $InstallRoot\gpg\bin and on PATH). It ships with the installer; on a dev box install Git for Windows or Gpg4win."
   }
+  # isolate Campus's backup crypto from any operator GnuPG setup on the box
+  $env:GNUPGHOME = Join-Path $InstallRoot "gpg\home"
+  New-Item -ItemType Directory -Force -Path $env:GNUPGHOME | Out-Null
 
   $pgDump = Resolve-PgDump
   $dumpPath = Join-Path $work "db.dump"
@@ -107,7 +121,7 @@ try {
   Compress-Archive -Path (Join-Path $work "*") -DestinationPath $zipPath -Force
 
   $encPath = "$zipPath.gpg"
-  gpg --batch --yes --pinentry-mode loopback --passphrase $Passphrase `
+  & $gpg --batch --yes --pinentry-mode loopback --passphrase $Passphrase `
       --symmetric --cipher-algo AES256 -o $encPath $zipPath
   if ($LASTEXITCODE -ne 0) { throw "gpg encryption exited with code $LASTEXITCODE" }
 

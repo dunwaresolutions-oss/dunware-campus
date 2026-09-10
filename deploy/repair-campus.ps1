@@ -296,6 +296,17 @@ foreach ($svc in @("Campus PostgreSQL","Campus App","Campus Proxy")) {
 Step "Trusting the local HTTPS certificate on this machine"
 Trust-CaddyLocalCA -InstallRoot $InstallRoot
 
+# --- 4c. gpg presence (encrypted backups) ------------------------
+Step "Checking gpg (backup encryption)"
+$gpgBundled = Join-Path $InstallRoot "gpg\bin\gpg.exe"
+if (Test-Path $gpgBundled) {
+  Info "bundled: $gpgBundled"
+} elseif (Get-Command gpg -ErrorAction SilentlyContinue) {
+  Info "on PATH: $((Get-Command gpg).Source)"
+} else {
+  Warn "gpg not found (bundled or PATH) - scripts\backup.ps1 cannot encrypt until GnuPG is staged into the installer or installed on this box"
+}
+
 # --- 5. health check ----------------------------------------------
 # IMPORTANT: do not probe over HTTPS from PowerShell here. Django forces an
 # HTTPS redirect on any request without Caddy's X-Forwarded-Proto header (so

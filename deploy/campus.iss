@@ -74,6 +74,10 @@ Source: "proxy\Caddyfile"; DestDir: "{app}\caddy"; Flags: onlyifdoesntexist unin
 ; their presence at install time either way.
 Source: "_thirdparty\pgsql\*"; DestDir: "{app}\pgsql"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
 Source: "_thirdparty\caddy\*"; DestDir: "{app}\caddy\bin"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
+; GnuPG 2.4 portable - encrypts/decrypts backups (backup.ps1 / restore.ps1).
+; Optional at compile time exactly like pgsql/caddy; the scripts fall back to
+; a gpg on PATH, and set GNUPGHOME to {app}\gpg\home themselves.
+Source: "_thirdparty\gpg\*"; DestDir: "{app}\gpg"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
 ; remote-access helpers (cloudflared / WireGuard) - staged only for sites that
 ; buy off-premises access; optional here exactly like caddy/pgsql above.
 Source: "_thirdparty\remote\*"; DestDir: "{app}\remote\bin"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist

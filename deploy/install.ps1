@@ -182,13 +182,16 @@ try {
 }
 
 # ── 2. directory layout ──────────────────────────────────────────────────
-foreach ($d in @("pgdata", "logs", "media", "app\hotfix", "remote", "backups")) {
+foreach ($d in @("pgdata", "logs", "media", "app\hotfix", "remote", "backups", "gpg\home")) {
   New-Item -ItemType Directory -Force -Path (Join-Path $InstallRoot $d) | Out-Null
 }
 # The default target for scheduled backups AND the console's "Run backup now"
 # action (deploy/backup.ps1 -Out). Holds GPG-encrypted archives - lock it to
 # SYSTEM + Administrators like the rest of the sensitive tree.
 Protect-ToAdminsOnly (Join-Path $InstallRoot "backups")
+# GNUPGHOME for the bundled gpg (backup.ps1 / restore.ps1 set it themselves);
+# only agent sockets / a scratch keybox land here, but keep it locked down too.
+Protect-ToAdminsOnly (Join-Path $InstallRoot "gpg\home")
 
 # ── 3. secrets ───────────────────────────────────────────────────────────
 Write-Step "Generating per-install secrets"
@@ -259,6 +262,18 @@ if ($dbReady -and (Test-Path $appExe)) {
   Invoke-Manage $appExe @("manage", "collectstatic", "--noinput")
 } else {
   Write-Skip "migrate/collectstatic - needs a reachable database (run manually once Postgres is available: campus-app.exe manage migrate)"
+}
+
+# ── 5b. gpg for encrypted backups (warn-only) ──────────────────────────
+$gpgExe = Join-Path $InstallRoot "gpg\bin\gpg.exe"
+if (Test-Path $gpgExe) {
+  $env:GNUPGHOME = Join-Path $InstallRoot "gpg\home"
+  $gpgVer = (& $gpgExe --version 2>$null | Select-Object -First 1)
+  Write-Host "    bundled gpg: $gpgVer  (GNUPGHOME $($env:GNUPGHOME))"
+} elseif (Get-Command gpg -ErrorAction SilentlyContinue) {
+  Write-Host "    gpg: using the copy on PATH ($((Get-Command gpg).Source))"
+} else {
+  Write-Warn2 "no gpg bundled at $gpgExe and none on PATH - encrypted backups (scripts\backup.ps1) will not run until GnuPG is staged (see docs/DEPLOYMENT.md#third-party-binaries)"
 }
 
 # ── 6/7. Caddy + the app itself as services (needs NSSM) ────────────────

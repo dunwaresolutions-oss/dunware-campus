@@ -37,6 +37,14 @@ function Resolve-PgRestore {
   return $null
 }
 
+function Resolve-Gpg {
+  $bundled = Join-Path $InstallRoot "gpg\bin\gpg.exe"
+  if (Test-Path $bundled) { return $bundled }
+  $onPath = Get-Command gpg -ErrorAction SilentlyContinue
+  if ($onPath) { return $onPath.Source }
+  return $null
+}
+
 # Record a restore-verification run so the console shows "last verified".
 $script:AppExe = Join-Path $InstallRoot "app\campus-app.exe"
 function Record-Verify {
@@ -49,7 +57,12 @@ $startIso = (Get-Date).ToString("o")
 
 if (-not (Test-Path $Archive)) { throw "Archive not found: $Archive" }
 if (-not $Passphrase) { throw "No backup passphrase. Pass -Passphrase or set CAMPUS_BACKUP_PASSPHRASE." }
-if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) { throw "gpg was not found on PATH." }
+$gpg = Resolve-Gpg
+if (-not $gpg) {
+  throw "gpg was not found (looked in $InstallRoot\gpg\bin and on PATH). It ships with the installer; on a dev box install Git for Windows or Gpg4win."
+}
+$env:GNUPGHOME = Join-Path $InstallRoot "gpg\home"
+New-Item -ItemType Directory -Force -Path $env:GNUPGHOME | Out-Null
 
 $work = Join-Path ([System.IO.Path]::GetTempPath()) ("campus-restore-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Force -Path $work | Out-Null
@@ -57,7 +70,7 @@ $zipPath = Join-Path $work "archive.zip"
 
 try {
   Write-Host "Decrypting $Archive ..."
-  gpg --batch --yes --pinentry-mode loopback --passphrase $Passphrase -o $zipPath -d $Archive
+  & $gpg --batch --yes --pinentry-mode loopback --passphrase $Passphrase -o $zipPath -d $Archive
   if ($LASTEXITCODE -ne 0) { throw "gpg decryption exited with code $LASTEXITCODE (wrong passphrase?)" }
 
   $expandDir = Join-Path $work "expanded"

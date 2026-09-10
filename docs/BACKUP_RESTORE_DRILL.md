@@ -18,9 +18,11 @@ encrypted backups past `-RetentionDays` (default 30) are pruned.
 (covers a backup taken before a schema change), restarts the service.
 
 Both resolve `pg_dump`/`pg_restore` from the bundled portable PostgreSQL
-(`%ProgramData%\Campus\pgsql\bin`, present from Phase 9 on) and fall back to
-`PATH`. `gpg` is expected on `PATH` — bundled with the installer in Phase 9,
-already present on a dev box via Git for Windows / Gpg4win.
+(`%ProgramData%\Campus\pgsql\bin`) and fall back to `PATH`. `gpg` is resolved
+the same way — `%ProgramData%\Campus\gpg\bin\gpg.exe` (bundled GnuPG 2.4
+portable) first, then a `gpg` on `PATH` (Git for Windows / Gpg4win on a dev
+box). The scripts set `GNUPGHOME` to `%ProgramData%\Campus\gpg\home` so no
+operator GnuPG profile is involved and the run is non-interactive.
 
 **On-demand backups.** Superadmin/Admin can trigger `backup.ps1` from the
 console (**Backups → Run backup now**). The request handler

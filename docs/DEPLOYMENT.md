@@ -20,21 +20,23 @@ what a machine needs before install, and what to do after.
 
 ## Third-party binaries (stage before a real install)
 
-Two binaries and one service-shim ship **inside the installer if staged, but
+A handful of third-party binaries ship **inside the installer if staged, but
 are never fetched or committed** by this repo — `deploy/_thirdparty/` is
 gitignored. Without them, `Campus-Setup.exe` still installs and the app
 files/secrets/`.env`/Caddyfile are all laid out correctly, but the database
 and the two Windows services are skipped with a clear message instead of
-being registered — see `docs/PACKAGING.md` for the drill that proved this.
+being registered (and encrypted backups can't run) — see `docs/PACKAGING.md`
+for the drill that proved this.
 
 | What | Stage it at | Get it from | License |
 |---|---|---|---|
 | PostgreSQL 16, portable Windows zip build | `deploy/_thirdparty/pgsql/` (`pgsql/bin/initdb.exe` etc.) | https://www.enterprisedb.com/download-postgresql-binaries | PostgreSQL License |
 | Caddy, Windows amd64 | `deploy/_thirdparty/caddy/caddy.exe` | https://caddyserver.com/download | Apache 2.0 |
 | NSSM — wraps `caddy.exe`/`campus-app.exe` as Windows services (neither speaks the Windows Service Control Protocol itself; `pg_ctl register` does, so Postgres needs no such shim) | `deploy/_thirdparty/caddy/nssm.exe` | https://nssm.cc/download | Public domain / permissive |
+| GnuPG 2.4, portable — encrypts (`backup.ps1`) and decrypts (`restore.ps1`) backup archives with `gpg --symmetric` (AES-256). Copy the `bin/` (`gpg.exe`, `gpg-agent.exe`, `gpgconf.exe` + their DLLs) **and** `lib/gnupg/` out of an installed GnuPG. The scripts try `{app}\gpg\bin\gpg.exe` first, then a `gpg` on PATH, and point `GNUPGHOME` at `{app}\gpg\home` (no user profile touched). Without it, backups fail with a clear "gpg was not found" until it's staged or a system-wide GnuPG/Git-for-Windows is installed. | `deploy/_thirdparty/gpg/` (→ `{app}\gpg`, so `{app}\gpg\bin\gpg.exe`) | https://gnupg.org/download/ (or Gpg4win) | GPLv3 |
 | **Remote access only** — `cloudflared.exe` and/or `wireguard.exe` + `wg.exe`. Needed *only* for a site that will run `remote-setup.ps1`; a LAN-only install ignores their absence exactly like the row above. | `deploy/_thirdparty/remote/` → `{app}\remote\bin` | https://github.com/cloudflare/cloudflared/releases · https://www.wireguard.com/install/ | Apache 2.0 · GPLv2 |
 
-Stage all three before running Inno Setup (`deploy/campus.iss`) and the
+Stage what you need before running Inno Setup (`deploy/campus.iss`) and the
 installer's `[Files]` step bundles them in; `install.ps1` picks them up
 automatically at first run. A build with none staged is still useful — an
 operator can point `DATABASE_URL` in the generated `.env` at a Postgres they
