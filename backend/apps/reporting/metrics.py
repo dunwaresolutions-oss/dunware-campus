@@ -345,7 +345,10 @@ def _operations(students):
 
 
 def _backup():
+    from .backup_runner import reconcile_stale_runs
     from .models import BackupRun
+
+    reconcile_stale_runs()  # an abandoned run must not read as "running" forever
 
     now = timezone.now()
     runs = BackupRun.objects.all()

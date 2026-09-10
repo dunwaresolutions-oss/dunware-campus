@@ -35,6 +35,11 @@ class BackupRunViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = BackupRunSerializer
     permission_classes = [IsAuthenticated, AdminOnly, MFAVerified]
 
+    def list(self, request, *args, **kwargs):
+        # An abandoned run should not sit as "Running" forever.
+        backup_runner.reconcile_stale_runs()
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=["post"], url_path="run")
     def run(self, request):
         """Take an on-demand encrypted backup now (superadmin / admin).
@@ -44,6 +49,7 @@ class BackupRunViewSet(viewsets.ReadOnlyModelViewSet):
         CAMPUS_BACKUP_PASSPHRASE set. Returns the RUNNING row (202); poll
         ``GET /api/backups/`` for SUCCESS / FAILED.
         """
+        backup_runner.reconcile_stale_runs()
         ok, why = backup_runner.can_run_now()
         if not ok:
             return Response({"detail": why}, status=status.HTTP_409_CONFLICT)

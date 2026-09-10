@@ -14,7 +14,8 @@
   Optional in-place update of an existing install without a full reinstall:
     -RefreshFrontendFrom <repo>\frontend\out     swap the exported SPA
     -RefreshAppFrom      <repo>\dist\campus-app   swap the frozen backend
-  Both keep .env and the database; -RefreshAppFrom re-runs migrate + collectstatic.
+    -RefreshScriptsFrom  <repo>\deploy            swap the day-2 *.ps1 scripts
+  All keep .env and the database; -RefreshAppFrom re-runs migrate + collectstatic.
 
   Idempotent - safe to run again. Does not touch the database beyond
   confirming it answers (and migrate, if -RefreshAppFrom is given).
@@ -29,7 +30,12 @@ param(
   # deploy\campus.spec, e.g. D:\Solutions\dunware-campus\dist\campus-app). Swaps
   # campus-app.exe + its libs in place, keeping .env / frontend_out / media /
   # staticfiles. Stops Campus App for the copy, then re-migrates.
-  [string]$RefreshAppFrom
+  [string]$RefreshAppFrom,
+  # optional: the repo's deploy\ directory (e.g. D:\Solutions\dunware-campus\
+  # deploy). Copies the day-2 *.ps1 (backup.ps1, restore.ps1, ...) over the
+  # installed copies under <InstallRoot>\scripts. Needed after a change to
+  # those scripts, since -RefreshAppFrom only touches the frozen app.
+  [string]$RefreshScriptsFrom
 )
 
 $ErrorActionPreference = "Stop"
@@ -233,6 +239,21 @@ if ($RefreshFrontendFrom) {
   & robocopy $RefreshFrontendFrom $webRoot /MIR /NFL /NDL /NJH /NP /R:2 /W:2 | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE)" }
   Info "frontend_out updated ($((Get-ChildItem $webRoot -Recurse -File).Count) files)"
+}
+
+# --- 3a1. refresh the day-2 deploy scripts, if asked -------------
+if ($RefreshScriptsFrom) {
+  Step "Refreshing day-2 scripts from $RefreshScriptsFrom"
+  if (-not (Test-Path (Join-Path $RefreshScriptsFrom "backup.ps1"))) {
+    throw "no backup.ps1 under $RefreshScriptsFrom - point this at the repo's deploy\ directory"
+  }
+  $scriptsDir = Join-Path $InstallRoot "scripts"
+  New-Item -ItemType Directory -Force -Path $scriptsDir | Out-Null
+  # copy the *.ps1 only (not campus.iss / campus.spec / _thirdparty); no /MIR
+  # so campus.ico and anything else already there is left alone.
+  & robocopy $RefreshScriptsFrom $scriptsDir *.ps1 /NFL /NDL /NJH /NP /R:2 /W:2 | Out-Null
+  if ($LASTEXITCODE -ge 8) { throw "robocopy failed (exit $LASTEXITCODE)" }
+  Info ("scripts updated: {0}" -f ((Get-ChildItem $scriptsDir -Filter *.ps1 | ForEach-Object Name) -join ', '))
 }
 
 # --- 3b. app icon (shortcut + browser favicon) --------------------

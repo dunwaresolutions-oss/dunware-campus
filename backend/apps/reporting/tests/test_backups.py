@@ -97,6 +97,31 @@ def test_run_action_launches_and_returns_the_running_row(
     assert seen == {"user": admin_user, "passphrase": "hunter2"}
 
 
+def test_reconcile_flips_an_abandoned_running_row_to_failed():
+    fresh = _run(status=BackupRun.Status.RUNNING)
+    old = _run(
+        status=BackupRun.Status.RUNNING,
+        started_at=timezone.now() - dt.timedelta(hours=10),
+    )
+    assert backup_runner.reconcile_stale_runs() == 1
+    fresh.refresh_from_db()
+    old.refresh_from_db()
+    assert fresh.status == "RUNNING"          # under 30 min — still in progress
+    assert old.status == "FAILED" and old.error
+    # idempotent
+    assert backup_runner.reconcile_stale_runs() == 0
+
+
+def test_list_endpoint_reconciles_stale_runs(auth_client, admin_user):
+    old = _run(
+        status=BackupRun.Status.RUNNING,
+        started_at=timezone.now() - dt.timedelta(hours=10),
+    )
+    auth_client(admin_user).get(URL)
+    old.refresh_from_db()
+    assert old.status == "FAILED"
+
+
 def test_can_run_now_enforces_a_cooldown():
     ok, _ = backup_runner.can_run_now()
     assert ok is True

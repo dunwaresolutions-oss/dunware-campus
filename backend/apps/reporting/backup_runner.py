@@ -15,6 +15,7 @@ for the outcome.
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 import subprocess
 import sys
@@ -27,12 +28,31 @@ from .models import BackupRun
 
 # Keep the button from being a disk-fill lever: one on-demand run per window.
 COOLDOWN_SECONDS = 10 * 60
-# A RUNNING manual row older than this is treated as dead, not "in progress".
+# A RUNNING row older than this never completed — the script failed to start
+# (e.g. a stale on-disk backup.ps1 that rejects -RunId), crashed before its
+# try/catch, or the box was rebooted mid-run. Flip it to FAILED so it stops
+# showing as "running" forever and stops blocking the next on-demand run.
 STALE_RUNNING_SECONDS = 30 * 60
+
+_STALE_MESSAGE = (
+    "No completion was reported within 30 minutes. The backup script likely "
+    "failed to start or was interrupted — check that C:\\ProgramData\\Campus\\"
+    "scripts\\backup.ps1 is current (repair-campus.ps1 -RefreshScriptsFrom) "
+    "and look at the Campus App service log."
+)
 
 
 class BackupError(RuntimeError):
     """The backup could not be launched — the message is safe to show the user."""
+
+
+def reconcile_stale_runs(now=None) -> int:
+    """Flip abandoned RUNNING rows to FAILED. Idempotent; returns how many."""
+    now = now or timezone.now()
+    cutoff = now - dt.timedelta(seconds=STALE_RUNNING_SECONDS)
+    return BackupRun.objects.filter(
+        status=BackupRun.Status.RUNNING, started_at__lt=cutoff
+    ).update(status=BackupRun.Status.FAILED, error=_STALE_MESSAGE)
 
 
 def script_path() -> Path:
