@@ -34,6 +34,7 @@ api_patterns = [
     path("", include("apps.grades.urls")),
     path("", include("apps.booking.urls")),
     path("", include("apps.billing.urls")),
+    path("", include("apps.reporting.urls")),
     path("portal/", include("apps.people.portal_urls")),
 ]
 
