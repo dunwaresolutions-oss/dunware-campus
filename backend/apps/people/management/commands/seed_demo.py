@@ -607,6 +607,33 @@ class Command(BaseCommand):
                     actor_role=who.role, source_ip=rng.choice(ips), summary=summ,
                 )
 
+        # ── backup history (feeds the Backups section + metrics) ───
+        from apps.reporting.models import BackupRun
+
+        base_dt = timezone.now()
+        for d in range(7, 0, -1):
+            day = base_dt - dt.timedelta(days=d, hours=rng.randint(0, 2))
+            ok = d != 3  # one failed run mid-week
+            BackupRun.objects.create(
+                kind=BackupRun.Kind.SCHEDULED,
+                status=BackupRun.Status.SUCCESS if ok else BackupRun.Status.FAILED,
+                started_at=day,
+                finished_at=day + dt.timedelta(seconds=rng.randint(20, 90)),
+                archive_name=f"campus-{day:%Y%m%d-%H%M%S}.zip.gpg" if ok else "",
+                size_bytes=rng.randint(38_000_000, 46_000_000) if ok else None,
+                database_ok=ok, media_ok=ok, encrypted=True,
+                archives_retained=(d + 6) if ok else None,
+                error="" if ok else "pg_dump exited with code 1",
+                host="CAMPUS-SERVER", build="demo",
+            )
+        BackupRun.objects.create(
+            kind=BackupRun.Kind.VERIFY, status=BackupRun.Status.SUCCESS,
+            started_at=base_dt - dt.timedelta(days=6, hours=1),
+            finished_at=base_dt - dt.timedelta(days=6),
+            archive_name="campus-verify.zip.gpg", database_ok=True, media_ok=True,
+            host="CAMPUS-SPARE", build="demo",
+        )
+
         # ── rubric criteria + scores on every scheme ────────────────
         made["rubric_criteria"] = made["rubric_scores"] = 0
         crit_labels = ["Understanding", "Application", "Communication", "Effort"]
@@ -893,6 +920,7 @@ class Command(BaseCommand):
             Offer,
             WaitlistEntry,
         )
+        from apps.reporting.models import BackupRun
         from apps.scheduling.models import (
             AcademicYear,
             Closure,
@@ -903,6 +931,7 @@ class Command(BaseCommand):
         )
 
         ordered = [
+            BackupRun,
             Payment, InvoiceLine, Credit, Invoice,
             RubricScore, AssessmentResult, Assessment, RubricCriterion,
             ReportCardEntry, ReportCard,

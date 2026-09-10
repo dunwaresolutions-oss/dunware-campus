@@ -344,6 +344,52 @@ def _operations(students):
     }
 
 
+def _backup():
+    from .models import BackupRun
+
+    now = timezone.now()
+    runs = BackupRun.objects.all()
+    last_ok = (
+        runs.filter(status=BackupRun.Status.SUCCESS)
+        .exclude(kind=BackupRun.Kind.VERIFY)
+        .order_by("-started_at")
+        .first()
+    )
+    last_any = runs.order_by("-started_at").first()
+    last_verify = (
+        runs.filter(kind=BackupRun.Kind.VERIFY, status=BackupRun.Status.SUCCESS)
+        .order_by("-started_at")
+        .first()
+    )
+    age_hours = (
+        round((now - last_ok.started_at).total_seconds() / 3600, 1)
+        if last_ok
+        else None
+    )
+    return {
+        "configured": runs.exists(),
+        "last_success_at": last_ok.started_at if last_ok else None,
+        "last_success_age_hours": age_hours,
+        "last_success_bytes": last_ok.size_bytes if last_ok else None,
+        "last_status": last_any.status if last_any else None,
+        "last_error": (last_any.error or "")[:200] if last_any else "",
+        "runs_7d": runs.filter(started_at__gte=now - _dt.timedelta(days=7)).count(),
+        "failures_7d": runs.filter(
+            status=BackupRun.Status.FAILED,
+            started_at__gte=now - _dt.timedelta(days=7),
+        ).count(),
+        "archives_retained": last_ok.archives_retained if last_ok else None,
+        "last_verified_at": last_verify.started_at if last_verify else None,
+        # amber if a backup has never succeeded, or the newest is over 48h old,
+        # or the newest run of any kind failed.
+        "stale": (
+            last_ok is None
+            or (age_hours is not None and age_hours > 48)
+            or (last_any is not None and last_any.status == BackupRun.Status.FAILED)
+        ),
+    }
+
+
 def _system(is_superadmin):
     from django_otp.plugins.otp_totp.models import TOTPDevice
 
@@ -384,6 +430,7 @@ def _system(is_superadmin):
             "groups_without_lead": groups_no_lead,
             "mfa_coverage_pct": _pct(mfa_enrolled, staff_total),
         },
+        "backup": _backup(),
     }
     if is_superadmin:
         cutoff = timezone.localdate() - _dt.timedelta(

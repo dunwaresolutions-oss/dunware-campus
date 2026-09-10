@@ -33,6 +33,7 @@ EXPECT_NONEMPTY = [
     "booking.Offering", "booking.AvailabilityWindow", "booking.Slot",
     "booking.Booking",
     "audit.AuditEntry",
+    "reporting.BackupRun",
 ]
 
 

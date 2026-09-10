@@ -101,6 +101,19 @@ export interface Metrics {
       groups_without_lead: number;
       mfa_coverage_pct: number | null;
     };
+    backup: {
+      configured: boolean;
+      last_success_at: string | null;
+      last_success_age_hours: number | null;
+      last_success_bytes: number | null;
+      last_status: string | null;
+      last_error: string;
+      runs_7d: number;
+      failures_7d: number;
+      archives_retained: number | null;
+      last_verified_at: string | null;
+      stale: boolean;
+    };
     platform?: {
       legal_holds: number;
       anonymized_records: number;

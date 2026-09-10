@@ -262,9 +262,19 @@ function SystemSection({ m }: { m: Metrics }) {
   const s = m.system;
   if (!s) return null;
   const st = s.staffing;
+  const bk = s.backup;
   const roles = Object.entries(st.by_role)
     .map(([k, v]) => `${label(k)} ${v}`)
     .join(" · ");
+  const backupVal = !bk.configured
+    ? "not configured"
+    : bk.last_success_at
+      ? `${
+          bk.last_success_age_hours != null
+            ? `${bk.last_success_age_hours} h ago`
+            : "recorded"
+        }${bk.failures_7d ? ` · ${bk.failures_7d} failed (7d)` : ""}`
+      : "never succeeded";
   return (
     <>
       <Card className="mt-6">
@@ -311,6 +321,19 @@ function SystemSection({ m }: { m: Metrics }) {
         <Row label="MFA coverage" value={pct(st.mfa_coverage_pct)} strong />
         <Row label="Groups without a lead" value={num(st.groups_without_lead)} />
         <Row label="By role" value={roles || "—"} />
+        <Row
+          label="Last backup"
+          value={
+            <span className={bk.stale ? "font-semibold text-amber-600" : ""}>
+              {backupVal}
+            </span>
+          }
+          strong
+        />
+        <Row
+          label="Restore verified"
+          value={bk.last_verified_at ? "yes" : "not yet"}
+        />
         {s.platform && (
           <>
             <Row label="Legal holds" value={num(s.platform.legal_holds)} />

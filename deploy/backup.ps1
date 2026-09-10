@@ -28,6 +28,7 @@ param(
   [string]$Out = ".",
   [string]$Passphrase = $env:CAMPUS_BACKUP_PASSPHRASE,
   [int]$RetentionDays = 30,
+  [ValidateSet("SCHEDULED", "MANUAL")][string]$Kind = "SCHEDULED",
   [switch]$Simulate
 )
 
@@ -41,6 +42,17 @@ function Resolve-PgDump {
   return $null
 }
 
+# Report the run into Campus so the console can show backup health. Best
+# effort only - a reporting failure never fails the backup itself.
+$script:AppExe = Join-Path $InstallRoot "app\campus-app.exe"
+function Record-Backup {
+  param([string[]]$RecordArgs)
+  if (-not (Test-Path $script:AppExe)) { return }
+  try { & $script:AppExe manage record_backup @RecordArgs 2>$null | Out-Null } catch { }
+}
+
+$startIso = (Get-Date).ToString("o")
+
 if (-not $Passphrase) {
   throw "No backup passphrase. Pass -Passphrase or set CAMPUS_BACKUP_PASSPHRASE."
 }
@@ -52,6 +64,9 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $work = Join-Path $Out "_campus-backup-$stamp"
 New-Item -ItemType Directory -Force -Path $work | Out-Null
+
+$mediaBackedUp = $false
+$dbBackedUp = $false
 
 try {
   $pgDump = Resolve-PgDump
@@ -66,6 +81,7 @@ try {
     if (-not $dbUrl) { throw "No DATABASE_URL found in $envFile or the environment." }
     & $pgDump --format=custom --no-owner --file $dumpPath $dbUrl
     if ($LASTEXITCODE -ne 0) { throw "pg_dump exited with code $LASTEXITCODE" }
+    $dbBackedUp = $true
   } else {
     if (-not $Simulate) {
       throw "pg_dump was not found. Pass -Simulate to drill the archive/encrypt pipeline without it."
@@ -77,6 +93,7 @@ try {
   $mediaSrc = Join-Path $InstallRoot "media"
   if (Test-Path $mediaSrc) {
     Copy-Item $mediaSrc (Join-Path $work "media") -Recurse
+    $mediaBackedUp = $true
   }
 
   $zipPath = Join-Path $Out "campus-$stamp.zip"
@@ -97,7 +114,24 @@ try {
   }
 
   Write-Host "Backup complete: $encPath" -ForegroundColor Green
+
+  $size = (Get-Item $encPath).Length
+  $retained = (Get-ChildItem $Out -Filter "campus-*.zip.gpg" -ErrorAction SilentlyContinue).Count
+  $recArgs = @(
+    "--status", "SUCCESS", "--kind", $Kind, "--started", $startIso,
+    "--archive", (Split-Path $encPath -Leaf), "--size", "$size",
+    "--retained", "$retained", "--host", $env:COMPUTERNAME
+  )
+  if ($dbBackedUp)    { $recArgs += "--database-ok" }
+  if ($mediaBackedUp) { $recArgs += "--media-ok" }
+  Record-Backup $recArgs
+
   exit 0
+} catch {
+  $msg = $_.Exception.Message
+  Record-Backup @("--status", "FAILED", "--kind", $Kind, "--started", $startIso,
+                  "--error", $msg, "--host", $env:COMPUTERNAME)
+  throw
 } finally {
   Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -60,6 +60,8 @@ def test_admin_gets_system_without_platform(auth_client, admin_user):
     assert "operations" in data
     assert "security_24h" in data["system"]
     assert "staffing" in data["system"]
+    assert data["system"]["backup"]["configured"] is False  # no runs recorded
+    assert data["system"]["backup"]["stale"] is True
     assert "platform" not in data["system"]
 
 

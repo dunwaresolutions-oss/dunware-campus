@@ -36,6 +36,16 @@ function Resolve-PgRestore {
   return $null
 }
 
+# Record a restore-verification run so the console shows "last verified".
+$script:AppExe = Join-Path $InstallRoot "app\campus-app.exe"
+function Record-Verify {
+  param([string[]]$RecordArgs)
+  if (-not (Test-Path $script:AppExe)) { return }
+  try { & $script:AppExe manage record_backup @RecordArgs 2>$null | Out-Null } catch { }
+}
+
+$startIso = (Get-Date).ToString("o")
+
 if (-not (Test-Path $Archive)) { throw "Archive not found: $Archive" }
 if (-not $Passphrase) { throw "No backup passphrase. Pass -Passphrase or set CAMPUS_BACKUP_PASSPHRASE." }
 if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) { throw "gpg was not found on PATH." }
@@ -94,7 +104,21 @@ try {
       Write-Host "  Would restore media from: $(Join-Path $expandDir 'media')"
     }
   }
+  $dumpBytes = (Get-Item $dumpPath).Length
+  $verifyArgs = @(
+    "--status", "SUCCESS", "--kind", "VERIFY", "--started", $startIso,
+    "--archive", (Split-Path $Archive -Leaf), "--size", "$dumpBytes",
+    "--host", $env:COMPUTERNAME
+  )
+  if (-not $Simulate) { $verifyArgs += "--database-ok" }
+  if (Test-Path (Join-Path $expandDir "media")) { $verifyArgs += "--media-ok" }
+  Record-Verify $verifyArgs
+
   exit 0
+} catch {
+  Record-Verify @("--status", "FAILED", "--kind", "VERIFY", "--started", $startIso,
+                  "--error", $_.Exception.Message, "--host", $env:COMPUTERNAME)
+  throw
 } finally {
   Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
 }
