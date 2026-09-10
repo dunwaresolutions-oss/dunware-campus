@@ -97,6 +97,22 @@ def test_run_action_launches_and_returns_the_running_row(
     assert seen == {"user": admin_user, "passphrase": "hunter2"}
 
 
+def test_run_action_502_when_the_backup_fails_fast(auth_client, superadmin, monkeypatch):
+    def fake_start(*, user, passphrase=""):
+        return _run(
+            kind=BackupRun.Kind.MANUAL,
+            status=BackupRun.Status.FAILED,
+            error="backup.ps1 exited 1 without reporting a result.",
+            triggered_by=user,
+        )
+
+    monkeypatch.setattr(backup_runner, "start_manual_backup", fake_start)
+    resp = auth_client(superadmin).post(RUN_URL, {}, format="json")
+    assert resp.status_code == 502
+    assert "without reporting" in resp.data["detail"]
+    assert resp.data["run"]["status"] == "FAILED"
+
+
 def test_reconcile_flips_an_abandoned_running_row_to_failed():
     fresh = _run(status=BackupRun.Status.RUNNING)
     old = _run(

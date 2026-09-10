@@ -8,10 +8,12 @@ exits. The heavy lifting (pg_dump, gpg, retention) stays in the same PowerShell
 script the nightly backup uses, so a manual run and a scheduled run are the
 exact same code path — only ``Kind`` differs.
 
-The child is detached: the HTTP request returns immediately with a RUNNING
-``BackupRun`` row, and backup.ps1 flips that same row to SUCCESS / FAILED via
-``manage record_backup --run-id`` when it finishes. Poll ``GET /api/backups/``
-for the outcome.
+The request waits a few seconds for the child: a fast failure (a stale
+backup.ps1 that rejects ``-RunId``, missing gpg, a bad passphrase) is reported
+straight back as a FAILED row; otherwise the RUNNING row is returned and
+backup.ps1 flips it to SUCCESS / FAILED via ``manage record_backup --run-id``
+when it finishes. The child's stdout/stderr go to
+``<InstallRoot>\\logs\\backup-manual.log``.
 """
 from __future__ import annotations
 
@@ -28,6 +30,11 @@ from .models import BackupRun
 
 # Keep the button from being a disk-fill lever: one on-demand run per window.
 COOLDOWN_SECONDS = 10 * 60
+# Wait this long for the child before returning "it's running". A stale
+# backup.ps1 that rejects -RunId, a missing gpg, a bad passphrase — all exit
+# in well under this, so we can surface the real error immediately instead of
+# leaving the row RUNNING until reconcile_stale_runs() catches it 30 min later.
+EARLY_EXIT_WAIT_SECONDS = 12
 # A RUNNING row older than this never completed — the script failed to start
 # (e.g. a stale on-disk backup.ps1 that rejects -RunId), crashed before its
 # try/catch, or the box was rebooted mid-run. Flip it to FAILED so it stops
@@ -38,7 +45,7 @@ _STALE_MESSAGE = (
     "No completion was reported within 30 minutes. The backup script likely "
     "failed to start or was interrupted — check that C:\\ProgramData\\Campus\\"
     "scripts\\backup.ps1 is current (repair-campus.ps1 -RefreshScriptsFrom) "
-    "and look at the Campus App service log."
+    "and read C:\\ProgramData\\Campus\\logs\\backup-manual.log."
 )
 
 
@@ -127,25 +134,87 @@ def start_manual_backup(*, user, passphrase: str = "") -> BackupRun:
     if passphrase:
         child_env["CAMPUS_BACKUP_PASSPHRASE"] = passphrase
 
+    log_path = _log_path()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
         subprocess, "DETACHED_PROCESS", 0
     )
     try:
-        subprocess.Popen(  # noqa: S603 - fixed argv, shell=False, passphrase via env
-            args,
-            env=child_env,
-            cwd=str(settings.INSTALL_ROOT),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            creationflags=flags,
-            close_fds=True,
-        )
-    except OSError as exc:
-        run.status = BackupRun.Status.FAILED
-        run.finished_at = timezone.now()
-        run.error = f"Could not launch backup.ps1: {exc}"[:5000]
-        run.save(update_fields=["status", "finished_at", "error"])
-        raise BackupError(run.error) from exc
+        sink = open(log_path, "ab") if log_path else None
+    except OSError:
+        sink = None
+    out = sink or subprocess.DEVNULL
+    err = subprocess.STDOUT if sink else subprocess.DEVNULL
 
-    return run
+    try:
+        if sink:
+            _stamp(sink, f"--- manual backup {run.pk} @ {timezone.now():%Y-%m-%d %H:%M:%S} ---")
+        try:
+            proc = subprocess.Popen(  # noqa: S603 - fixed argv, shell=False, passphrase via env
+                args,
+                env=child_env,
+                cwd=str(settings.INSTALL_ROOT),
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=err,
+                creationflags=flags,
+                close_fds=True,
+            )
+        except OSError as exc:
+            run.status = BackupRun.Status.FAILED
+            run.finished_at = timezone.now()
+            run.error = f"Could not launch backup.ps1: {exc}"[:5000]
+            run.save(update_fields=["status", "finished_at", "error"])
+            raise BackupError(run.error) from exc
+
+        # Give it a moment: a script that blows up on arg-binding / gpg / a bad
+        # passphrase exits fast, and we'd rather report that now than in 30 min.
+        try:
+            rc = proc.wait(timeout=EARLY_EXIT_WAIT_SECONDS)
+        except subprocess.TimeoutExpired:
+            return run  # a real backup in progress — backup.ps1 records the end
+
+        run.refresh_from_db()
+        if rc != 0 and run.status == BackupRun.Status.RUNNING:
+            # the script died without recording anything (an old backup.ps1 that
+            # doesn't know -RunId / -Kind is the usual culprit)
+            run.status = BackupRun.Status.FAILED
+            run.finished_at = timezone.now()
+            run.error = (
+                f"backup.ps1 exited {rc} without reporting a result. Likely the "
+                f"copy at {script} is out of date (rejects -RunId / -Kind) — "
+                f"refresh it with repair-campus.ps1 -RefreshScriptsFrom. "
+                f"{_log_tail(log_path)}"
+            )[:5000]
+            run.save(update_fields=["status", "finished_at", "error"])
+        return run
+    finally:
+        if sink:
+            sink.close()
+
+
+def _log_path() -> Path | None:
+    try:
+        d = Path(settings.INSTALL_ROOT) / "logs"
+        d.mkdir(parents=True, exist_ok=True)
+        return d / "backup-manual.log"
+    except OSError:
+        return None
+
+
+def _stamp(fh, line: str) -> None:
+    try:
+        fh.write((line + "\r\n").encode())
+        fh.flush()
+    except OSError:
+        pass
+
+
+def _log_tail(path: Path | None, limit: int = 600) -> str:
+    if not path or not path.is_file():
+        return ""
+    try:
+        text = path.read_text(errors="replace").strip()
+    except OSError:
+        return ""
+    tail = text[-limit:].replace("\r\n", " ").replace("\n", " ").strip()
+    return f"Last output: …{tail}" if tail else ""

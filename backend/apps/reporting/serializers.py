@@ -6,9 +6,7 @@ from .models import BackupRun
 
 
 class BackupRunSerializer(serializers.ModelSerializer):
-    triggered_by_label = serializers.CharField(
-        source="triggered_by.get_full_name", read_only=True, default=""
-    )
+    triggered_by_label = serializers.SerializerMethodField()
     duration_seconds = serializers.FloatField(read_only=True)
 
     class Meta:
@@ -19,3 +17,9 @@ class BackupRunSerializer(serializers.ModelSerializer):
             "media_ok", "encrypted", "archives_retained", "error", "host",
             "build", "triggered_by", "triggered_by_label", "created_at",
         ]
+
+    def get_triggered_by_label(self, obj) -> str:
+        u = obj.triggered_by
+        if u is None:
+            return ""
+        return u.get_full_name() or u.username

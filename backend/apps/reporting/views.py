@@ -46,8 +46,9 @@ class BackupRunViewSet(viewsets.ReadOnlyModelViewSet):
 
         Body: ``{"passphrase": "..."}`` — used for this one run and never
         stored; omit it if the Campus App service already has
-        CAMPUS_BACKUP_PASSPHRASE set. Returns the RUNNING row (202); poll
-        ``GET /api/backups/`` for SUCCESS / FAILED.
+        CAMPUS_BACKUP_PASSPHRASE set. 202 + the RUNNING row when the backup
+        is under way (poll ``GET /api/backups/`` for SUCCESS/FAILED); 502 +
+        the FAILED row when it fell over immediately.
         """
         backup_runner.reconcile_stale_runs()
         ok, why = backup_runner.can_run_now()
@@ -60,4 +61,10 @@ class BackupRunViewSet(viewsets.ReadOnlyModelViewSet):
             )
         except backup_runner.BackupError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return Response(self.get_serializer(run).data, status=status.HTTP_202_ACCEPTED)
+        data = self.get_serializer(run).data
+        if run.status == BackupRun.Status.FAILED:
+            return Response(
+                {"detail": run.error or "The backup failed to start.", "run": data},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(data, status=status.HTTP_202_ACCEPTED)

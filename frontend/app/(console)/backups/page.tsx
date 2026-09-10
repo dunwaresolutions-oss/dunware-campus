@@ -48,13 +48,14 @@ function RunBackupModal({
         "success",
         "Backup started — it runs in the background. Refresh in a minute for the result.",
       );
-      qc.invalidateQueries({ queryKey: ["list", "backups"] });
-      qc.invalidateQueries({ queryKey: ["metrics"] });
       setPassphrase("");
       onClose();
     } catch (err) {
       setError(apiMessage(err));
     } finally {
+      // refresh either way: a fast failure has already written a FAILED row
+      qc.invalidateQueries({ queryKey: ["list", "backups"] });
+      qc.invalidateQueries({ queryKey: ["metrics"] });
       setBusy(false);
     }
   }
