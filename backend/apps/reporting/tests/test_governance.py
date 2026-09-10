@@ -91,7 +91,7 @@ def test_seed_demo_builds_a_graph():
     assert Student.objects.count() >= 6
     assert Group.objects.filter(kind=Group.Kind.CLASS).count() == 6  # quick = 6 grades x 1
     assert Guardian.objects.exists()
-    assert Term.objects.count() == 2
+    assert Term.objects.count() >= 2         # 2 current-year terms + a past year
     assert Closure.objects.exists()          # holidays + breaks seeded
     from apps.grades.models import ReportCard
 

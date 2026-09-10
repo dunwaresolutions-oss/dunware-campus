@@ -14,18 +14,27 @@ import datetime as dt
 import random
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+from django_otp.plugins.otp_totp.models import TOTPDevice
 
-from apps.accounts.models import Role, User
-from apps.attendance.services import check_in
+from apps.accounts.models import STAFF_ROLES, Role, User
+from apps.attendance.models import AttendanceRecord
+from apps.audit.models import AuditAction, AuditEntry
 from apps.billing.gateways import ManualGateway
-from apps.billing.models import FeeSchedule, Invoice, InvoiceLine, Payment
-from apps.billing.services import issue_invoice
-from apps.booking.models import AvailabilityWindow, Offering
+from apps.billing.models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment
+from apps.billing.services import issue_invoice, void_invoice
+from apps.booking.models import AvailabilityWindow, Booking, Offering, Slot
 from apps.booking.services import book, generate_slots
-from apps.communication.models import Announcement, IncidentReport, MessageThread
+from apps.communication.models import (
+    Announcement,
+    IncidentAcknowledgement,
+    IncidentReport,
+    Message,
+    MessageThread,
+)
 from apps.communication.services import notify_incident, send_announcement
 from apps.grades.models import (
     Assessment,
@@ -33,12 +42,23 @@ from apps.grades.models import (
     AssessmentScheme,
     ReportCard,
     ReportCardEntry,
+    RubricCriterion,
+    RubricScore,
 )
 from apps.grades.services import generate_report_card, release_report_card
-from apps.health.models import ActionPlan, Allergy, Condition, HealthProfile, Medication
-from apps.lessons.models import CurriculumUnit, LessonPlan
+from apps.health.models import (
+    ActionPlan,
+    Allergy,
+    Condition,
+    HealthAccessGrant,
+    HealthProfile,
+    Medication,
+)
+from apps.lessons.models import CurriculumUnit, LessonPlan, LessonResource
 from apps.people.models import (
     AuthorizedPickup,
+    ContactChangeRequest,
+    Document,
     EmergencyContact,
     Group,
     GroupStaff,
@@ -47,8 +67,16 @@ from apps.people.models import (
     Observation,
     Student,
 )
-from apps.registration.models import Application, Consent, Enrolment
-from apps.scheduling.models import AcademicYear, Closure, Room, SessionTemplate, Term
+from apps.registration.models import Application, Consent, Enrolment, WaitlistEntry
+from apps.registration.services import make_offer, respond_to_offer
+from apps.scheduling.models import (
+    AcademicYear,
+    Closure,
+    Room,
+    SessionOccurrence,
+    SessionTemplate,
+    Term,
+)
 from apps.scheduling.services import generate_occurrences
 
 # ── name pools (Bahamian-leaning, invented) ─────────────────────────────
@@ -234,6 +262,7 @@ class Command(BaseCommand):
         made["classes"] = len(classes)
         made["pupils"] = total_pupils
         made["guardians"] = Guardian.objects.count()
+        all_pupils = [p for lst in pupils_by_class.values() for p in lst]
 
         # ── the timetable: one "school day" per class per weekday ────
         made["sessions"] = 0
@@ -251,12 +280,73 @@ class Command(BaseCommand):
                     )
                     made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
 
-        # ── attendance: check a couple of classes in for "today" ─────
+        # ── attendance: a real history for every class ───────────────
+        today = timezone.localdate()
+        window_start = max(term1.start_date, today - dt.timedelta(days=35))
+        closed_days: set[dt.date] = set()
+        for cl in Closure.objects.filter(group__isnull=True):
+            d = cl.start_date
+            while d <= cl.end_date:
+                closed_days.add(d)
+                d += dt.timedelta(days=1)
+        school_days: list[dt.date] = []
+        d = window_start
+        while d <= today:
+            if d.weekday() < 5 and d not in closed_days:
+                school_days.append(d)
+            d += dt.timedelta(days=1)
+
+        S = AttendanceRecord.Status
+        chronic_ids = set(
+            rng.sample([p.id for p in all_pupils], k=min(8, len(all_pupils)))
+        ) if all_pupils else set()
+        classes_for_att = classes if not quick else classes[:1]
+        att_rows: list[AttendanceRecord] = []
         made["check_ins"] = 0
-        for grp, _room, lead in classes[: (1 if quick else 2)]:
+        for grp, _room, lead in classes_for_att:
             for p in pupils_by_class[grp.id]:
-                check_in(student=p, group=grp, by=lead, dropped_off_by_name="a guardian")
-                made["check_ins"] += 1
+                for day in school_days:
+                    r = rng.random()
+                    if day == today and r < 0.05:
+                        att_rows.append(
+                            AttendanceRecord(student=p, group=grp, date=day, status=S.EXPECTED)
+                        )
+                        continue
+                    if p.id in chronic_ids:
+                        status = (
+                            S.ABSENT if r < 0.45 else S.LATE if r < 0.62 else S.PRESENT
+                        )
+                    elif r < 0.90:
+                        status = S.PRESENT
+                    elif r < 0.94:
+                        status = S.LATE
+                    elif r < 0.965:
+                        status = S.ABSENT
+                    elif r < 0.985:
+                        status = S.EXCUSED
+                    else:
+                        status = S.LEFT_EARLY
+                    rec = AttendanceRecord(student=p, group=grp, date=day, status=status)
+                    if status in (S.PRESENT, S.LATE, S.LEFT_EARLY):
+                        cin = timezone.make_aware(
+                            dt.datetime.combine(
+                                day, dt.time(9, 5 if status == S.LATE else 0)
+                            )
+                        )
+                        rec.checked_in_at = cin
+                        rec.checked_in_by = lead
+                        rec.dropped_off_by_name = "a guardian"
+                        if day < today or r < 0.5:
+                            rec.checked_out_at = cin.replace(
+                                hour=(13 if status == S.LEFT_EARLY else 15), minute=0
+                            )
+                            rec.checked_out_by = lead
+                            rec.collected_by_name = "a guardian"
+                        if day == today:
+                            made["check_ins"] += 1
+                    att_rows.append(rec)
+        AttendanceRecord.objects.bulk_create(att_rows, batch_size=500)
+        made["attendance_records"] = len(att_rows)
 
         # ── lessons + grades, per class per subject ──────────────────
         made["curriculum_units"] = 0
@@ -323,7 +413,12 @@ class Command(BaseCommand):
         # ── admissions pipeline for next year's Grade 1 ──────────────
         made["applications"] = 0
         g1 = classes[0][0] if classes else None
-        for i in range(2 if quick else 9):
+        _app_cycle = [
+            Application.Status.SUBMITTED,
+            Application.Status.UNDER_REVIEW,
+            Application.Status.WAITLISTED,
+        ]
+        for i in range(6 if quick else 9):
             afn, aln = rng.choice(FIRST), rng.choice(LAST)
             Application.objects.create(
                 child_first_name=afn, child_last_name=aln,
@@ -332,16 +427,12 @@ class Command(BaseCommand):
                 applicant_name=f"{rng.choice(FIRST)} {aln}",
                 applicant_email=f"apply{i}@example.test",
                 applicant_phone=f"(242) 555-0{rng.randint(100, 999)}",
-                status=rng.choice([
-                    Application.Status.SUBMITTED, Application.Status.UNDER_REVIEW,
-                    Application.Status.WAITLISTED,
-                ]),
+                status=_app_cycle[i % 3],
             )
             made["applications"] += 1
 
         # ── booking: after-school offerings ─────────────────────────
         made["offerings"] = made["slots"] = made["bookings"] = 0
-        all_pupils = list(Student.objects.all())
         offerings_spec = [("Homework Help", Offering.Kind.TUTORING, 6)] if quick else [
             ("Homework Help", Offering.Kind.TUTORING, 6),
             ("Football", Offering.Kind.SPORT, 20),
@@ -448,17 +539,326 @@ class Command(BaseCommand):
             th.participants.add(lead.user if lead else head, gl.guardian.user)
             made["message_threads"] += 1
 
-        made["incidents"] = 0
-        if all_pupils:
-            inc = IncidentReport.objects.create(
-                student=rng.choice(all_pupils),
-                occurred_at=timezone.now() - dt.timedelta(hours=3),
-                category=IncidentReport.Category.INJURY,
-                description="Synthetic playground scrape; cleaned and a plaster applied.",
-                first_aid_given=True, reported_by=rng.choice(teachers),
+        # ══════════════════════════════════════════════════════════════
+        # Fill every remaining console section — no table left empty.
+        # ══════════════════════════════════════════════════════════════
+        staff_all = [head, front, *teachers, *aides, *tutors]
+        portal_links = list(
+            GuardianLink.objects.filter(guardian__user__isnull=False).select_related(
+                "guardian__user", "student"
             )
-            notify_incident(inc)
-            made["incidents"] = 1
+        )
+
+        # ── a past academic year (history) ──────────────────────────
+        prev_year = AcademicYear.objects.create(
+            name="2025-2026", start_date=dt.date(2025, 8, 25),
+            end_date=dt.date(2026, 6, 19), is_current=False,
+        )
+        Term.objects.create(
+            academic_year=prev_year, name="Full year (2025-26)",
+            kind=Term.Kind.YEAR_ROUND,
+            start_date=prev_year.start_date, end_date=prev_year.end_date,
+        )
+
+        # ── group-staff: one inactive assignment ────────────────────
+        if len(classes) > 1 and aides:
+            GroupStaff.objects.create(
+                group=classes[1][0], user=aides[0],
+                role=GroupStaff.Role.ASSISTANT, active=False,
+            )
+
+        # ── TOTP devices so MFA-coverage isn't 0% ───────────────────
+        for u in staff_all:
+            if u is head or u is front or rng.random() < 0.7:
+                TOTPDevice.objects.get_or_create(
+                    user=u, name="default", defaults={"confirmed": True}
+                )
+
+        # ── student portal logins for a few Grade 6 pupils ──────────
+        made["student_logins"] = 0
+        senior = [c for c in classes if c[0].stage_label == "Grade 6"]
+        for grp, _r, _l in senior[:1]:
+            for p in pupils_by_class[grp.id][:3]:
+                su = User(
+                    username=f"student{p.student_number}", email="",
+                    role=Role.STUDENT, first_name=p.first_name, last_name=p.last_name,
+                )
+                su.set_password(DEMO_PASSWORD)
+                su.save()
+                p.user = su
+                p.save(update_fields=["user"])
+                made["student_logins"] += 1
+
+        # ── synthetic recent auth events for the security panel ─────
+        ips = ["203.0.113.7", "198.51.100.22", "203.0.113.41"]
+        for act, n, summ in [
+            (AuditAction.LOGIN, 6, "signed in"),
+            (AuditAction.LOGIN_FAILED, 4, "bad password"),
+            (AuditAction.LOCKOUT, 1, "locked out after 5 attempts"),
+            (AuditAction.MFA_VERIFIED, 5, "second factor accepted"),
+            (AuditAction.PERMISSION_DENIED, 3, "denied /api/billing/"),
+            (AuditAction.LOGOUT, 3, "signed out"),
+        ]:
+            for _ in range(1 if quick else n):
+                who = rng.choice(staff_all)
+                AuditEntry.objects.create(
+                    action=act, actor=who,
+                    actor_label=who.get_full_name() or who.username,
+                    actor_role=who.role, source_ip=rng.choice(ips), summary=summ,
+                )
+
+        # ── rubric criteria + scores on every scheme ────────────────
+        made["rubric_criteria"] = made["rubric_scores"] = 0
+        crit_labels = ["Understanding", "Application", "Communication", "Effort"]
+        score_rows: list[RubricScore] = []
+        schemes = list(AssessmentScheme.objects.all())
+        for scheme in schemes[: (1 if quick else len(schemes))]:
+            crits = [
+                RubricCriterion.objects.create(
+                    scheme=scheme, label=lbl, order=o + 1, max_level=4,
+                    descriptor=f"Demo descriptor for {lbl.lower()}.",
+                )
+                for o, lbl in enumerate(crit_labels[: (2 if quick else 4)])
+            ]
+            made["rubric_criteria"] += len(crits)
+            for res in AssessmentResult.objects.filter(assessment__scheme=scheme):
+                for cr in crits:
+                    score_rows.append(
+                        RubricScore(result=res, criterion=cr, level=rng.randint(1, 4))
+                    )
+        RubricScore.objects.bulk_create(score_rows, batch_size=1000)
+        made["rubric_scores"] = len(score_rows)
+
+        # ── lesson resources + draft plans + a term-2 unit ─────────
+        made["lesson_resources"] = 0
+        for lp in LessonPlan.objects.all()[: (1 if quick else 40)]:
+            LessonResource.objects.create(
+                lesson=lp, kind=LessonResource.Kind.LINK,
+                title="Reference slides", url="https://example.test/slides",
+            )
+            LessonResource.objects.create(
+                lesson=lp, kind=LessonResource.Kind.NOTE, title="Teacher note",
+                body="Bring the number cards from the store cupboard.",
+            )
+            LessonResource.objects.create(
+                lesson=lp, kind=LessonResource.Kind.FILE, title="Worksheet",
+                file=ContentFile(b"Demo worksheet content.\n", name="worksheet.txt"),
+            )
+            made["lesson_resources"] += 3
+        for grp, _r, lead in classes[: (1 if quick else 3)]:
+            u2 = CurriculumUnit.objects.create(
+                group=grp, term=term2, title="Term 2 - Unit 1",
+                summary="Synthetic term-2 unit.", sequence=1,
+            )
+            LessonPlan.objects.create(
+                group=grp, unit=u2, author=lead, date=term2.start_date,
+                title="Term 2 opener (draft)", objectives="Draft objectives.",
+                status=LessonPlan.Status.DRAFT,
+            )
+
+        # ── report cards: finalise (not release) a second class ─────
+        for card in ReportCard.objects.filter(status=ReportCard.Status.DRAFT)[
+            : (1 if quick else 25)
+        ]:
+            generate_report_card(card)
+        made["report_cards"] = ReportCard.objects.count()
+
+        # ── registration: waitlist rows + offers in every state ─────
+        made["offers"] = made["waitlist"] = 0
+        for app in Application.objects.filter(status=Application.Status.WAITLISTED):
+            WaitlistEntry.objects.get_or_create(
+                application=app,
+                defaults={"group": g1, "priority": rng.choice([10, 50, 100])},
+            )
+            made["waitlist"] += 1
+        review_apps = list(
+            Application.objects.filter(status=Application.Status.UNDER_REVIEW)
+        )
+        expires = timezone.now() + dt.timedelta(days=14)
+        for i, app in enumerate(review_apps[: (1 if quick else 6)]):
+            off = make_offer(
+                app, group=g1, start_date=dt.date(2027, 8, 30),
+                expires_at=expires, actor=front,
+            )
+            made["offers"] += 1
+            if i % 3 == 1:
+                respond_to_offer(off, accept=True, actor=front)
+            elif i % 3 == 2:
+                respond_to_offer(off, accept=False, actor=front)
+        for st in (Application.Status.DECLINED, Application.Status.WITHDRAWN):
+            Application.objects.create(
+                child_first_name=rng.choice(FIRST), child_last_name=rng.choice(LAST),
+                child_date_of_birth=dt.date(2021, 5, 1), applicant_name="A Parent",
+                applicant_email=f"{st.lower()}@example.test", status=st, desired_group=g1,
+            )
+
+        # ── messages in every thread ───────────────────────────────
+        made["messages"] = 0
+        for th in MessageThread.objects.all():
+            staff_p = th.participants.filter(role__in=STAFF_ROLES).first()
+            parent_p = th.participants.exclude(role__in=STAFF_ROLES).first()
+            turns = [
+                (parent_p, "Good afternoon - could you confirm the arrangement?"),
+                (staff_p, "Yes, that's fine. Thank you for letting us know."),
+                (parent_p, "Wonderful, thank you."),
+            ]
+            for sender, body in turns[: (1 if quick else 3)]:
+                Message.objects.create(thread=th, sender=sender, body=body)
+                made["messages"] += 1
+            th.last_message_at = timezone.now()
+            th.save(update_fields=["last_message_at"])
+        first_thread = MessageThread.objects.first()
+        if first_thread:
+            first_thread.closed = True
+            first_thread.save(update_fields=["closed"])
+
+        # ── incidents: one per category, varied severity + status ──
+        made["incident_acks"] = 0
+        cat_list = list(IncidentReport.Category.values)
+        for j, cat in enumerate(cat_list[: (3 if quick else len(cat_list))]):
+            stu = rng.choice(all_pupils)
+            inc = IncidentReport.objects.create(
+                student=stu,
+                occurred_at=timezone.now() - dt.timedelta(days=rng.randint(1, 20)),
+                category=cat, severity=rng.randint(1, 5),
+                location=rng.choice(["playground", "classroom", "gym", "hallway"]),
+                description=f"Synthetic {cat.lower()} incident for demo purposes.",
+                action_taken="Guardians informed; monitored.",
+                first_aid_given=rng.random() < 0.4, reported_by=rng.choice(teachers),
+            )
+            if j == 0:
+                continue  # leave as DRAFT
+            notify_incident(inc)  # -> SENT
+            if j % 2 == 0:
+                for gl in stu.guardian_links.filter(receives_communications=True):
+                    IncidentAcknowledgement.objects.create(
+                        incident=inc, guardian=gl.guardian,
+                        acknowledged_by=gl.guardian.user, signature_name=str(gl.guardian),
+                    )
+                    made["incident_acks"] += 1
+                inc.status = IncidentReport.Status.ACKNOWLEDGED
+                inc.save(update_fields=["status"])
+        made["incidents"] = IncidentReport.objects.count()
+
+        # ── announcement: one unpublished draft ────────────────────
+        Announcement.objects.create(
+            title="Sports day - date to be confirmed",
+            body="We are finalising a date for the annual sports day. Details to follow.",
+            audience=Announcement.Audience.ALL_PARENTS, author=head,
+        )
+
+        # ── billing: draft / partial / void / overdue + credits ────
+        made["credits"] = 0
+        reg_fee = FeeSchedule.objects.get(name="Registration fee")
+        for k, p in enumerate(all_pupils[: (2 if quick else 24)]):
+            inv = Invoice.objects.create(
+                student=p, term=term1,
+                due_date=(today - dt.timedelta(days=10)) if k % 4 == 3
+                else (today + dt.timedelta(days=20)),
+            )
+            InvoiceLine.objects.create(
+                invoice=inv, fee_schedule=reg_fee, description=reg_fee.name,
+                unit_amount_cents=reg_fee.amount_cents,
+            )
+            mode = k % 4
+            if mode == 1:
+                issue_invoice(inv)
+            elif mode == 2:
+                issue_invoice(inv)
+                ManualGateway().charge(
+                    inv, inv.total_cents // 2, method=Payment.Method.CASH,
+                    received_by=front,
+                )
+            elif mode == 3:
+                issue_invoice(inv)
+                inv.status = Invoice.Status.OVERDUE
+                inv.save(update_fields=["status", "updated_at"])
+            # mode 0 stays DRAFT
+        for p in all_pupils[: (1 if quick else 6)]:
+            Credit.objects.create(
+                student=p, amount_cents=rng.choice([2500, 5000, 7500]),
+                reason="Goodwill adjustment (demo).", created_by=front,
+            )
+            made["credits"] += 1
+        v = Invoice.objects.filter(status=Invoice.Status.ISSUED).first()
+        if v:
+            void_invoice(v, reason="Issued in error (demo).", actor=front)
+        made["invoices"] = Invoice.objects.count()
+        made["payments"] = Payment.objects.count()
+
+        # ── booking: exercise every status + a cancelled slot ──────
+        for b in list(Booking.objects.all())[: (1 if quick else 12)]:
+            b.status = rng.choice([
+                Booking.Status.ATTENDED, Booking.Status.NO_SHOW, Booking.Status.CANCELLED,
+            ])
+            if b.status == Booking.Status.CANCELLED:
+                b.cancelled_at = timezone.now()
+                b.cancelled_by = front
+                b.waitlist_position = None
+            b.save()
+        far_slot = (
+            Slot.objects.filter(status=Slot.Status.OPEN).order_by("-starts_at").first()
+        )
+        if far_slot:
+            far_slot.status = Slot.Status.CANCELLED
+            far_slot.save(update_fields=["status"])
+
+        # ── portal: contact-change requests in each state ─────────
+        made["change_requests"] = 0
+        for i, gl in enumerate(portal_links[: (1 if quick else 5)]):
+            field, cur, prop = rng.choice([
+                ("phone", "(242) 555-0000", "(242) 555-9999"),
+                ("address", "1 Old Street, Nassau", "42 New Street, Nassau"),
+                ("email", gl.guardian.email, f"updated.{gl.guardian.email}"),
+            ])
+            ccr = ContactChangeRequest.objects.create(
+                requested_by=gl.guardian.user, guardian=gl.guardian, field=field,
+                current_value=cur, proposed_value=prop,
+                reason="We have moved / changed number.",
+            )
+            if i % 3 == 1:
+                ccr.status = ContactChangeRequest.Status.APPROVED
+                ccr.reviewed_by, ccr.reviewed_at = front, timezone.now()
+                ccr.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+            elif i % 3 == 2:
+                ccr.status = ContactChangeRequest.Status.REJECTED
+                ccr.reviewed_by, ccr.reviewed_at = front, timezone.now()
+                ccr.review_note = "Please bring photo ID to the office."
+                ccr.save(update_fields=[
+                    "status", "reviewed_by", "reviewed_at", "review_note",
+                ])
+            made["change_requests"] += 1
+
+        # ── student & application documents ───────────────────────
+        made["documents"] = 0
+        for p in all_pupils[: (2 if quick else 40)]:
+            Document.objects.create(
+                student=p, kind=rng.choice(list(Document.Kind.values)),
+                title="Scanned record (demo)", uploaded_by=front,
+                file=ContentFile(b"%PDF-1.4 demo document\n", name="record.pdf"),
+            )
+            made["documents"] += 1
+        from apps.registration.models import ApplicationDocument
+        for app in Application.objects.all()[: (1 if quick else 4)]:
+            ApplicationDocument.objects.create(
+                application=app, title="Birth certificate (demo)", uploaded_by=front,
+                file=ContentFile(b"%PDF-1.4 demo\n", name="bc.pdf"),
+            )
+
+        # ── health-access grants for aides / tutors ───────────────
+        for u in (aides + tutors)[: (1 if quick else 4)]:
+            HealthAccessGrant.objects.get_or_create(
+                user=u,
+                defaults={"granted_by": head, "reason": "Classroom support (demo)."},
+            )
+
+        # ── cancel a handful of sessions ─────────────────────────
+        for occ in SessionOccurrence.objects.filter(
+            status=SessionOccurrence.Status.SCHEDULED
+        ).order_by("?")[: (1 if quick else 6)]:
+            occ.status = SessionOccurrence.Status.CANCELLED
+            occ.cancelled_reason = "Teacher absent (demo)."
+            occ.save(update_fields=["status", "cancelled_reason"])
 
         return made
 
@@ -599,28 +999,59 @@ class Command(BaseCommand):
             phone=f"(242) 555-{rng.randint(1000, 9999)}", active=True,
         )
 
-        if rng.random() < 0.18:
-            sev = rng.choice(list(Allergy.Severity.values))
+        # deterministically cover every health table + action-plan kind
+        # on the first handful of pupils; the rest are probabilistic.
+        forced = number - 1_000_000
+        if forced == 1 or rng.random() < 0.14:
             Allergy.objects.create(
                 student=p, allergen=rng.choice(ALLERGENS), reaction="hives, swelling",
-                severity=sev, epipen_required=(sev == Allergy.Severity.ANAPHYLAXIS),
+                severity=Allergy.Severity.ANAPHYLAXIS, epipen_required=True,
             )
-            if sev == Allergy.Severity.ANAPHYLAXIS:
-                ActionPlan.objects.create(
-                    student=p, kind=ActionPlan.Kind.ANAPHYLAXIS,
-                    plan="Administer epinephrine, call 919, contact guardians.",
-                    effective_from=term1.start_date,
-                )
-        if rng.random() < 0.10:
+            ActionPlan.objects.create(
+                student=p, kind=ActionPlan.Kind.ANAPHYLAXIS,
+                plan="Administer epinephrine, call 919, contact guardians.",
+                effective_from=term1.start_date, review_by=term1.end_date,
+            )
+        elif rng.random() < 0.10:
+            sev = rng.choice([Allergy.Severity.MILD, Allergy.Severity.MODERATE,
+                              Allergy.Severity.SEVERE])
+            Allergy.objects.create(
+                student=p, allergen=rng.choice(ALLERGENS), reaction="rash",
+                severity=sev, epipen_required=False,
+            )
+        if forced == 2 or rng.random() < 0.10:
             Condition.objects.create(
                 student=p, name="asthma", details="exercise-induced; inhaler on file",
+                diagnosed_on=dt.date(2024, 3, 1), ongoing=True,
             )
-        if rng.random() < 0.08:
+            ActionPlan.objects.create(
+                student=p, kind=ActionPlan.Kind.ASTHMA,
+                plan="Reliever inhaler; rest; call guardians if no improvement.",
+                effective_from=term1.start_date,
+            )
+        if forced == 3 or rng.random() < 0.08:
             Medication.objects.create(
                 student=p, name="salbutamol", dose="2 puffs", schedule="PRN",
-                route=Medication.Route.INHALED, prn=True,
+                route=Medication.Route.INHALED, prn=True, prescriber="Dr Demo",
             )
-        HealthProfile.objects.get_or_create(student=p)
+            ActionPlan.objects.create(
+                student=p, kind=ActionPlan.Kind.SEIZURE,
+                plan="Time the seizure; recovery position; call 919 if over 5 min.",
+                effective_from=term1.start_date,
+            )
+        if forced == 4:
+            ActionPlan.objects.create(
+                student=p, kind=ActionPlan.Kind.DIABETES,
+                plan="Check blood glucose; follow the sliding-scale sheet.",
+                effective_from=term1.start_date,
+            )
+            ActionPlan.objects.create(
+                student=p, kind=ActionPlan.Kind.OTHER, plan="General care note.",
+                effective_from=term1.start_date,
+            )
+        HealthProfile.objects.get_or_create(
+            student=p, defaults={"blood_type": rng.choice(["O+", "A+", "B+", "AB+"])}
+        )
 
         for _ in range(rng.randint(0, 2)):
             Observation.objects.create(
