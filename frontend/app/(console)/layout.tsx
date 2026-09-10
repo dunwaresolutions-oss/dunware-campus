@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { isStaff, logout, whoami, type Role } from "@/lib/auth";
+import { getSchoolProfile } from "@/lib/school";
 import { label } from "@/lib/format";
 import { CommandPalette } from "@/components/CommandPalette";
 
@@ -29,6 +30,7 @@ const NAV: [string, string, Role[]?][] = [
   ["/staff/", "Staff", ADMIN],
   ["/audit/", "Audit log", ADMIN],
   ["/backups/", "Backups", ADMIN],
+  ["/settings/", "School settings", ADMIN],
   ["/remote-access/", "Remote access", SUPER],
 ];
 
@@ -40,6 +42,13 @@ export default function ConsoleLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { data: me, isLoading } = useQuery({ queryKey: ["me"], queryFn: whoami });
+  const mfaOk = !(me?.mfa_enrollment_required || (me?.must_use_mfa && !me?.mfa_verified));
+  const { data: school } = useQuery({
+    queryKey: ["school"],
+    queryFn: getSchoolProfile,
+    enabled: isStaff(me?.role) && mfaOk,
+    staleTime: 5 * 60_000,
+  });
 
   const nav = NAV.filter(
     ([, , roles]) => !roles || (me?.role != null && roles.includes(me.role)),
@@ -75,14 +84,25 @@ export default function ConsoleLayout({
         className="sticky top-0 flex h-screen flex-col border-r border-[var(--glass-border)] bg-[var(--glass-bg)] [backdrop-filter:blur(var(--glass-blur))_saturate(160%)]"
       >
         <div className="flex items-center gap-2.5 border-b border-[var(--campus-line)] px-4 py-4">
-          <Image
-            src="/icon.png"
-            alt=""
-            width={26}
-            height={26}
-            className="rounded-md"
-          />
-          <span className="text-base font-semibold tracking-tight">Campus</span>
+          {school?.logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={school.logo_url}
+              alt=""
+              className="h-[26px] w-[26px] rounded-md object-contain"
+            />
+          ) : (
+            <Image
+              src="/icon.png"
+              alt=""
+              width={26}
+              height={26}
+              className="rounded-md"
+            />
+          )}
+          <span className="truncate text-base font-semibold tracking-tight">
+            {school?.name || "Campus"}
+          </span>
         </div>
 
         <div className="px-2.5 pt-2.5">

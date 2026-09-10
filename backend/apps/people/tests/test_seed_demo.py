@@ -10,6 +10,7 @@ pytestmark = pytest.mark.django_db
 # every operational table the demo is expected to populate.
 EXPECT_NONEMPTY = [
     "accounts.User",
+    "core.SchoolProfile",
     "scheduling.AcademicYear", "scheduling.Term", "scheduling.Room",
     "scheduling.Closure", "scheduling.SessionTemplate", "scheduling.SessionOccurrence",
     "people.Group", "people.GroupStaff", "people.Student", "people.Guardian",

@@ -23,6 +23,11 @@ from django.utils import timezone
 
 from apps.audit.models import AuditAction
 from apps.audit.services import record
+from apps.core.branding import (
+    LETTERHEAD_CSS,
+    letterhead_html,
+    signature_block_html,
+)
 
 
 class PdfEngineUnavailable(RuntimeError):
@@ -43,6 +48,12 @@ def render_report_card_html(card) -> str:
         f"<td>{_html.escape(e.comment or '')}</td></tr>"
         for e in entries
     )
+    from apps.core.models import SchoolProfile
+
+    profile = SchoolProfile.load()
+    footer = _html.escape(profile.report_card_footer or "").replace("\n", "<br>")
+    footer_html = f'<div class="footer">{footer}</div>' if footer else ""
+
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Report card</title>
 <style>
@@ -51,9 +62,13 @@ def render_report_card_html(card) -> str:
  table{{border-collapse:collapse;width:100%;margin-top:16px;font-size:13px}}
  th,td{{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}}
  .summary{{margin-top:18px;white-space:pre-wrap;border:1px solid #ccc;padding:10px}}
+ .footer{{margin-top:24px;font-size:11px;color:#5b6572;white-space:pre-line;
+   border-top:1px solid #ccc;padding-top:8px}}
+ {LETTERHEAD_CSS}
 </style></head><body>
+{letterhead_html(profile)}
 <h1>Report card</h1>
-<div class="muted">Campus &middot; generated {timezone.now():%Y-%m-%d}</div>
+<div class="muted">Generated {timezone.now():%Y-%m-%d}</div>
 <table>
  {_row("Student", s.display_name)}
  {_row("Student number", s.student_number)}
@@ -65,6 +80,8 @@ def render_report_card_html(card) -> str:
  {body_rows or '<tr><td colspan="4">No entries.</td></tr>'}
 </table>
 <div class="summary"><b>Summary</b>\n{_html.escape(card.summary_narrative or '')}</div>
+{signature_block_html(profile)}
+{footer_html}
 </body></html>"""
 
 

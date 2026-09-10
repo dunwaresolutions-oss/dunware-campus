@@ -6,12 +6,15 @@ import subprocess
 import sys
 
 from django.conf import settings
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.hotfix import active_hotfixes
-from apps.core.permissions import MFAVerified, SuperadminOnly
+from apps.core.models import SchoolProfile
+from apps.core.permissions import AdminOnly, MFAVerified, StaffOnly, SuperadminOnly
+from apps.core.serializers import SchoolProfileSerializer
 from apps.core.support import install_root
 from apps.core.version import build_stamp
 
@@ -45,6 +48,44 @@ def _mode_guess() -> str:
     if header == "x-forwarded-for":
         return "Gateway (own cert)"
     return "on (unrecognised)"
+
+
+class SchoolProfileView(APIView):
+    """``GET`` / ``PATCH /api/school-profile/`` — the institution's own identity
+    (name, address, logo) used on report cards / IEPs and in the console chrome.
+
+    Read: any staff role (the UI shows the name/logo everywhere). Write: admin
+    or superadmin, MFA-verified. Accepts multipart (for the logo) or JSON.
+    """
+
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated(), StaffOnly(), MFAVerified()]
+        return [IsAuthenticated(), AdminOnly(), MFAVerified()]
+
+    def get(self, request):
+        profile = SchoolProfile.load()
+        return Response(SchoolProfileSerializer(profile, context={"request": request}).data)
+
+    def patch(self, request):
+        profile = SchoolProfile.load()
+        ser = SchoolProfileSerializer(
+            profile, data=request.data, partial=True, context={"request": request}
+        )
+        ser.is_valid(raise_exception=True)
+        ser.save()
+        return Response(ser.data)
+
+    def delete(self, request):
+        """Clear the logo only (keeps the text fields)."""
+        profile = SchoolProfile.load()
+        if profile.logo:
+            profile.logo.delete(save=False)
+            profile.logo = None
+            profile.save(update_fields=["logo", "updated_at"])
+        return Response(SchoolProfileSerializer(profile, context={"request": request}).data)
 
 
 class RemoteAccessStatusView(APIView):

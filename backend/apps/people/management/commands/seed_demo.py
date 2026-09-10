@@ -182,6 +182,26 @@ class Command(BaseCommand):
         cap_total = opts["students"]
         made = {}
 
+        # ── the school's own identity (report-card letterhead) ───────
+        from apps.core.models import SchoolProfile
+
+        SchoolProfile.objects.all().delete()
+        SchoolProfile.objects.create(
+            name="Maple Grove Primary School",
+            legal_name="Maple Grove Primary School District 12",
+            motto="Curiosity · Kindness · Courage",
+            address_line1="184 Orchard Lane",
+            city="Riverbend", region="ON", postal_code="N2K 3M7", country="Canada",
+            phone="(519) 555-0142", email="office@maplegrove.example",
+            website="maplegrove.example",
+            principal_name="Dana Whitfield", principal_title="Principal",
+            report_card_footer=(
+                "This report is confidential and intended for the parent or "
+                "guardian named above.\nMaple Grove Primary — Riverbend District School Board"
+            ),
+        )
+        made["school_profile"] = 1
+
         # ── staff ────────────────────────────────────────────────────
         head = self._user(rng, "headteacher", Role.ADMIN)
         front = self._user(rng, "frontdesk", Role.FRONT_DESK)
@@ -978,6 +998,9 @@ class Command(BaseCommand):
         Guardian.objects.all().delete()
         Group.objects.all().delete()
         User.objects.filter(is_superuser=False).delete()
+
+        from apps.core.models import SchoolProfile
+        SchoolProfile.objects.all().delete()
 
     # ------------------------------------------------------------------
     def _user(self, rng, username, role):
