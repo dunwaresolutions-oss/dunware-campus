@@ -115,18 +115,46 @@ def generate_report_card(card, *, actor=None) -> dict:
 
 
 def release_report_card(card, *, actor=None) -> None:
-    from apps.communication.models import OutboundEmail
-    from apps.communication.services import _guardian_emails_for_student, _send
+    from apps.communication.models import MessageTemplate, OutboundEmail
+    from apps.communication.services import (
+        _guardian_emails_for_student,
+        _send,
+        _send_personalized,
+    )
+    from apps.communication.templating import build_context, get_active, render_template
 
     card.status = card.Status.RELEASED
     card.released_at = timezone.now()
     card.save(update_fields=["status", "released_at"])
     record(AuditAction.UPDATE, card, summary="report card released to guardians", actor=actor)
-    _send(
-        OutboundEmail.Kind.REPORT_CARD,
-        "[Campus] A report card is now available",
-        "A report card has been released. Sign in to Campus to read it.",
-        _guardian_emails_for_student(card.student, only_comms=True),
-        obj=card,
-        actor=actor,
+
+    links = card.student.guardian_links.select_related("guardian").filter(
+        receives_communications=True
     )
+    guardians = [link.guardian for link in links if link.guardian and link.guardian.email]
+    tmpl = get_active(MessageTemplate.Kind.REPORT_CARD)
+
+    if tmpl and guardians:
+        items = [
+            (
+                g.email,
+                *render_template(
+                    tmpl,
+                    build_context(
+                        student=card.student, guardian=g,
+                        group=card.student.primary_group, term=card.term,
+                    ),
+                ),
+            )
+            for g in guardians
+        ]
+        _send_personalized(OutboundEmail.Kind.REPORT_CARD, items, obj=card, actor=actor)
+    else:
+        _send(
+            OutboundEmail.Kind.REPORT_CARD,
+            "[Campus] A report card is now available",
+            "A report card has been released. Sign in to Campus to read it.",
+            _guardian_emails_for_student(card.student, only_comms=True),
+            obj=card,
+            actor=actor,
+        )

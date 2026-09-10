@@ -7,6 +7,7 @@ import { create, act, patch, retrieve } from "@/lib/resource";
 import { PageHeader, Tabs, Badge, Button, Card, Spinner } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
+import { MessageTemplates } from "@/components/MessageTemplates";
 import { useToast } from "@/components/Toast";
 import { datetime, date, apiMessage, label } from "@/lib/format";
 import { useQueryClient } from "@tanstack/react-query";
@@ -56,7 +57,7 @@ export default function CommunicationPage() {
     <div>
       <PageHeader
         title="Messages"
-        subtitle="Announcements (write once, publish to email an audience), staff ↔ parent threads, incident reports with per-guardian acknowledgement, and the outbound email log. Email only — no SMS. Press Open on an announcement or incident to read the whole thing."
+        subtitle="Announcements, staff ↔ parent threads, incident reports with per-guardian acknowledgement, the email templates Campus sends (with [[merge fields]]), and the outbound email log. Email only — no SMS."
       />
       <Tabs
         active={tab}
@@ -65,9 +66,12 @@ export default function CommunicationPage() {
           { key: "threads", label: "Threads" },
           { key: "announcements", label: "Announcements" },
           { key: "incidents", label: "Incident reports" },
+          { key: "templates", label: "Templates" },
           { key: "email", label: "Email log" },
         ]}
       />
+
+      {tab === "templates" && <MessageTemplates />}
 
       {tab === "announcements" && (
         <>

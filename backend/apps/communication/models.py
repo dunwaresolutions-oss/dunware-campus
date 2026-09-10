@@ -184,6 +184,38 @@ class IncidentAcknowledgement(BaseModel):
         return f"ack of {self.incident_id} by {self.signature_name}"
 
 
+class MessageTemplate(BaseModel):
+    """A reusable email template with ``[[TOKEN]]`` merge fields. The active
+    template of each *kind* drives that notification path (incident, report
+    card released, …); ``GENERAL`` templates are free-form for ad-hoc use.
+
+    Not PII — boilerplate text — so a plain ``BaseModel``.
+    """
+
+    class Kind(models.TextChoices):
+        INCIDENT = "INCIDENT", "Incident notification"
+        REPORT_CARD = "REPORT_CARD", "Report card released"
+        ABSENCE = "ABSENCE", "Absence notification"
+        ANNOUNCEMENT = "ANNOUNCEMENT", "Announcement email"
+        GENERAL = "GENERAL", "General / ad-hoc"
+
+    key = models.SlugField(max_length=60, unique=True)
+    name = models.CharField(max_length=120)
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.GENERAL)
+    subject = models.CharField(max_length=255)
+    body = models.TextField()
+    description = models.CharField(max_length=255, blank=True)
+    active = models.BooleanField(default=True)
+    is_system = models.BooleanField(default=False)  # seeded; can't be deleted
+
+    class Meta:
+        db_table = "communication_message_template"
+        ordering = ["kind", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.kind})"
+
+
 class OutboundEmail(BaseModel):
     """A log of every email Campus sent — subject + recipients + what it was
     about, never the rendered body. Lets an operator prove a guardian was
@@ -194,6 +226,7 @@ class OutboundEmail(BaseModel):
         INCIDENT = "INCIDENT", "Incident report"
         THREAD = "THREAD", "Message thread"
         REPORT_CARD = "REPORT_CARD", "Report card released"
+        ABSENCE = "ABSENCE", "Absence notification"
 
     kind = models.CharField(max_length=12, choices=Kind.choices)
     subject = models.CharField(max_length=255)

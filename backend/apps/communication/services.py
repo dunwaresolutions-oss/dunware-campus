@@ -25,11 +25,20 @@ def _guardian_emails_for_student(student, *, only_comms=True):
     return sorted({link.guardian.email for link in links if link.guardian.email})
 
 
+def _obj_ref(obj):
+    if not obj:
+        return "", ""
+    return (
+        f"{obj._meta.app_label}.{obj._meta.object_name}",
+        str(getattr(obj, "pk", "")),
+    )
+
+
 def _send(kind, subject, body, recipients, *, obj=None, actor=None) -> OutboundEmail:
+    otype, oid = _obj_ref(obj)
     log = OutboundEmail(
         kind=kind, subject=subject[:255], to=list(recipients),
-        object_type=f"{obj._meta.app_label}.{obj._meta.object_name}" if obj else "",
-        object_id=str(getattr(obj, "pk", "")) if obj else "",
+        object_type=otype, object_id=oid,
     )
     if not recipients:
         log.error = "no recipients"
@@ -45,6 +54,35 @@ def _send(kind, subject, body, recipients, *, obj=None, actor=None) -> OutboundE
         log.error = str(exc)[:255]
     log.save()
     record(AuditAction.EXPORT, obj, summary=f"email sent: {kind} ({len(recipients)})", actor=actor)
+    return log
+
+
+def _send_personalized(kind, items, *, obj=None, actor=None) -> OutboundEmail:
+    """``items``: list of ``(email, subject, body)`` — one email per recipient
+    (so ``Dear [[GUARDIAN_FULL_NAME]]`` works). One OutboundEmail row records
+    the batch; per-recipient failures land in its ``error``."""
+    otype, oid = _obj_ref(obj)
+    emails = [e for e, _, _ in items]
+    log = OutboundEmail(
+        kind=kind, subject=(items[0][1][:255] if items else ""), to=emails,
+        object_type=otype, object_id=oid,
+    )
+    if not items:
+        log.error = "no recipients"
+        log.save()
+        return log
+    errors = []
+    for email, subject, body in items:
+        try:
+            send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [email], fail_silently=False)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"{email}: {exc}")
+    if errors:
+        log.error = "; ".join(errors)[:255]
+    else:
+        log.sent_at = timezone.now()
+    log.save()
+    record(AuditAction.EXPORT, obj, summary=f"email sent: {kind} ({len(items)})", actor=actor)
     return log
 
 
@@ -72,13 +110,20 @@ def send_announcement(announcement: Announcement, *, actor=None) -> OutboundEmai
             .exclude(email="").values_list("email", flat=True).distinct()
         )
 
+    from .models import MessageTemplate
+    from .templating import build_context, get_active, render_template
+
+    tmpl = get_active(MessageTemplate.Kind.ANNOUNCEMENT)
+    if tmpl:
+        subject, body = render_template(
+            tmpl, build_context(announcement=announcement, group=announcement.group)
+        )
+    else:
+        subject, body = f"[Campus] {announcement.title}", announcement.body
+
     log = _send(
-        OutboundEmail.Kind.ANNOUNCEMENT,
-        f"[Campus] {announcement.title}",
-        announcement.body,
-        recipients,
-        obj=announcement,
-        actor=actor,
+        OutboundEmail.Kind.ANNOUNCEMENT, subject, body, recipients,
+        obj=announcement, actor=actor,
     )
     announcement.email_sent_at = log.sent_at
     announcement.save(update_fields=["email_sent_at"])
@@ -86,21 +131,83 @@ def send_announcement(announcement: Announcement, *, actor=None) -> OutboundEmai
 
 
 def notify_incident(incident: IncidentReport, *, actor=None) -> OutboundEmail:
-    recipients = _guardian_emails_for_student(incident.student, only_comms=False)
-    body = (
-        f"An incident report has been filed for your child on "
-        f"{incident.occurred_at:%Y-%m-%d %H:%M}. Please sign in to Campus to read it "
-        f"and acknowledge that you have seen it."
-    )
-    log = _send(
-        OutboundEmail.Kind.INCIDENT,
-        "[Campus] An incident report needs your acknowledgement",
-        body,
-        recipients,
-        obj=incident,
-        actor=actor,
-    )
+    from .models import MessageTemplate
+    from .templating import build_context, get_active, render_template
+
+    links = incident.student.guardian_links.select_related("guardian")
+    guardians = [link.guardian for link in links if link.guardian and link.guardian.email]
+    tmpl = get_active(MessageTemplate.Kind.INCIDENT)
+
+    if tmpl and guardians:
+        items = []
+        for g in guardians:
+            subj, body = render_template(
+                tmpl,
+                build_context(
+                    student=incident.student, guardian=g,
+                    group=incident.student.primary_group,
+                    event=incident.occurred_at, incident=incident,
+                ),
+            )
+            items.append((g.email, subj, body))
+        log = _send_personalized(
+            OutboundEmail.Kind.INCIDENT, items, obj=incident, actor=actor
+        )
+    else:
+        body = (
+            f"An incident report has been filed for your child on "
+            f"{incident.occurred_at:%Y-%m-%d %H:%M}. Please sign in to Campus to read it "
+            f"and acknowledge that you have seen it."
+        )
+        log = _send(
+            OutboundEmail.Kind.INCIDENT,
+            "[Campus] An incident report needs your acknowledgement",
+            body,
+            sorted({g.email for g in guardians}),
+            obj=incident,
+            actor=actor,
+        )
     incident.status = IncidentReport.Status.SENT
     incident.guardians_notified_at = timezone.now()
     incident.save(update_fields=["status", "guardians_notified_at"])
     return log
+
+
+def notify_absence(*, student, event, actor=None, group=None) -> OutboundEmail:
+    """Email a student's communications-guardians that they were absent on
+    ``event`` (a date/datetime). Renders the active ABSENCE template; no-ops
+    to a plain sentence if none is configured. Not auto-wired yet — call it
+    from a 'notify guardians' action or a daily job."""
+    from .models import MessageTemplate
+    from .templating import build_context, get_active, render_template
+
+    links = student.guardian_links.select_related("guardian").filter(
+        receives_communications=True
+    )
+    guardians = [link.guardian for link in links if link.guardian and link.guardian.email]
+    tmpl = get_active(MessageTemplate.Kind.ABSENCE)
+    group = group or getattr(student, "primary_group", None)
+
+    if tmpl and guardians:
+        items = [
+            (
+                g.email,
+                *render_template(
+                    tmpl,
+                    build_context(student=student, guardian=g, group=group, event=event),
+                ),
+            )
+            for g in guardians
+        ]
+        return _send_personalized(
+            OutboundEmail.Kind.ABSENCE, items, obj=student, actor=actor
+        )
+    body = f"{student.display_name} was recorded absent on {event:%Y-%m-%d}."
+    return _send(
+        OutboundEmail.Kind.ABSENCE,
+        "[Campus] Absence notification",
+        body,
+        sorted({g.email for g in guardians}),
+        obj=student,
+        actor=actor,
+    )

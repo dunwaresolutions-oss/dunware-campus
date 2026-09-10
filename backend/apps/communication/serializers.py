@@ -7,6 +7,7 @@ from .models import (
     IncidentAcknowledgement,
     IncidentReport,
     Message,
+    MessageTemplate,
     MessageThread,
     OutboundEmail,
 )
@@ -69,3 +70,17 @@ class OutboundEmailSerializer(serializers.ModelSerializer):
         model = OutboundEmail
         fields = ["id", "kind", "subject", "to", "object_type", "object_id",
                   "sent_at", "error", "created_at"]
+
+
+class MessageTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageTemplate
+        fields = ["id", "key", "name", "kind", "subject", "body", "description",
+                  "active", "is_system", "updated_at"]
+        read_only_fields = ["is_system"]
+
+    def validate_key(self, value):
+        inst = getattr(self, "instance", None)
+        if inst and inst.is_system and value != inst.key:
+            raise serializers.ValidationError("A system template's key can't change.")
+        return value

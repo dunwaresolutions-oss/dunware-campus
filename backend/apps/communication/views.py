@@ -3,8 +3,9 @@ from __future__ import annotations
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 from rest_framework.response import Response
 
@@ -15,6 +16,7 @@ from apps.core.permissions import (
     FrontOffice,
     IsObjectOwnerOrStaff,
     MFAVerified,
+    StaffOnly,
     StaffWriteAuthenticatedRead,
 )
 from apps.people.models import Guardian, Student
@@ -24,6 +26,7 @@ from .models import (
     IncidentAcknowledgement,
     IncidentReport,
     Message,
+    MessageTemplate,
     MessageThread,
     OutboundEmail,
 )
@@ -32,10 +35,13 @@ from .serializers import (
     IncidentAcknowledgementSerializer,
     IncidentReportSerializer,
     MessageSerializer,
+    MessageTemplateSerializer,
     MessageThreadSerializer,
     OutboundEmailSerializer,
 )
 from .services import notify_incident, send_announcement
+from .templating import preview_context, render_template
+from .tokens import available_tokens
 
 _ADMIN_ROLES = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
 _INSTRUCTOR_ROLES = {Role.TEACHER, Role.TUTOR}
@@ -203,6 +209,50 @@ class IncidentAcknowledgementViewSet(CampusViewSet):
         if expected and set(expected).issubset(set(acked)):
             incident.status = IncidentReport.Status.ACKNOWLEDGED
             incident.save(update_fields=["status"])
+
+
+class TemplatePermission(BasePermission):
+    """Any staff reads the templates; front office edits them."""
+
+    def has_permission(self, request, view):
+        if not MFAVerified().has_permission(request, view):
+            return False
+        if request.method in SAFE_METHODS:
+            return StaffOnly().has_permission(request, view)
+        return FrontOffice().has_permission(request, view)
+
+
+class MessageTemplateViewSet(viewsets.ModelViewSet):
+    queryset = MessageTemplate.objects.all()
+    serializer_class = MessageTemplateSerializer
+    permission_classes = [TemplatePermission]
+
+    def perform_destroy(self, instance):
+        if instance.is_system:
+            raise ValidationError(
+                "System templates can't be deleted — deactivate or edit instead."
+            )
+        instance.delete()
+
+    @action(detail=False, methods=["get"])
+    def tokens(self, request):
+        """``?kind=INCIDENT`` — the grouped merge-field palette for that kind."""
+        kind = request.query_params.get("kind", MessageTemplate.Kind.GENERAL)
+        return Response(available_tokens(kind))
+
+    @action(detail=True, methods=["post"])
+    def preview(self, request, pk=None):
+        """Render this template against a real student (``{"student": id}``)
+        or canned sample data. Uses the *submitted* subject/body when present
+        so the editor can preview un-saved edits."""
+        tmpl = self.get_object()
+        subject = request.data.get("subject", tmpl.subject)
+        body = request.data.get("body", tmpl.body)
+        ctx = preview_context(tmpl.kind, request.data.get("student"))
+        rendered = render_template(
+            MessageTemplate(kind=tmpl.kind, subject=subject, body=body), ctx
+        )
+        return Response({"subject": rendered[0], "body": rendered[1]})
 
 
 class OutboundEmailViewSet(CampusViewSet):
