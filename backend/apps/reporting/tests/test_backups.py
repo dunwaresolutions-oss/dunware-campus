@@ -7,12 +7,14 @@ import pytest
 from django.core.management import call_command
 from django.utils import timezone
 
+from apps.reporting import backup_runner
 from apps.reporting.metrics import build_metrics
 from apps.reporting.models import BackupRun
 
 pytestmark = pytest.mark.django_db
 
 URL = "/api/backups/"
+RUN_URL = "/api/backups/run/"
 
 
 def _run(**kw):
@@ -56,11 +58,62 @@ def test_record_backup_prunes_old_rows():
     assert BackupRun.objects.count() == 3
 
 
-def test_api_is_superadmin_only(auth_client, superadmin, admin_user, staff):
+def test_api_is_admin_and_superadmin_only(auth_client, superadmin, admin_user, staff):
     _run(archive_name="a.gpg")
     assert auth_client(superadmin).get(URL).data["count"] == 1
-    assert auth_client(admin_user).get(URL).status_code == 403
+    assert auth_client(admin_user).get(URL).data["count"] == 1
     assert auth_client(staff).get(URL).status_code == 403
+
+
+def test_run_action_needs_admin(auth_client, staff):
+    assert auth_client(staff).post(RUN_URL, {}, format="json").status_code == 403
+
+
+def test_run_action_409_while_a_manual_backup_is_running(auth_client, superadmin):
+    _run(kind=BackupRun.Kind.MANUAL, status=BackupRun.Status.RUNNING)
+    resp = auth_client(superadmin).post(RUN_URL, {}, format="json")
+    assert resp.status_code == 409
+
+
+def test_run_action_launches_and_returns_the_running_row(
+    auth_client, admin_user, monkeypatch
+):
+    seen = {}
+
+    def fake_start(*, user, passphrase=""):
+        seen["user"], seen["passphrase"] = user, passphrase
+        return _run(
+            kind=BackupRun.Kind.MANUAL,
+            status=BackupRun.Status.RUNNING,
+            triggered_by=user,
+        )
+
+    monkeypatch.setattr(backup_runner, "start_manual_backup", fake_start)
+    resp = auth_client(admin_user).post(
+        RUN_URL, {"passphrase": "hunter2"}, format="json"
+    )
+    assert resp.status_code == 202
+    assert resp.data["kind"] == "MANUAL" and resp.data["status"] == "RUNNING"
+    assert seen == {"user": admin_user, "passphrase": "hunter2"}
+
+
+def test_can_run_now_enforces_a_cooldown():
+    ok, _ = backup_runner.can_run_now()
+    assert ok is True
+    _run(kind=BackupRun.Kind.MANUAL, status=BackupRun.Status.SUCCESS)
+    ok, why = backup_runner.can_run_now()
+    assert ok is False and "try again" in why
+
+
+def test_start_manual_backup_refuses_cleanly_when_it_cannot_launch(
+    settings, tmp_path, admin_user
+):
+    # No backup.ps1 under this dir (and CI is not the Windows install) — the
+    # helper must raise without leaving an orphaned RUNNING row.
+    settings.CAMPUS_SCRIPTS_DIR = str(tmp_path)
+    with pytest.raises(backup_runner.BackupError):
+        backup_runner.start_manual_backup(user=admin_user)
+    assert not BackupRun.objects.filter(kind=BackupRun.Kind.MANUAL).exists()
 
 
 def test_metric_reflects_history(superadmin):

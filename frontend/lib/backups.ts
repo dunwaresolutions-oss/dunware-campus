@@ -1,4 +1,4 @@
-import { list, type Page } from "./resource";
+import { actList, list, type Page } from "./resource";
 
 export interface BackupRun {
   id: string;
@@ -22,3 +22,12 @@ export interface BackupRun {
 
 export const listBackups = (page = 1): Promise<Page<BackupRun>> =>
   list<BackupRun>("backups", { page });
+
+/**
+ * Take an on-demand encrypted backup now (superadmin / admin).
+ * The passphrase is used for this one run and never stored server-side;
+ * pass "" if the Campus App service already has CAMPUS_BACKUP_PASSPHRASE set.
+ * Resolves with the RUNNING BackupRun row — poll listBackups() for the result.
+ */
+export const runBackup = (passphrase: string): Promise<BackupRun> =>
+  actList<BackupRun>("backups", "run", passphrase ? { passphrase } : {});

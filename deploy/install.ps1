@@ -182,9 +182,13 @@ try {
 }
 
 # ── 2. directory layout ──────────────────────────────────────────────────
-foreach ($d in @("pgdata", "logs", "media", "app\hotfix", "remote")) {
+foreach ($d in @("pgdata", "logs", "media", "app\hotfix", "remote", "backups")) {
   New-Item -ItemType Directory -Force -Path (Join-Path $InstallRoot $d) | Out-Null
 }
+# The default target for scheduled backups AND the console's "Run backup now"
+# action (deploy/backup.ps1 -Out). Holds GPG-encrypted archives - lock it to
+# SYSTEM + Administrators like the rest of the sensitive tree.
+Protect-ToAdminsOnly (Join-Path $InstallRoot "backups")
 
 # ── 3. secrets ───────────────────────────────────────────────────────────
 Write-Step "Generating per-install secrets"

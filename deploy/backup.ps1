@@ -22,6 +22,10 @@
     .\backup.ps1 -Out D:\backups -Passphrase (Read-Host -AsSecureString) ...
     $env:CAMPUS_BACKUP_PASSPHRASE = '...'; .\backup.ps1 -Out D:\backups
     .\backup.ps1 -Out D:\backups -Simulate   # drill / dev, no Postgres needed
+
+  -RunId is set by the console's "Run backup now" action (apps/reporting/
+  backup_runner.py): instead of creating a fresh BackupRun row on success,
+  this run flips that already-RUNNING row to SUCCESS / FAILED.
 #>
 param(
   [string]$InstallRoot = "$env:ProgramData\Campus",
@@ -29,6 +33,7 @@ param(
   [string]$Passphrase = $env:CAMPUS_BACKUP_PASSPHRASE,
   [int]$RetentionDays = 30,
   [ValidateSet("SCHEDULED", "MANUAL")][string]$Kind = "SCHEDULED",
+  [string]$RunId = "",
   [switch]$Simulate
 )
 
@@ -53,13 +58,6 @@ function Record-Backup {
 
 $startIso = (Get-Date).ToString("o")
 
-if (-not $Passphrase) {
-  throw "No backup passphrase. Pass -Passphrase or set CAMPUS_BACKUP_PASSPHRASE."
-}
-if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) {
-  throw "gpg was not found on PATH. Install Gpg4win (or Git for Windows) or bundle gpg.exe."
-}
-
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $work = Join-Path $Out "_campus-backup-$stamp"
@@ -69,6 +67,15 @@ $mediaBackedUp = $false
 $dbBackedUp = $false
 
 try {
+  # Validated inside the try so an on-demand run (-RunId) always closes its
+  # RUNNING row to FAILED with a clear reason rather than being orphaned.
+  if (-not $Passphrase) {
+    throw "No backup passphrase. Pass -Passphrase or set CAMPUS_BACKUP_PASSPHRASE."
+  }
+  if (-not (Get-Command gpg -ErrorAction SilentlyContinue)) {
+    throw "gpg was not found on PATH. Install Gpg4win (or Git for Windows) or bundle gpg.exe."
+  }
+
   $pgDump = Resolve-PgDump
   $dumpPath = Join-Path $work "db.dump"
 
@@ -124,13 +131,16 @@ try {
   )
   if ($dbBackedUp)    { $recArgs += "--database-ok" }
   if ($mediaBackedUp) { $recArgs += "--media-ok" }
+  if ($RunId)         { $recArgs += @("--run-id", $RunId) }
   Record-Backup $recArgs
 
   exit 0
 } catch {
   $msg = $_.Exception.Message
-  Record-Backup @("--status", "FAILED", "--kind", $Kind, "--started", $startIso,
-                  "--error", $msg, "--host", $env:COMPUTERNAME)
+  $failArgs = @("--status", "FAILED", "--kind", $Kind, "--started", $startIso,
+                "--error", $msg, "--host", $env:COMPUTERNAME)
+  if ($RunId) { $failArgs += @("--run-id", $RunId) }
+  Record-Backup $failArgs
   throw
 } finally {
   Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue

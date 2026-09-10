@@ -248,6 +248,22 @@ STORAGES = {
 MEDIA_URL = "media/"
 MEDIA_ROOT = env("MEDIA_ROOT", default=str(BASE_DIR / "media"))
 
+# ── On-prem paths / on-demand backup ───────────────────────────────────
+# The frozen install lays the deploy scripts beside the exe under
+# <InstallRoot>\scripts and keeps encrypted backups under
+# <InstallRoot>\backups (deploy/install.ps1). The console's "Run backup
+# now" action (apps/reporting/backup_runner.py) shells out to backup.ps1
+# there. On a dev checkout these fall back to the repo's deploy/ dir so the
+# code path is still exercisable.
+if getattr(sys, "frozen", False):
+    INSTALL_ROOT = BASE_DIR.parent
+    _default_scripts_dir = INSTALL_ROOT / "scripts"
+else:
+    INSTALL_ROOT = BASE_DIR.parent  # repo root
+    _default_scripts_dir = INSTALL_ROOT / "deploy"
+CAMPUS_SCRIPTS_DIR = env("CAMPUS_SCRIPTS_DIR", default=str(_default_scripts_dir))
+CAMPUS_BACKUP_DIR = env("CAMPUS_BACKUP_DIR", default=str(INSTALL_ROOT / "backups"))
+
 # ── Background jobs ─────────────────────────────────────────────────────
 Q_CLUSTER = {
     "name": "campus",

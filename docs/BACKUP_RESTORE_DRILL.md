@@ -22,6 +22,16 @@ Both resolve `pg_dump`/`pg_restore` from the bundled portable PostgreSQL
 `PATH`. `gpg` is expected on `PATH` — bundled with the installer in Phase 9,
 already present on a dev box via Git for Windows / Gpg4win.
 
+**On-demand backups.** Superadmin/Admin can trigger `backup.ps1` from the
+console (**Backups → Run backup now**). The request handler
+(`apps/reporting/backup_runner.py`) spawns the script detached with
+`-Kind MANUAL -RunId <BackupRun.pk>`; the script flips that already-RUNNING
+`BackupRun` row to SUCCESS/FAILED via `manage record_backup --run-id` when it
+finishes. The passphrase is passed to the child through its environment for
+that one run only — the Campus App service does not persist it. A 10-minute
+cooldown and a "one manual run in flight at a time" guard keep the button from
+being a disk-fill lever.
+
 ## Honest scope of this drill
 
 This repository's dev environment has **no PostgreSQL installed** (no

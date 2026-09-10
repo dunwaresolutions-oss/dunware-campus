@@ -154,8 +154,12 @@ and clear the folder once it ships. Cannot add a dependency or change a model
 ## Day 2
 
 - **Backups:** `deploy\backup.ps1` — encrypted `pg_dump` + media. Schedule it
-  (Task Scheduler) and move the output off-box. Test restores with
-  `deploy\restore.ps1` — a release is not signed off until a
+  (Task Scheduler) and move the output off-box. Superadmin/Admin can also take
+  an **on-demand** backup from the console (**Backups → Run backup now**): it
+  shells out to this same script with `-Kind MANUAL`, dropping the archive in
+  `<InstallRoot>\backups`. The passphrase is entered per run (or inherited from
+  `CAMPUS_BACKUP_PASSPHRASE` on the Campus App service) and never stored. Test
+  restores with `deploy\restore.ps1` — a release is not signed off until a
   backup → wipe → restore drill passes.
 - **Updates:** run the new `Campus-Setup.exe`; it stops the services, swaps the
   app, runs `migrate`, restarts. Data is untouched.

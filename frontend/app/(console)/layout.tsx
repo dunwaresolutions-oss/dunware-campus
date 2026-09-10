@@ -28,7 +28,7 @@ const NAV: [string, string, Role[]?][] = [
   ["/billing/", "Billing", OFFICE],
   ["/staff/", "Staff", ADMIN],
   ["/audit/", "Audit log", ADMIN],
-  ["/backups/", "Backups", SUPER],
+  ["/backups/", "Backups", ADMIN],
   ["/remote-access/", "Remote access", SUPER],
 ];
 
