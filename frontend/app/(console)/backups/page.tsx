@@ -7,7 +7,7 @@ import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { fetchMetrics } from "@/lib/metrics";
 import { runBackup } from "@/lib/backups";
-import { PageHeader, Card, Badge, Button, Spinner } from "@/components/ui";
+import { PageHeader, Card, Badge, Button, ErrorNote, Spinner } from "@/components/ui";
 import { apiMessage, datetime, label } from "@/lib/format";
 import type { BackupRun } from "@/lib/backups";
 
@@ -19,13 +19,25 @@ function mb(bytes: number | null | undefined) {
 const tone = (s: string) =>
   s === "SUCCESS" ? "green" : s === "FAILED" ? "red" : "amber";
 
-function RunBackupButton() {
+function RunBackupModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  function close() {
+    if (busy) return;
+    setPassphrase("");
+    setError("");
+    onClose();
+  }
 
   async function go() {
     setBusy(true);
@@ -36,10 +48,10 @@ function RunBackupButton() {
         "success",
         "Backup started — it runs in the background. Refresh in a minute for the result.",
       );
-      setOpen(false);
-      setPassphrase("");
       qc.invalidateQueries({ queryKey: ["list", "backups"] });
       qc.invalidateQueries({ queryKey: ["metrics"] });
+      setPassphrase("");
+      onClose();
     } catch (err) {
       setError(apiMessage(err));
     } finally {
@@ -48,55 +60,49 @@ function RunBackupButton() {
   }
 
   return (
-    <>
-      <Button size="sm" onClick={() => setOpen(true)}>
-        Run backup now
-      </Button>
-      <Modal
-        open={open}
-        onClose={() => !busy && setOpen(false)}
-        title="Run a backup now"
-      >
-        <div className="space-y-4 text-sm">
-          <p className="text-[var(--campus-muted)]">
-            Runs the same encrypted <code>pg_dump</code> + media backup as the
-            scheduled nightly job, straight away. Use it before a risky change —
-            a bulk import, a version upgrade, end-of-term archiving — so you have
-            a known-good restore point.
-          </p>
-          <label className="block">
-            <span className="mb-1 block font-medium">Backup passphrase</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={passphrase}
-              onChange={(e) => setPassphrase(e.target.value)}
-              className="w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm focus:border-[var(--campus-accent)] focus:outline-none"
-              placeholder="•••••••••••"
-            />
-            <span className="mt-1 block text-xs text-[var(--campus-muted)]">
-              Leave blank if the server already has{" "}
-              <code>CAMPUS_BACKUP_PASSPHRASE</code> configured. It is used only
-              for this one run and is never stored.
-            </span>
+    <Modal open={open} onClose={close} title="Run a backup now">
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed text-[var(--campus-muted)]">
+          Runs the same encrypted database + media backup as the scheduled
+          nightly job, straight away. Use it before a risky change — a bulk
+          import, a version upgrade, end-of-term archiving — so you have a
+          known-good restore point.
+        </p>
+
+        <div>
+          <label
+            htmlFor="backup-passphrase"
+            className="mb-1 block text-xs font-medium text-[var(--campus-muted)]"
+          >
+            Backup passphrase
           </label>
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          <div className="flex justify-end gap-2 border-t border-[var(--campus-line)] pt-3">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setOpen(false)}
-              disabled={busy}
-            >
-              Cancel
-            </Button>
-            <Button size="sm" onClick={go} disabled={busy}>
-              {busy ? "Starting…" : "Start backup"}
-            </Button>
-          </div>
+          <input
+            id="backup-passphrase"
+            type="password"
+            autoComplete="off"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            className="w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm text-[var(--campus-fg)] transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]"
+          />
+          <p className="mt-1 text-xs text-[var(--campus-muted)]">
+            Leave blank if the server already has{" "}
+            <code>CAMPUS_BACKUP_PASSPHRASE</code> configured. It is used only for
+            this run and is never stored.
+          </p>
         </div>
-      </Modal>
-    </>
+
+        {error && <ErrorNote message={error} />}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={close} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={go} disabled={busy}>
+            {busy ? "Starting…" : "Start backup"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -173,12 +179,18 @@ function Health() {
 }
 
 export default function BackupsPage() {
+  const [runOpen, setRunOpen] = useState(false);
+
   return (
     <div>
       <PageHeader
         title="Backups"
         subtitle="Every backup and restore-verification run reported by backup.ps1 / restore.ps1. Backups are normally scheduled on the server; use Run backup now for an on-demand one."
-        actions={<RunBackupButton />}
+        actions={
+          <Button size="sm" onClick={() => setRunOpen(true)}>
+            Run backup now
+          </Button>
+        }
       />
       <Health />
       <CrudPanel<BackupRun>
@@ -234,6 +246,8 @@ export default function BackupsPage() {
           { label: "Error", value: (r) => (r.error as string) || "—", long: true },
         ]}
       />
+
+      <RunBackupModal open={runOpen} onClose={() => setRunOpen(false)} />
     </div>
   );
 }
