@@ -99,3 +99,45 @@ def test_api_front_office_can_generate_via_template_action(auth_client, admin_us
     resp = client.post(f"/api/session-templates/{tmpl.pk}/generate/", {}, format="json")
     assert resp.status_code == 201
     assert resp.data["created"] == 5
+
+
+CAL = "/api/sessions/calendar/"
+
+
+def test_calendar_requires_a_date_range(auth_client, admin_user):
+    assert auth_client(admin_user).get(CAL).status_code == 400
+
+
+def test_calendar_returns_sessions_and_closures_in_range(auth_client, admin_user):
+    term = _term()
+    g = make_group()
+    generate_occurrences(_template(g, term, weekday=0))  # Mondays in Sept 2026
+    Closure.objects.create(
+        start_date=dt.date(2026, 9, 15), end_date=dt.date(2026, 9, 15),
+        reason="Teacher PD day",
+    )
+    data = auth_client(admin_user).get(
+        CAL, {"from": "2026-09-01", "to": "2026-09-30"}
+    ).json()
+    assert {s["date"] for s in data["sessions"]} == {
+        "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28",
+    }
+    assert data["sessions"][0]["group_name"] == g.name
+    assert len(data["closures"]) == 1 and data["closures"][0]["reason"] == "Teacher PD day"
+
+
+def test_calendar_is_instructor_scoped(auth_client, staff):
+    term = _term()
+    mine, theirs = make_group(), make_group()
+    assign_staff(mine, staff)
+    generate_occurrences(_template(mine, term, weekday=0))
+    generate_occurrences(_template(theirs, term, weekday=1))
+    data = auth_client(staff).get(CAL, {"from": "2026-09-01", "to": "2026-09-30"}).json()
+    assert {str(s["group"]) for s in data["sessions"]} == {str(mine.pk)}
+
+
+def test_calendar_caps_the_span_at_62_days(auth_client, admin_user):
+    data = auth_client(admin_user).get(
+        CAL, {"from": "2026-01-01", "to": "2026-12-31"}
+    ).json()
+    assert data["to"] == "2026-03-04"  # 2026-01-01 + 62 days

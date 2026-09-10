@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from django.db import models
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -121,6 +122,68 @@ class SessionOccurrenceViewSet(CampusViewSet):
         if getattr(self.request.user, "role", None) in _ADMIN_ROLES:
             return qs
         return qs.filter(group_id__in=_instructor_group_ids(self.request.user))
+
+    @action(detail=False, methods=["get"])
+    def calendar(self, request):
+        """``GET /api/sessions/calendar/?from=YYYY-MM-DD&to=YYYY-MM-DD[&group=ID]``
+
+        A flat, un-paginated payload for the calendar views: the sessions in
+        the range (role-scoped exactly like the list) plus the closures that
+        overlap it, so the grid can shade non-teaching days. The span is
+        capped at 62 days.
+        """
+        try:
+            start = dt.date.fromisoformat(request.query_params["from"])
+            end = dt.date.fromisoformat(request.query_params["to"])
+        except (KeyError, ValueError):
+            return Response(
+                {"detail": "from and to (YYYY-MM-DD) are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if end < start:
+            start, end = end, start
+        if (end - start).days > 62:
+            end = start + dt.timedelta(days=62)
+
+        qs = SessionOccurrence.objects.select_related("group", "room", "staff").filter(
+            date__gte=start, date__lte=end
+        )
+        if request.query_params.get("group"):
+            qs = qs.filter(group_id=request.query_params["group"])
+        role = getattr(request.user, "role", None)
+        group_ids = None
+        if role not in _ADMIN_ROLES:
+            group_ids = list(_instructor_group_ids(request.user))
+            qs = qs.filter(group_id__in=group_ids)
+
+        closures = Closure.objects.select_related("group").filter(
+            start_date__lte=end, end_date__gte=start
+        )
+        if group_ids is not None:
+            closures = closures.filter(
+                models.Q(group__isnull=True) | models.Q(group_id__in=group_ids)
+            )
+
+        return Response(
+            {
+                "from": start.isoformat(),
+                "to": end.isoformat(),
+                "sessions": SessionOccurrenceSerializer(
+                    qs.order_by("date", "start_time"), many=True
+                ).data,
+                "closures": [
+                    {
+                        "id": str(c.id),
+                        "start_date": c.start_date.isoformat(),
+                        "end_date": c.end_date.isoformat(),
+                        "reason": c.reason,
+                        "group": c.group_id,
+                        "group_name": c.group.name if c.group_id else None,
+                    }
+                    for c in closures
+                ],
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):

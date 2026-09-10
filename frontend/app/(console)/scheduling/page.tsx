@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
+import { ScheduleCalendar } from "@/components/ScheduleCalendar";
 import { Modal } from "@/components/Modal";
 import { PageHeader, Tabs, Badge, Spinner } from "@/components/ui";
 import { date, time, weekday, label, apiMessage, yn, WEEKDAYS } from "@/lib/format";
@@ -40,7 +41,7 @@ interface SessionRow {
 const weekdayOptions = WEEKDAYS.map((w, i) => ({ value: i, label: w }));
 
 export default function SchedulingPage() {
-  const [tab, setTab] = useState("sessions");
+  const [tab, setTab] = useState("calendar");
   const [openSession, setOpenSession] = useState<SessionRow | null>(null);
   const groups = useAll<Group>("groups");
   const terms = useAll<Term>("terms");
@@ -56,12 +57,13 @@ export default function SchedulingPage() {
     <div>
       <PageHeader
         title="Scheduling"
-        subtitle="Rooms and the academic calendar, recurring class templates, and the dated sessions those templates expand into. Closures are subtracted from generation. Press Open on a session to see its roster."
+        subtitle="The calendar of dated sessions (month / week / day), plus the rooms, academic year, recurring class templates and closures those sessions come from. Click a session for its roster."
       />
       <Tabs
         active={tab}
         onChange={setTab}
         tabs={[
+          { key: "calendar", label: "Calendar" },
           { key: "sessions", label: "Sessions" },
           { key: "templates", label: "Templates" },
           { key: "closures", label: "Closures" },
@@ -70,6 +72,20 @@ export default function SchedulingPage() {
           { key: "rooms", label: "Rooms" },
         ]}
       />
+
+      {tab === "calendar" && (
+        <>
+          <p className="mb-3 text-sm text-[var(--campus-muted)]">
+            Every dated session, in a month / week / day view. Filter by group,
+            and click a session to see its roster or cancel that one meeting.
+            Amber days are closures.
+          </p>
+          <ScheduleCalendar
+            groups={groups.data ?? []}
+            onOpenSession={(s) => setOpenSession(s as unknown as SessionRow)}
+          />
+        </>
+      )}
 
       {tab === "rooms" && (
         <>

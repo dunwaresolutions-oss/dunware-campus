@@ -46,11 +46,17 @@ class SessionTemplateSerializer(serializers.ModelSerializer):
 class SessionOccurrenceSerializer(serializers.ModelSerializer):
     group_name = serializers.CharField(source="group.name", read_only=True)
     room_name = serializers.CharField(source="room.name", read_only=True)
+    staff_name = serializers.SerializerMethodField()
 
     class Meta:
         model = SessionOccurrence
         fields = ["id", "template", "group", "group_name", "room", "room_name", "staff",
-                  "date", "start_time", "end_time", "title", "status", "cancelled_reason"]
+                  "staff_name", "date", "start_time", "end_time", "title", "status",
+                  "cancelled_reason"]
+
+    def get_staff_name(self, obj) -> str:
+        u = obj.staff
+        return (u.get_full_name() or u.username) if u else ""
 
 
 class RosterEntrySerializer(serializers.Serializer):
