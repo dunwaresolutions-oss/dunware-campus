@@ -37,6 +37,7 @@ class StudentSerializer(serializers.ModelSerializer):
     display_name = serializers.CharField(read_only=True)
     primary_group_name = serializers.CharField(source="primary_group.name", read_only=True)
     guardian_count = serializers.SerializerMethodField()
+    photo_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Student
@@ -45,13 +46,23 @@ class StudentSerializer(serializers.ModelSerializer):
             "date_of_birth", "pronouns", "student_number", "government_id",
             "custody_notes", "status", "primary_group", "primary_group_name",
             "left_on", "legal_hold", "anonymized_at", "user",
-            "guardian_count", "created_at", "updated_at",
+            "photo", "photo_url", "guardian_count", "created_at", "updated_at",
         ]
         read_only_fields = ["anonymized_at"]
-        extra_kwargs = {"student_number": {"required": False}}
+        extra_kwargs = {
+            "student_number": {"required": False},
+            "photo": {"write_only": True, "required": False},
+        }
 
     def get_guardian_count(self, obj) -> int:
         return obj.guardian_links.count()
+
+    def get_photo_url(self, obj) -> str | None:
+        if not obj.photo:
+            return None
+        request = self.context.get("request")
+        path = f"/api/students/{obj.pk}/photo/"
+        return request.build_absolute_uri(path) if request else path
 
 
 class GuardianSerializer(serializers.ModelSerializer):

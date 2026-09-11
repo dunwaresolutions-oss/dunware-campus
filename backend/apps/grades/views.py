@@ -182,15 +182,18 @@ class ReportCardViewSet(CampusViewSet):
         )
         role = getattr(self.request.user, "role", None)
         if role in _ADMIN_ROLES:
-            return qs
-        if role in _INSTRUCTOR_ROLES:
-            return qs.filter(student__in=Student.visible_queryset(self.request.user))
-        if role == Role.PARENT:
-            return qs.filter(
+            pass
+        elif role in _INSTRUCTOR_ROLES:
+            qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
+        elif role == Role.PARENT:
+            qs = qs.filter(
                 status=ReportCard.Status.RELEASED,
                 student__in=Student.visible_queryset(self.request.user),
             )
-        return qs.none()
+        else:
+            return qs.none()
+        sid = self.request.query_params.get("student")
+        return qs.filter(student_id=sid) if sid else qs
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):

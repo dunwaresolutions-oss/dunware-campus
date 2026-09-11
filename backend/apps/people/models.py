@@ -97,7 +97,7 @@ class Student(SensitiveSoftDeleteModel):
         GRADUATED = "GRADUATED", "Graduated"
 
     PII_FIELDS = ("first_name", "last_name", "preferred_name", "date_of_birth",
-                  "government_id", "custody_notes")
+                  "government_id", "custody_notes", "photo")
     PII_PURPOSE = {
         "date_of_birth": "age-band placement, ratio compliance, report cards",
         "government_id": "government reporting where legally required; encrypted",
@@ -118,6 +118,12 @@ class Student(SensitiveSoftDeleteModel):
     preferred_name = models.CharField(max_length=100, blank=True)
     date_of_birth = models.DateField()
     pronouns = models.CharField(max_length=40, blank=True)
+    # A face photo is PII — write it through the encrypted document store and
+    # serve it only via the authenticated /students/<id>/photo/ endpoint.
+    photo = models.ImageField(
+        upload_to="student-photos/%Y/", storage=document_storage,
+        blank=True, null=True,
+    )
 
     student_number = models.CharField(max_length=20, unique=True)
     government_id = EncryptedCharField(blank=True, default="")

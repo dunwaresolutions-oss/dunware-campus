@@ -1,25 +1,23 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAll, useList, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
-import { NestedList } from "@/components/NestedList";
 import { ActionButton } from "@/components/ActionButton";
 import {
   PageHeader,
   Tabs,
   Badge,
-  Button,
   Card,
   Spinner,
   Table,
 } from "@/components/ui";
 import { Modal } from "@/components/Modal";
-import { RecordForm } from "@/components/RecordForm";
-import { act, create, retrieve } from "@/lib/resource";
+import { act } from "@/lib/resource";
 import { RecordDetail } from "@/components/RecordDetail";
 import { useQueryClient } from "@tanstack/react-query";
-import { date, datetime, label, yn } from "@/lib/format";
+import { datetime, date, label, yn } from "@/lib/format";
 
 interface Group {
   id: number;
@@ -44,8 +42,8 @@ const statusTone = (s: string) =>
   s === "ENROLLED" ? "green" : s === "WITHDRAWN" ? "red" : "neutral";
 
 export default function PeoplePage() {
+  const router = useRouter();
   const [tab, setTab] = useState("students");
-  const [detail, setDetail] = useState<Student | null>(null);
   const paramTab = useQueryParam("tab");
   const focusId = useQueryParam("focus");
 
@@ -53,10 +51,8 @@ export default function PeoplePage() {
     if (paramTab) setTab(paramTab);
   }, [paramTab]);
   useEffect(() => {
-    if (!focusId) return;
-    setTab("students");
-    retrieve<Student>("students", focusId).then(setDetail).catch(() => {});
-  }, [focusId]);
+    if (focusId) router.replace(`/people/student?id=${focusId}`);
+  }, [focusId, router]);
   const groups = useAll<Group>("groups");
   const groupOpts = options(groups.data, (g) => g.name);
   const guardiansAll = useAll<{
@@ -64,10 +60,6 @@ export default function PeoplePage() {
     first_name: string;
     last_name: string;
   }>("guardians");
-  const guardianOpts = options(
-    guardiansAll.data,
-    (g) => `${g.first_name} ${g.last_name}`,
-  );
 
   const studentFields = [
     { name: "first_name", label: "First name", required: true },
@@ -97,7 +89,7 @@ export default function PeoplePage() {
     <div>
       <PageHeader
         title="Students"
-        subtitle="The child record — profile, guardians, emergency contacts, authorized pickups, observations, health, and documents."
+        subtitle="The child record â€” profile, guardians, emergency contacts, authorized pickups, observations, health, and documents."
       />
       <Tabs
         active={tab}
@@ -115,7 +107,7 @@ export default function PeoplePage() {
           resource="students"
           singular="student"
           fields={studentFields}
-          onRowOpen={setDetail}
+          onRowOpen={(s) => router.push(`/people/student?id=${s.id}`)}
           columns={[
             { header: "Name", cell: (s) => s.display_name || `${s.first_name} ${s.last_name}` },
             { header: "DOB", cell: (s) => date(s.date_of_birth) },
@@ -124,7 +116,7 @@ export default function PeoplePage() {
               cell: (s) =>
                 s.primary_group_name ||
                 groups.data?.find((g) => g.id === s.primary_group)?.name ||
-                "—",
+                "â€”",
             },
             { header: "Guardians", cell: (s) => s.guardian_count ?? 0 },
             {
@@ -144,8 +136,8 @@ export default function PeoplePage() {
           columns={[
             { header: "Name", cell: (g) => g.name as string },
             { header: "Kind", cell: (g) => label(g.kind as string) },
-            { header: "Stage", cell: (g) => (g.stage_label as string) || "—" },
-            { header: "Capacity", cell: (g) => (g.capacity as number) ?? "—" },
+            { header: "Stage", cell: (g) => (g.stage_label as string) || "â€”" },
+            { header: "Capacity", cell: (g) => (g.capacity as number) ?? "â€”" },
             {
               header: "Enrolled",
               cell: (g) => (g.active_enrolment_count as number) ?? 0,
@@ -166,12 +158,12 @@ export default function PeoplePage() {
             { name: "capacity", label: "Capacity", type: "number" },
             { name: "active", label: "Active", type: "checkbox" },
           ]}
-          detailTitle={(g) => `Group — ${g.name as string}`}
+          detailTitle={(g) => `Group â€” ${g.name as string}`}
           detailFields={[
             { label: "Name", value: (g) => g.name as string },
             { label: "Kind", value: (g) => label(g.kind as string) },
-            { label: "Stage label", value: (g) => (g.stage_label as string) || "—" },
-            { label: "Capacity", value: (g) => (g.capacity as number) ?? "—" },
+            { label: "Stage label", value: (g) => (g.stage_label as string) || "â€”" },
+            { label: "Capacity", value: (g) => (g.capacity as number) ?? "â€”" },
             {
               label: "Enrolled now",
               value: (g) => (g.active_enrolment_count as number) ?? 0,
@@ -197,7 +189,7 @@ export default function PeoplePage() {
                   | { id: string; name: string; relationship: string }[]
                   | undefined) ?? [];
                 if (kids.length === 0)
-                  return <span className="text-[var(--campus-muted)]">—</span>;
+                  return <span className="text-[var(--campus-muted)]">â€”</span>;
                 return (
                   <span className="flex flex-wrap gap-1">
                     {kids.map((k) => (
@@ -212,12 +204,12 @@ export default function PeoplePage() {
                 );
               },
             },
-            { header: "Email", cell: (g) => (g.email as string) || "—" },
-            { header: "Phone", cell: (g) => (g.phone as string) || "—" },
+            { header: "Email", cell: (g) => (g.email as string) || "â€”" },
+            { header: "Phone", cell: (g) => (g.phone as string) || "â€”" },
             {
               header: "Portal",
               cell: (g) =>
-                g.user ? <Badge tone="green">has login</Badge> : "—",
+                g.user ? <Badge tone="green">has login</Badge> : "â€”",
             },
           ]}
           fields={[
@@ -227,17 +219,17 @@ export default function PeoplePage() {
             { name: "phone", label: "Phone (encrypted)" },
             { name: "address", label: "Address (encrypted)", type: "textarea" },
           ]}
-          detailTitle={(g) => `Guardian — ${g.first_name} ${g.last_name}`}
+          detailTitle={(g) => `Guardian â€” ${g.first_name} ${g.last_name}`}
           detailFields={[
             {
               label: "Name",
               value: (g) => `${g.first_name} ${g.last_name}`.trim(),
             },
-            { label: "Email", value: (g) => (g.email as string) || "—" },
-            { label: "Phone", value: (g) => (g.phone as string) || "—" },
+            { label: "Email", value: (g) => (g.email as string) || "â€”" },
+            { label: "Phone", value: (g) => (g.phone as string) || "â€”" },
             {
               label: "Portal login",
-              value: (g) => (g.user ? "Yes" : "No — use Create portal login"),
+              value: (g) => (g.user ? "Yes" : "No â€” use Create portal login"),
             },
             {
               label: "Children",
@@ -251,10 +243,10 @@ export default function PeoplePage() {
                   ? kids
                       .map((k) => `${k.name} (${label(k.relationship)})`)
                       .join("\n")
-                  : "—";
+                  : "â€”";
               },
             },
-            { label: "Address", value: (g) => (g.address as string) || "—", long: true },
+            { label: "Address", value: (g) => (g.address as string) || "â€”", long: true },
           ]}
           extraRowActions={(row, reload) =>
             row.user ? null : (
@@ -288,397 +280,6 @@ export default function PeoplePage() {
         />
       )}
 
-      <Modal
-        open={!!detail}
-        onClose={() => setDetail(null)}
-        title={detail?.display_name || "Student"}
-        wide
-      >
-        {detail && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
-              <div className="text-[var(--campus-muted)]">Date of birth</div>
-              <div>{date(detail.date_of_birth)}</div>
-              <div className="text-[var(--campus-muted)]">Status</div>
-              <div>{label(detail.status)}</div>
-              <div className="text-[var(--campus-muted)]">Group</div>
-              <div>{detail.primary_group_name || "—"}</div>
-              <div className="text-[var(--campus-muted)]">Pronouns</div>
-              <div>{detail.pronouns || "—"}</div>
-            </div>
-
-            <NestedList
-              resource="guardian-links"
-              parentKey="student"
-              parentId={detail.id}
-              title="Guardians"
-              render={(r) => (
-                <span>
-                  {(r.guardian_name as string) || `#${r.guardian}`} ·{" "}
-                  <span className="text-[var(--campus-muted)]">
-                    {label(r.relationship as string)}
-                  </span>
-                  {r.can_pickup ? " · pickup" : ""}
-                  {r.has_custody ? " · custody" : ""}
-                </span>
-              )}
-              addFields={[
-                {
-                  name: "guardian",
-                  label: "Guardian",
-                  type: "select",
-                  required: true,
-                  options: guardianOpts,
-                },
-                {
-                  name: "relationship",
-                  label: "Relationship",
-                  type: "select",
-                  required: true,
-                  options: [
-                    "MOTHER",
-                    "FATHER",
-                    "PARENT",
-                    "GRANDPARENT",
-                    "LEGAL_GUARDIAN",
-                    "FOSTER",
-                    "OTHER",
-                  ].map((v) => ({ value: v, label: label(v) })),
-                },
-                { name: "is_primary_contact", label: "Primary contact", type: "checkbox" },
-                { name: "has_custody", label: "Has custody", type: "checkbox" },
-                { name: "can_pickup", label: "Can pick up", type: "checkbox" },
-                { name: "receives_communications", label: "Gets communications", type: "checkbox" },
-                { name: "lives_with", label: "Lives with", type: "checkbox" },
-              ]}
-            />
-
-            <NestedList
-              resource="emergency-contacts"
-              parentKey="student"
-              parentId={detail.id}
-              title="Emergency contacts"
-              render={(r) => (
-                <span>
-                  {r.name as string} · {r.relationship as string} ·{" "}
-                  {(r.phone as string) || "no phone"}
-                </span>
-              )}
-              addFields={[
-                { name: "name", label: "Name", required: true },
-                { name: "relationship", label: "Relationship", required: true },
-                { name: "phone", label: "Phone" },
-                { name: "alt_phone", label: "Alt phone" },
-                { name: "priority", label: "Priority", type: "number" },
-              ]}
-            />
-
-            <NestedList
-              resource="authorized-pickups"
-              parentKey="student"
-              parentId={detail.id}
-              title="Authorized pickups"
-              render={(r) => (
-                <span>
-                  {r.name as string} · {r.relationship as string}
-                  {r.active ? "" : " (inactive)"}
-                </span>
-              )}
-              addFields={[
-                { name: "name", label: "Name", required: true },
-                { name: "relationship", label: "Relationship", required: true },
-                { name: "phone", label: "Phone" },
-                { name: "note", label: "Note" },
-                { name: "active", label: "Active", type: "checkbox" },
-              ]}
-            />
-
-            <NestedList
-              resource="observations"
-              parentKey="student"
-              parentId={detail.id}
-              title="Observations"
-              render={(r) => (
-                <span>
-                  <span className="text-[var(--campus-muted)]">
-                    {datetime(r.occurred_at as string)}
-                  </span>{" "}
-                  · {label(r.category as string)} — {r.body as string}
-                </span>
-              )}
-              addFields={[
-                {
-                  name: "category",
-                  label: "Category",
-                  type: "select",
-                  required: true,
-                  options: [
-                    "DEVELOPMENTAL",
-                    "BEHAVIOURAL",
-                    "ACADEMIC",
-                    "INCIDENT",
-                    "MEDICAL",
-                    "GENERAL",
-                  ].map((v) => ({ value: v, label: label(v) })),
-                },
-                { name: "occurred_at", label: "When", type: "datetime", required: true },
-                { name: "body", label: "Note", type: "textarea", required: true },
-                { name: "visible_to_guardians", label: "Visible to guardians", type: "checkbox" },
-              ]}
-            />
-
-            <NestedList
-              resource="health/conditions"
-              parentKey="student"
-              parentId={detail.id}
-              title="Health — conditions"
-              render={(r) => (
-                <span>
-                  <span className="font-medium">{r.name as string}</span>
-                  {r.ongoing ? " · ongoing" : ""}
-                  {r.details ? ` — ${r.details as string}` : ""}
-                </span>
-              )}
-              addFields={[
-                { name: "name", label: "Condition", required: true },
-                { name: "details", label: "Details (encrypted)", type: "textarea" },
-                { name: "diagnosed_on", label: "Diagnosed on", type: "date" },
-                { name: "ongoing", label: "Ongoing", type: "checkbox" },
-              ]}
-            />
-            <NestedList
-              resource="health/allergies"
-              parentKey="student"
-              parentId={detail.id}
-              title="Health — allergies"
-              render={(r) => (
-                <span>
-                  <span className="font-medium">{r.allergen as string}</span> —{" "}
-                  <span className="text-[var(--campus-muted)]">
-                    {label(r.severity as string)}
-                  </span>
-                  {r.epipen_required ? " · EpiPen" : ""}
-                  {r.reaction ? ` — ${r.reaction as string}` : ""}
-                </span>
-              )}
-              addFields={[
-                { name: "allergen", label: "Allergen (encrypted)", required: true },
-                { name: "reaction", label: "Reaction (encrypted)", type: "textarea" },
-                {
-                  name: "severity",
-                  label: "Severity",
-                  type: "select",
-                  required: true,
-                  options: ["MILD", "MODERATE", "SEVERE", "ANAPHYLAXIS"].map(
-                    (v) => ({ value: v, label: label(v) }),
-                  ),
-                },
-                { name: "epipen_required", label: "EpiPen required", type: "checkbox" },
-              ]}
-            />
-            <NestedList
-              resource="health/medications"
-              parentKey="student"
-              parentId={detail.id}
-              title="Health — medications"
-              render={(r) => (
-                <span>
-                  <span className="font-medium">{r.name as string}</span>
-                  {r.dose ? ` ${r.dose as string}` : ""}
-                  {r.schedule ? ` · ${r.schedule as string}` : ""}
-                  {r.prn ? " · PRN" : ""}
-                </span>
-              )}
-              addFields={[
-                { name: "name", label: "Medication (encrypted)", required: true },
-                { name: "dose", label: "Dose (encrypted)" },
-                { name: "schedule", label: "Schedule (encrypted)" },
-                {
-                  name: "route",
-                  label: "Route",
-                  type: "select",
-                  options: [
-                    "ORAL",
-                    "TOPICAL",
-                    "INHALED",
-                    "INJECTION",
-                    "OTHER",
-                  ].map((v) => ({ value: v, label: label(v) })),
-                },
-                { name: "prn", label: "As needed (PRN)", type: "checkbox" },
-                { name: "prescriber", label: "Prescriber (encrypted)" },
-                { name: "starts_on", label: "Starts", type: "date" },
-                { name: "ends_on", label: "Ends", type: "date" },
-              ]}
-            />
-            <NestedList
-              resource="health/action-plans"
-              parentKey="student"
-              parentId={detail.id}
-              title="Health — action plans"
-              render={(r) => (
-                <span>
-                  <span className="font-medium">
-                    {label(r.kind as string)}
-                  </span>
-                  {r.review_by ? ` · review by ${date(r.review_by as string)}` : ""}
-                </span>
-              )}
-              addFields={[
-                {
-                  name: "kind",
-                  label: "Kind",
-                  type: "select",
-                  required: true,
-                  options: [
-                    "ANAPHYLAXIS",
-                    "ASTHMA",
-                    "SEIZURE",
-                    "DIABETES",
-                    "OTHER",
-                  ].map((v) => ({ value: v, label: label(v) })),
-                },
-                { name: "plan", label: "Plan (encrypted)", type: "textarea", required: true },
-                { name: "effective_from", label: "Effective from", type: "date" },
-                { name: "review_by", label: "Review by", type: "date" },
-              ]}
-            />
-
-            <NestedList
-              resource="documents"
-              parentKey="student"
-              parentId={detail.id}
-              title="Documents"
-              render={(r) => (
-                <a
-                  href={(r.download_url as string) || "#"}
-                  className="text-[var(--campus-accent)] hover:underline"
-                >
-                  {r.title as string} ({label(r.kind as string)})
-                </a>
-              )}
-              addFields={[
-                { name: "title", label: "Title", required: true },
-                {
-                  name: "kind",
-                  label: "Kind",
-                  type: "select",
-                  required: true,
-                  options: [
-                    "BIRTH_CERTIFICATE",
-                    "IMMUNIZATION",
-                    "CUSTODY_ORDER",
-                    "IEP",
-                    "PHOTO",
-                    "CONSENT_FORM",
-                    "OTHER",
-                  ].map((v) => ({ value: v, label: label(v) })),
-                },
-                { name: "file", label: "File", type: "file", required: true },
-              ]}
-            />
-
-            <StudentConsents studentId={detail.id} />
-          </div>
-        )}
-      </Modal>
-    </div>
-  );
-}
-
-const CONSENT_KINDS = [
-  "PHOTO",
-  "MEDIA",
-  "FIELD_TRIP",
-  "DATA_SHARING",
-  "MEDICAL_TREATMENT",
-  "TECHNOLOGY",
-  "SUNSCREEN",
-];
-
-function StudentConsents({ studentId }: { studentId: string }) {
-  const qc = useQueryClient();
-  const [adding, setAdding] = useState(false);
-  const q = useList<{
-    id: string;
-    kind: string;
-    version: string;
-    granted: boolean;
-    granted_by_name: string;
-    recorded_at: string;
-  }>("consents", { student: studentId });
-  const rows = q.data?.results ?? [];
-  const reload = () =>
-    qc.invalidateQueries({ queryKey: ["list", "consents"] });
-
-  return (
-    <div className="rounded-md border border-[var(--campus-line)]">
-      <div className="flex items-center justify-between border-b border-[var(--campus-line)] px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
-          Consents
-        </span>
-        <Button size="sm" variant="subtle" onClick={() => setAdding(true)}>
-          + Record
-        </Button>
-      </div>
-
-      {q.isLoading ? (
-        <Spinner />
-      ) : rows.length === 0 ? (
-        <div className="px-3 py-5 text-center text-sm text-[var(--campus-muted)]">
-          No consent decisions recorded.
-        </div>
-      ) : (
-        <ul className="divide-y divide-[var(--campus-line)] text-sm">
-          {rows.map((r) => (
-            <li key={r.id} className="flex items-center justify-between gap-2 px-3 py-2">
-              <span>
-                {label(r.kind)}
-                {r.version && r.version !== "1" ? ` · v${r.version}` : ""}
-                {r.granted_by_name ? (
-                  <span className="text-[var(--campus-muted)]"> · {r.granted_by_name}</span>
-                ) : null}
-              </span>
-              <span className="flex items-center gap-2">
-                <Badge tone={r.granted ? "green" : "red"}>
-                  {r.granted ? "Granted" : "Withheld"}
-                </Badge>
-                <span className="text-xs text-[var(--campus-muted)]">
-                  {date(r.recorded_at)}
-                </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <Modal open={adding} onClose={() => setAdding(false)} title="Record a consent decision">
-        <RecordForm
-          fields={[
-            {
-              name: "kind",
-              label: "Kind",
-              type: "select",
-              required: true,
-              options: CONSENT_KINDS.map((v) => ({ value: v, label: label(v) })),
-            },
-            { name: "granted", label: "Granted", type: "checkbox" },
-            { name: "granted_by_name", label: "Recorded on behalf of" },
-            { name: "version", label: "Form version", placeholder: "1" },
-          ]}
-          submitLabel="Record"
-          onSubmit={async (values) => {
-            await create("consents", {
-              ...values,
-              student: studentId,
-              version: values.version || "1",
-            });
-            setAdding(false);
-            reload();
-          }}
-          onCancel={() => setAdding(false)}
-        />
-      </Modal>
     </div>
   );
 }
@@ -735,11 +336,11 @@ function ChangeRequests({
           columns={[
             { header: "Guardian", cell: (r) => guardianName(r.guardian) },
             { header: "Field", cell: (r) => label(r.field) },
-            { header: "Current", cell: (r) => r.current_value || "—" },
+            { header: "Current", cell: (r) => r.current_value || "â€”" },
             { header: "Proposed", cell: (r) => r.proposed_value },
             {
               header: "Reason",
-              cell: (r) => r.reason || "—",
+              cell: (r) => r.reason || "â€”",
               className: "max-w-xs truncate",
             },
             {
@@ -797,27 +398,27 @@ function ChangeRequests({
               {
                 label: "Reviewed",
                 value: () =>
-                  detail.reviewed_at ? datetime(detail.reviewed_at) : "—",
+                  detail.reviewed_at ? datetime(detail.reviewed_at) : "â€”",
               },
               {
                 label: "Current value",
                 long: true,
-                value: () => detail.current_value || "—",
+                value: () => detail.current_value || "â€”",
               },
               {
                 label: "Proposed value",
                 long: true,
-                value: () => detail.proposed_value || "—",
+                value: () => detail.proposed_value || "â€”",
               },
               {
                 label: "Reason given",
                 long: true,
-                value: () => detail.reason || "—",
+                value: () => detail.reason || "â€”",
               },
               {
                 label: "Review note",
                 long: true,
-                value: () => detail.review_note || "—",
+                value: () => detail.review_note || "â€”",
               },
             ]}
             row={detail as unknown as Record<string, unknown>}

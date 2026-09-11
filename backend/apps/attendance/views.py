@@ -32,6 +32,8 @@ class AttendanceRecordViewSet(CampusViewSet):
         params = self.request.query_params
         if params.get("group"):
             qs = qs.filter(group_id=params["group"])
+        if params.get("student"):
+            qs = qs.filter(student_id=params["student"])
         if params.get("date"):
             qs = qs.filter(date=params["date"])
         role = getattr(self.request.user, "role", None)

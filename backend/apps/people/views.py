@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import secrets
 
+from django.http import FileResponse, Http404
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
+from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.audit.models import AuditAction
@@ -83,6 +86,7 @@ class GroupStaffViewSet(CampusViewSet):
 class StudentViewSet(CampusViewSet):
     serializer_class = StudentSerializer
     permission_classes = [StaffWriteAuthenticatedRead, MFAVerified, IsObjectOwnerOrStaff]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
         return Student.visible_queryset(self.request.user).select_related("primary_group")
@@ -90,6 +94,38 @@ class StudentViewSet(CampusViewSet):
     def perform_create(self, serializer):
         number = serializer.validated_data.get("student_number") or _generate_student_number()
         serializer.save(student_number=number)
+
+    @action(detail=True, methods=["get", "delete"])
+    def photo(self, request, pk=None):
+        """GET streams the decrypted photo; DELETE clears it (staff only)."""
+        student = self.get_object()
+        if request.method == "DELETE":
+            if student.photo:
+                student.photo.delete(save=False)
+                student.photo = None
+                student.save(update_fields=["photo", "updated_at"])
+            return Response(status=204)
+        if not student.photo:
+            raise Http404
+        fh = student.photo.open("rb")  # EncryptedFileSystemStorage decrypts here
+        return FileResponse(fh, content_type="image/*")
+
+    @action(detail=True, methods=["get"])
+    def adjacent(self, request, pk=None):
+        """Prev / next student id in the visible list's default order — powers
+        the profile page's ‹ ›."""
+        ids = list(
+            self.get_queryset().order_by("last_name", "first_name", "id")
+            .values_list("id", flat=True)
+        )
+        try:
+            i = ids.index(self.get_object().id)
+        except ValueError:
+            return Response({"prev": None, "next": None})
+        return Response({
+            "prev": str(ids[i - 1]) if i > 0 else None,
+            "next": str(ids[i + 1]) if i + 1 < len(ids) else None,
+        })
 
 
 class _StudentScopedViewSet(CampusViewSet):
@@ -100,10 +136,13 @@ class _StudentScopedViewSet(CampusViewSet):
 
     def get_queryset(self):
         visible = Student.visible_queryset(self.request.user)
-        return (
-            self.model.objects.filter(**{f"{self.student_field}__in": visible})
-            .order_by("-created_at")
-        )
+        qs = self.model.objects.filter(
+            **{f"{self.student_field}__in": visible}
+        ).order_by("-created_at")
+        sid = self.request.query_params.get("student")
+        if sid:
+            qs = qs.filter(**{f"{self.student_field}_id": sid})
+        return qs
 
 
 class GuardianViewSet(CampusViewSet):

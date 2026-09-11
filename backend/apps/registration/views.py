@@ -138,9 +138,12 @@ class EnrolmentViewSet(CampusViewSet):
 
     def get_queryset(self):
         qs = Enrolment.objects.select_related("student", "group").order_by("-start_date")
-        if getattr(self.request.user, "role", None) in _FRONT_OFFICE:
-            return qs
-        return qs.filter(student__in=Student.visible_queryset(self.request.user))
+        if getattr(self.request.user, "role", None) not in _FRONT_OFFICE:
+            qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
+        sid = self.request.query_params.get("student")
+        if sid:
+            qs = qs.filter(student_id=sid)
+        return qs
 
     @action(detail=True, methods=["post"])
     def end(self, request, pk=None):

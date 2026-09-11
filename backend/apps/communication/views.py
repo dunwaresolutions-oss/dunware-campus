@@ -156,12 +156,12 @@ class IncidentReportViewSet(CampusViewSet):
             .order_by("-occurred_at")
         )
         role = getattr(self.request.user, "role", None)
-        if role in _ADMIN_ROLES:
-            return qs
-        visible = qs.filter(student__in=Student.visible_queryset(self.request.user))
-        if role == Role.PARENT:
-            return visible.exclude(status=IncidentReport.Status.DRAFT)
-        return visible
+        if role not in _ADMIN_ROLES:
+            qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
+            if role == Role.PARENT:
+                qs = qs.exclude(status=IncidentReport.Status.DRAFT)
+        sid = self.request.query_params.get("student")
+        return qs.filter(student_id=sid) if sid else qs
 
     def perform_create(self, serializer):
         student = serializer.validated_data["student"]
