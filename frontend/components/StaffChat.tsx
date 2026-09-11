@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { whoami, type Role } from "@/lib/auth";
 import { useAll } from "@/lib/hooks";
+import { useToast } from "@/components/Toast";
+import { apiMessage } from "@/lib/format";
 import {
   listStaffMessages,
   markStaffMessagesRead,
@@ -45,6 +47,7 @@ function timeAgo(iso: string): string {
  */
 export function StaffChat() {
   const qc = useQueryClient();
+  const toast = useToast();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -117,6 +120,7 @@ export function StaffChat() {
       setUrgent(false);
       qc.invalidateQueries({ queryKey: ["staffchat"] });
     },
+    onError: (err) => toast("error", apiMessage(err)),
   });
 
   const canSend = useMemo(() => {
