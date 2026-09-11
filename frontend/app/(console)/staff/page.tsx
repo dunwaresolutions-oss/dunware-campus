@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
-import { inviteStaff, listUsers } from "@/lib/auth";
+import { useEffect, useMemo, useState } from "react";
+import { inviteStaff, listUsers, type DirectoryUser, type Role } from "@/lib/auth";
 import { useAll, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import {
@@ -12,12 +12,23 @@ import {
   Badge,
   Spinner,
   ErrorNote,
+  Table,
+  type Column,
 } from "@/components/ui";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
 import { label, apiMessage } from "@/lib/format";
 
 const INVITE_ROLES = ["ADMIN", "TEACHER", "TUTOR", "FRONT_DESK"];
+const DIRECTORY_ROLES: Role[] = ["SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR"];
+
+interface Assignment {
+  id: string | number;
+  user: string;
+  group: number;
+  role: string;
+  active: boolean;
+}
 
 export default function StaffPage() {
   const [tab, setTab] = useState("directory");
@@ -28,9 +39,67 @@ export default function StaffPage() {
   const toast = useToast();
   const users = useQuery({ queryKey: ["users"], queryFn: listUsers });
   const groups = useAll<{ id: number; name: string }>("groups");
+  const assignments = useAll<Assignment>("group-staff");
   const [invite, setInvite] = useState<{ token: string; email: string } | null>(
     null,
   );
+  const [term, setTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+
+  const groupsFor = (userId: string): string[] =>
+    (assignments.data ?? [])
+      .filter((a) => a.user === userId && a.active)
+      .map((a) => groups.data?.find((g) => g.id === a.group)?.name)
+      .filter((n): n is string => !!n);
+
+  const directory = useMemo(() => {
+    const q = term.trim().toLowerCase();
+    return (users.data ?? []).filter((u) => {
+      if (roleFilter && u.role !== roleFilter) return false;
+      if (!q) return true;
+      return (
+        u.username.toLowerCase().includes(q) ||
+        u.display_name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
+      );
+    });
+  }, [users.data, term, roleFilter]);
+
+  const directoryColumns: Column<DirectoryUser>[] = [
+    {
+      header: "Name",
+      cell: (u) => (
+        <span>
+          <span className="font-medium text-[var(--campus-fg)]">
+            {u.display_name || u.username}
+          </span>
+          {u.display_name && u.display_name !== u.username && (
+            <span className="ml-1.5 text-xs text-[var(--campus-muted)]">
+              @{u.username}
+            </span>
+          )}
+        </span>
+      ),
+    },
+    { header: "Email", cell: (u) => u.email || "—" },
+    { header: "Role", cell: (u) => <Badge>{label(u.role)}</Badge> },
+    {
+      header: "Groups",
+      cell: (u) => {
+        const g = groupsFor(u.id);
+        return g.length ? g.join(", ") : "—";
+      },
+    },
+    {
+      header: "Status",
+      cell: (u) =>
+        u.is_active ? (
+          <Badge tone="green">Active</Badge>
+        ) : (
+          <Badge tone="red">Disabled</Badge>
+        ),
+    },
+  ];
 
   return (
     <div>
@@ -49,42 +118,47 @@ export default function StaffPage() {
       />
 
       {tab === "directory" && (
-        <Card>
-          {users.isLoading ? (
-            <Spinner />
-          ) : users.isError ? (
-            <div className="p-4">
-              <ErrorNote message={apiMessage(users.error)} />
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--campus-line)] text-left text-xs uppercase text-[var(--campus-muted)]">
-                  <th className="px-3 py-2 font-medium">Username</th>
-                  <th className="px-3 py-2 font-medium">Email</th>
-                  <th className="px-3 py-2 font-medium">Role</th>
-                  <th className="px-3 py-2 font-medium">Active</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(users.data ?? []).map((u) => (
-                  <tr key={u.id} className="border-b border-[var(--campus-line)]">
-                    <td className="px-3 py-2.5 font-medium">{u.username}</td>
-                    <td className="px-3 py-2.5">{u.email || "—"}</td>
-                    <td className="px-3 py-2.5">{label(u.role)}</td>
-                    <td className="px-3 py-2.5">
-                      {u.is_active ? (
-                        <Badge tone="green">Active</Badge>
-                      ) : (
-                        <Badge tone="red">Disabled</Badge>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+        <>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <input
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder="Search by name, username or email…"
+              className="w-full max-w-xs rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+            />
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-2.5 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+            >
+              <option value="">All roles</option>
+              {DIRECTORY_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {label(r)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Card>
+            {users.isLoading ? (
+              <Spinner />
+            ) : users.isError ? (
+              <div className="p-4">
+                <ErrorNote message={apiMessage(users.error)} />
+              </div>
+            ) : (
+              <Table
+                columns={directoryColumns}
+                rows={directory}
+                empty={
+                  term || roleFilter
+                    ? "No one matches this search."
+                    : "No staff accounts yet — invite one below."
+                }
+              />
+            )}
+          </Card>
+        </>
       )}
 
       {tab === "invite" && (
