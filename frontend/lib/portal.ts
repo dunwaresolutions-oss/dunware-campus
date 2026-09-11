@@ -2,6 +2,8 @@ import { api, ensureCsrf } from "./api";
 
 /** The consolidated parent / student "my world" payload. */
 export interface PortalDashboard {
+  collects_fees: boolean;
+  currency: string;
   children: PortalChild[];
   announcements: PortalAnnouncement[];
   message_threads: PortalThreadSummary[];

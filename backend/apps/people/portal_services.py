@@ -84,6 +84,7 @@ def _child_block(student: Student):
     from apps.billing.services import portal_summary
     from apps.booking.models import Booking
     from apps.communication.models import IncidentReport
+    from apps.core.models import SiteConfiguration
     from apps.grades.models import ReportCard
     from apps.iep.models import IEP
     from apps.registration.models import Consent
@@ -163,12 +164,17 @@ def _child_block(student: Student):
         "open_incidents": [{**i, "id": str(i["id"])} for i in open_incidents],
         "pending_consents": pending_consents,
         "ieps": ieps,
-        "invoices": portal_summary(student),  # read-only; billing is the only writer
+        "invoices": (
+            portal_summary(student)  # read-only; billing is the only writer
+            if SiteConfiguration.load().collects_fees
+            else []
+        ),
     }
 
 
 def build_dashboard(user) -> dict:
     from apps.communication.models import Announcement, MessageThread
+    from apps.core.models import SiteConfiguration
 
     role = getattr(user, "role", None)
     if role == Role.STUDENT:
@@ -187,7 +193,10 @@ def build_dashboard(user) -> dict:
         .order_by("-last_message_at", "-created_at")[:20]
     )
 
+    cfg = SiteConfiguration.load()
     return {
+        "collects_fees": cfg.collects_fees,
+        "currency": cfg.currency,
         "children": [_child_block(s) for s in children],
         "announcements": [
             {

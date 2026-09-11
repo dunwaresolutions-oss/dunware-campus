@@ -68,6 +68,7 @@ class Invoice(SensitiveModel):
         related_name="invoices",
     )
     status = models.CharField(max_length=14, choices=Status.choices, default=Status.DRAFT)
+    currency = models.CharField(max_length=3, blank=True)  # ISO-4217; site default
     issued_at = models.DateTimeField(null=True, blank=True)
     due_date = models.DateField(null=True, blank=True)
     notes = models.CharField(max_length=255, blank=True)
@@ -82,6 +83,13 @@ class Invoice(SensitiveModel):
 
     def __str__(self) -> str:
         return f"invoice {self.pk} for {self.student_id} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.currency:
+            from apps.core.models import SiteConfiguration
+
+            self.currency = SiteConfiguration.load().currency
+        super().save(*args, **kwargs)
 
     @property
     def total_cents(self) -> int:

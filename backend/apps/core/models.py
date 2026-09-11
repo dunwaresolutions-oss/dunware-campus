@@ -163,3 +163,44 @@ class SchoolProfile(BaseModel):
             self.country,
         ]
         return "\n".join(p for p in parts if p)
+
+
+class SiteConfiguration(BaseModel):
+    """Per-install region / fiscal settings. Single row.
+
+    Set at install and changed by the companion tool (``manage
+    set_site_config``); the console can edit it too (superadmin) before any
+    invoice exists. ``currency`` locks once an ``Invoice`` exists;
+    ``collects_fees`` can't be turned off while an issued unpaid invoice
+    exists. Not PII — a plain ``BaseModel``.
+    """
+
+    class DeploymentMode(models.TextChoices):
+        SINGLE = "SINGLE", "Single institution"
+        SCHOOL = "SCHOOL", "School (spoke of a headquarters)"
+        HEADQUARTERS = "HEADQUARTERS", "Headquarters"
+
+    country = models.CharField(max_length=2, blank=True)  # ISO-3166 alpha-2
+    currency = models.CharField(max_length=3, default="CAD")  # ISO-4217
+    locale = models.CharField(max_length=10, blank=True)  # e.g. "en-CA"
+    collects_fees = models.BooleanField(default=True)
+    deployment_mode = models.CharField(
+        max_length=12, choices=DeploymentMode.choices, default=DeploymentMode.SINGLE
+    )
+
+    class Meta:
+        db_table = "core_site_configuration"
+        verbose_name = "site configuration"
+
+    def __str__(self) -> str:
+        return f"{self.country or '??'} / {self.currency}"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and SiteConfiguration.objects.exists():
+            raise ValidationError("SiteConfiguration is a singleton.")
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls) -> SiteConfiguration:
+        obj = cls.objects.first()
+        return obj if obj is not None else cls.objects.create()

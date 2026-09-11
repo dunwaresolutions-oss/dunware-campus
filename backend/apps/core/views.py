@@ -12,7 +12,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.hotfix import active_hotfixes
-from apps.core.models import SchoolProfile
+from apps.core.models import SchoolProfile, SiteConfiguration
+from apps.core.money import COUNTRY_CURRENCIES, CURRENCIES, currency_symbol
 from apps.core.permissions import AdminOnly, MFAVerified, StaffOnly, SuperadminOnly
 from apps.core.serializers import SchoolProfileSerializer
 from apps.core.support import install_root
@@ -86,6 +87,75 @@ class SchoolProfileView(APIView):
             profile.logo = None
             profile.save(update_fields=["logo", "updated_at"])
         return Response(SchoolProfileSerializer(profile, context={"request": request}).data)
+
+
+def _currency_locked() -> bool:
+    from apps.billing.models import Invoice
+
+    return Invoice.objects.exists()
+
+
+class SiteConfigView(APIView):
+    """``GET`` / ``PATCH /api/config/`` — per-install region & fiscal settings.
+
+    GET: any authenticated user (the SPA needs currency + collects_fees to
+    render). PATCH: superadmin + MFA, and only before it locks — ``currency``
+    is frozen once any invoice exists; ``collects_fees`` can't be turned off
+    while an issued unpaid invoice exists. The companion tool does the same
+    via ``manage set_site_config``.
+    """
+
+    def get_permissions(self):
+        if self.request.method == "GET":
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), SuperadminOnly(), MFAVerified()]
+
+    def _payload(self, cfg):
+        return {
+            "country": cfg.country,
+            "currency": cfg.currency,
+            "currency_symbol": currency_symbol(cfg.currency),
+            "locale": cfg.locale,
+            "collects_fees": cfg.collects_fees,
+            "deployment_mode": cfg.deployment_mode,
+            "currency_locked": _currency_locked(),
+            "currency_options": [
+                {"code": c, "symbol": s, "name": n} for c, (s, n) in CURRENCIES.items()
+            ],
+            "country_currencies": COUNTRY_CURRENCIES,
+        }
+
+    def get(self, request):
+        return Response(self._payload(SiteConfiguration.load()))
+
+    def patch(self, request):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.billing.models import Invoice
+
+        cfg = SiteConfiguration.load()
+        data = request.data
+        if "currency" in data and data["currency"] != cfg.currency and _currency_locked():
+            raise ValidationError(
+                {"currency": "Locked — invoices already exist in the current currency."}
+            )
+        if data.get("collects_fees") is False and cfg.collects_fees:
+            open_unpaid = Invoice.objects.filter(
+                status__in=[Invoice.Status.ISSUED, Invoice.Status.PARTIALLY_PAID,
+                            Invoice.Status.OVERDUE]
+            ).exists()
+            if open_unpaid:
+                raise ValidationError({
+                    "collects_fees":
+                        "There are issued, unpaid invoices — settle or void them first.",
+                })
+        for field in ("country", "currency", "locale", "collects_fees", "deployment_mode"):
+            if field in data:
+                setattr(cfg, field, data[field])
+        cfg.currency = (cfg.currency or "CAD").upper()[:3]
+        cfg.country = (cfg.country or "").upper()[:2]
+        cfg.save()
+        return Response(self._payload(cfg))
 
 
 class RemoteAccessStatusView(APIView):

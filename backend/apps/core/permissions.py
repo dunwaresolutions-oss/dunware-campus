@@ -118,3 +118,15 @@ class IsObjectOwnerOrStaff(BasePermission):
 class ReadOnly(BasePermission):
     def has_permission(self, request, view):
         return request.method in SAFE_METHODS
+
+
+class BillingEnabled(BasePermission):
+    """Every billing surface is closed on an install that does not collect
+    fees (``SiteConfiguration.collects_fees`` — set in the companion tool)."""
+
+    message = "This installation does not collect tuition or fees."
+
+    def has_permission(self, request, view):
+        from apps.core.models import SiteConfiguration
+
+        return SiteConfiguration.load().collects_fees

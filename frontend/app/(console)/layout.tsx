@@ -7,7 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { isStaff, logout, whoami, type Role } from "@/lib/auth";
 import { getSchoolProfile } from "@/lib/school";
-import { label } from "@/lib/format";
+import { getSiteConfig } from "@/lib/config";
+import { label, setMoneyCurrency } from "@/lib/format";
 import { CommandPalette } from "@/components/CommandPalette";
 
 const OFFICE: Role[] = ["SUPERADMIN", "ADMIN", "FRONT_DESK"];
@@ -50,9 +51,21 @@ export default function ConsoleLayout({
     enabled: isStaff(me?.role) && mfaOk,
     staleTime: 5 * 60_000,
   });
+  const { data: site } = useQuery({
+    queryKey: ["site-config"],
+    queryFn: getSiteConfig,
+    enabled: isStaff(me?.role) && mfaOk,
+    staleTime: 5 * 60_000,
+  });
+  useEffect(() => {
+    if (site?.currency) setMoneyCurrency(site.currency);
+  }, [site?.currency]);
 
   const nav = NAV.filter(
-    ([, , roles]) => !roles || (me?.role != null && roles.includes(me.role)),
+    ([href, , roles]) =>
+      (!roles || (me?.role != null && roles.includes(me.role))) &&
+      // Billing is hidden entirely on an install that doesn't collect fees
+      !(href === "/billing/" && site && !site.collects_fees),
   );
 
   useEffect(() => {

@@ -65,7 +65,12 @@ export default function PortalPage() {
       ) : (
         <div className="space-y-6">
           {(dash.data?.children ?? []).map((c) => (
-            <ChildCard key={c.id} child={c} onConsent={() => dash.refetch()} />
+            <ChildCard
+              key={c.id}
+              child={c}
+              collectsFees={dash.data?.collects_fees ?? true}
+              onConsent={() => dash.refetch()}
+            />
           ))}
 
           <Card className="p-4">
@@ -164,9 +169,11 @@ export default function PortalPage() {
 
 function ChildCard({
   child,
+  collectsFees,
   onConsent,
 }: {
   child: PortalChild;
+  collectsFees: boolean;
   onConsent: () => void;
 }) {
   const toast = useToast();
@@ -250,23 +257,25 @@ function ChildCard({
             </ul>
           )}
         </div>
-        <div>
-          <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
-            Invoices
+        {collectsFees && (
+          <div>
+            <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
+              Invoices
+            </div>
+            {child.invoices.length === 0 ? (
+              <p className="text-sm text-[var(--campus-muted)]">Nothing outstanding.</p>
+            ) : (
+              <ul className="text-sm">
+                {child.invoices.map((i) => (
+                  <li key={i.id}>
+                    {money(i.total_cents)} · bal {money(i.balance_cents)} ·{" "}
+                    {label(i.status)}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-          {child.invoices.length === 0 ? (
-            <p className="text-sm text-[var(--campus-muted)]">Nothing outstanding.</p>
-          ) : (
-            <ul className="text-sm">
-              {child.invoices.map((i) => (
-                <li key={i.id}>
-                  {money(i.total_cents)} · bal {money(i.balance_cents)} ·{" "}
-                  {label(i.status)}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        )}
       </div>
 
       {child.ieps.length > 0 && (

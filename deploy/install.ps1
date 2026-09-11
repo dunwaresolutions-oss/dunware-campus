@@ -37,6 +37,12 @@ param(
   [string]$InstallRoot = "$env:ProgramData\Campus",
   [string]$LanHost = "localhost",
   [string]$ApiBind = "127.0.0.1:8001",
+  # Region / fiscal settings — the companion "Setup & Configuration" app sets
+  # these later too (campus-app.exe manage set_site_config). -CollectsFees no
+  # hides the whole Billing area on this install.
+  [string]$Country = "",
+  [string]$Currency = "",
+  [ValidateSet("", "yes", "no")][string]$CollectsFees = "",
   [switch]$SkipServices
 )
 
@@ -260,6 +266,15 @@ if ($dbReady -and (Test-Path $appExe)) {
   Invoke-Manage $appExe @("manage", "migrate", "--noinput")
   Write-Step "Collecting static files"
   Invoke-Manage $appExe @("manage", "collectstatic", "--noinput")
+
+  if ($Country -or $Currency -or $CollectsFees) {
+    Write-Step "Applying region / fiscal settings"
+    $cfgArgs = @("manage", "set_site_config")
+    if ($Country)  { $cfgArgs += @("--country", $Country) }
+    if ($Currency) { $cfgArgs += @("--currency", $Currency) }
+    if ($CollectsFees) { $cfgArgs += @("--collects-fees", $CollectsFees) }
+    Invoke-Manage $appExe $cfgArgs
+  }
 } else {
   Write-Skip "migrate/collectstatic - needs a reachable database (run manually once Postgres is available: campus-app.exe manage migrate)"
 }

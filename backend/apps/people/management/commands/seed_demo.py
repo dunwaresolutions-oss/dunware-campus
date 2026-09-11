@@ -183,7 +183,13 @@ class Command(BaseCommand):
         made = {}
 
         # ── the school's own identity (report-card letterhead) ───────
-        from apps.core.models import SchoolProfile
+        from apps.core.models import SchoolProfile, SiteConfiguration
+
+        SiteConfiguration.objects.all().delete()
+        SiteConfiguration.objects.create(
+            country="CA", currency="CAD", locale="en-CA", collects_fees=True,
+        )
+        made["site_config"] = 1
 
         SchoolProfile.objects.all().delete()
         SchoolProfile.objects.create(
@@ -1070,8 +1076,9 @@ class Command(BaseCommand):
         Group.objects.all().delete()
         User.objects.filter(is_superuser=False).delete()
 
-        from apps.core.models import SchoolProfile
+        from apps.core.models import SchoolProfile, SiteConfiguration
         SchoolProfile.objects.all().delete()
+        SiteConfiguration.objects.all().delete()
 
     # ------------------------------------------------------------------
     def _user(self, rng, username, role):

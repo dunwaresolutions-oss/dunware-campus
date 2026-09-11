@@ -7,7 +7,12 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.core.api import CampusViewSet
-from apps.core.permissions import FrontOffice, IsObjectOwnerOrStaff, MFAVerified
+from apps.core.permissions import (
+    BillingEnabled,
+    FrontOffice,
+    IsObjectOwnerOrStaff,
+    MFAVerified,
+)
 from apps.people.models import Student
 
 from .models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment
@@ -40,13 +45,13 @@ class BillingAccess(BasePermission):
 class FeeScheduleViewSet(CampusViewSet):
     queryset = FeeSchedule.objects.select_related("group")
     serializer_class = FeeScheduleSerializer
-    permission_classes = [FrontOffice, MFAVerified]
+    permission_classes = [BillingEnabled, FrontOffice, MFAVerified]
     audit_reads = False
 
 
 class InvoiceViewSet(CampusViewSet):
     serializer_class = InvoiceSerializer
-    permission_classes = [BillingAccess, IsObjectOwnerOrStaff]
+    permission_classes = [BillingEnabled, BillingAccess, IsObjectOwnerOrStaff]
     audit_reads = True
 
     def get_queryset(self):
@@ -96,7 +101,7 @@ class InvoiceViewSet(CampusViewSet):
 
 class InvoiceLineViewSet(CampusViewSet):
     serializer_class = InvoiceLineSerializer
-    permission_classes = [FrontOffice, MFAVerified]
+    permission_classes = [BillingEnabled, FrontOffice, MFAVerified]
     audit_reads = False
 
     def get_queryset(self):
@@ -105,7 +110,7 @@ class InvoiceLineViewSet(CampusViewSet):
 
 class PaymentViewSet(CampusViewSet):
     serializer_class = PaymentSerializer
-    permission_classes = [BillingAccess, IsObjectOwnerOrStaff]
+    permission_classes = [BillingEnabled, BillingAccess, IsObjectOwnerOrStaff]
     audit_reads = True
     http_method_names = ["get", "head", "options"]  # created only via /mark-paid
 
@@ -121,7 +126,7 @@ class PaymentViewSet(CampusViewSet):
 
 class CreditViewSet(CampusViewSet):
     serializer_class = CreditSerializer
-    permission_classes = [FrontOffice, MFAVerified]
+    permission_classes = [BillingEnabled, FrontOffice, MFAVerified]
     audit_reads = False
 
     def get_queryset(self):

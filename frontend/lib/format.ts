@@ -1,11 +1,22 @@
 /** Small display helpers shared across the console. */
 
-export const money = (cents: number | null | undefined): string =>
+// Set once from GET /api/config/ on app load (see lib/config.ts). Falls back
+// to CAD so money() stays sync and works before config resolves.
+let _currency = "CAD";
+export const setMoneyCurrency = (code: string | null | undefined) => {
+  if (code) _currency = code.toUpperCase();
+};
+export const moneyCurrency = () => _currency;
+
+export const money = (
+  cents: number | null | undefined,
+  currency?: string,
+): string =>
   cents == null
     ? "—"
     : (cents / 100).toLocaleString(undefined, {
         style: "currency",
-        currency: "CAD",
+        currency: currency || _currency,
       });
 
 export const date = (v: string | null | undefined): string =>

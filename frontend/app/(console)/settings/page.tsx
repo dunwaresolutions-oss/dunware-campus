@@ -9,9 +9,10 @@ import {
   clearSchoolLogo,
   type SchoolProfile,
 } from "@/lib/school";
+import { getSiteConfig, updateSiteConfig, type SiteConfig } from "@/lib/config";
 import { useToast } from "@/components/Toast";
-import { PageHeader, Card, Button, Spinner, ErrorNote } from "@/components/ui";
-import { apiMessage } from "@/lib/format";
+import { PageHeader, Card, Badge, Button, Spinner, ErrorNote } from "@/components/ui";
+import { apiMessage, label } from "@/lib/format";
 
 const INPUT =
   "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm text-[var(--campus-fg)] transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
@@ -311,7 +312,111 @@ export default function SettingsPage() {
             {busy ? "Saving…" : "Save changes"}
           </Button>
         </div>
+
+        <RegionFees />
       </div>
     </div>
+  );
+}
+
+function RegionFees() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const q = useQuery({ queryKey: ["site-config"], queryFn: getSiteConfig });
+  const [draft, setDraft] = useState<Partial<SiteConfig>>({});
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (q.data) setDraft({});
+  }, [q.data]);
+
+  if (q.isLoading || !q.data) return null;
+  const c = { ...q.data, ...draft } as SiteConfig;
+  const dirty = (Object.keys(draft) as (keyof SiteConfig)[]).some(
+    (k) => draft[k] !== q.data![k],
+  );
+
+  async function save() {
+    setBusy(true);
+    try {
+      const next = await updateSiteConfig(draft);
+      qc.setQueryData(["site-config"], next);
+      setDraft({});
+      toast("success", "Region settings saved");
+    } catch (err) {
+      toast("error", apiMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-center gap-2">
+        <h2 className="text-sm font-semibold">Region &amp; fees</h2>
+        <Badge tone="neutral">{label(c.deployment_mode)}</Badge>
+      </div>
+      <p className="mt-0.5 text-xs text-[var(--campus-muted)]">
+        Also set by the companion Setup &amp; Configuration tool. Currency locks
+        once invoices exist.
+      </p>
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field
+          label="Country (ISO code)"
+          value={c.country}
+          onChange={(v) => setDraft((d) => ({ ...d, country: v.toUpperCase() }))}
+          placeholder="CA"
+        />
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
+            Currency
+          </span>
+          <select
+            className={INPUT}
+            value={c.currency}
+            disabled={c.currency_locked}
+            onChange={(e) => setDraft((d) => ({ ...d, currency: e.target.value }))}
+          >
+            {c.currency_options.map((o) => (
+              <option key={o.code} value={o.code}>
+                {o.code} — {o.name}
+              </option>
+            ))}
+          </select>
+          {c.currency_locked && (
+            <span className="mt-1 block text-xs text-[var(--campus-muted)]">
+              Locked — invoices already exist. Change it with the companion tool
+              (<code>change_currency --force</code>).
+            </span>
+          )}
+        </label>
+        <Field
+          label="Locale"
+          value={c.locale}
+          onChange={(v) => setDraft((d) => ({ ...d, locale: v }))}
+          placeholder="en-CA"
+        />
+        <label className="flex items-end gap-2 pb-2 text-sm">
+          <input
+            type="checkbox"
+            checked={c.collects_fees}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, collects_fees: e.target.checked }))
+            }
+          />
+          <span>
+            This institution collects tuition / fees
+            <span className="block text-xs text-[var(--campus-muted)]">
+              Off hides the whole Billing area, on this install and the portal.
+            </span>
+          </span>
+        </label>
+      </div>
+      <div className="mt-4 flex justify-end">
+        <Button onClick={save} disabled={!dirty || busy}>
+          {busy ? "Saving…" : "Save region settings"}
+        </Button>
+      </div>
+    </Card>
   );
 }
