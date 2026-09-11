@@ -1,3 +1,6 @@
+# ---- generated deliverable docs (root-level PDFs, not source) ----
+/*.pdf
+
 # ---- secrets & local config (NEVER commit) ----
 .env
 *.env

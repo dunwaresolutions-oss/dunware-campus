@@ -59,6 +59,48 @@ def _apply_hotfix_overlay() -> None:
     print(f"campus: HOTFIX OVERLAY ACTIVE — {', '.join(overlaid)}", file=sys.stderr, flush=True)
 
 
+def _ensure_native_pdf_libs() -> None:
+    """WeasyPrint (report-card / document PDF rendering, apps/grades/services.py
+    html_to_pdf()) is a pure-Python *wrapper* around real native libraries —
+    Cairo, Pango, GObject, HarfBuzz, Fontconfig — that PyInstaller's own
+    weasyprint hook does NOT bundle (confirmed: the freeze itself always warns
+    "WeasyPrint could not import some external libraries"). Without this, every
+    report card silently falls back to a plain .html document instead of a
+    real PDF — no error, just a degraded feature, is not something to leave
+    for an operator to notice on their own.
+
+    The fix ships the actual GTK3 runtime (Cairo/Pango/GObject/etc., ~137 MB)
+    as its own third-party binary at deploy/_thirdparty/gtk3 -> {app}\\gtk3 in
+    the installer, matching the existing Postgres/Caddy/NSSM/GPG pattern
+    rather than fighting PyInstaller to bundle it into the frozen app itself.
+
+    os.add_dll_directory() (not PATH) is what actually works here: cffi's
+    ffi.dlopen() resolves the initial DLL via PATH fine, but the *transitive*
+    dependencies a DLL like libgobject-2.0-0.dll itself needs (libglib-2.0-0,
+    libintl-8, ...) are only found if the directory was registered through
+    this API - confirmed by testing (PATH alone reproduces the exact error
+    WeasyPrint's own install docs describe: "cannot load library ... error
+    0x7e", i.e. ERROR_MOD_NOT_FOUND on a *dependency*, not the DLL itself).
+    Windows-only API (3.8+); a no-op with nothing to add on dev machines
+    without the runtime staged, and never fatal - a missing PDF engine
+    degrades to the existing .html fallback, it must never take the app down.
+    """
+    if not hasattr(os, "add_dll_directory"):
+        return
+    if getattr(sys, "frozen", False):
+        candidates = [Path(sys.executable).resolve().parent / "gtk3" / "bin"]
+    else:
+        dev_root = Path(__file__).resolve().parent.parent
+        candidates = [dev_root / "deploy" / "_thirdparty" / "gtk3" / "bin"]
+    for gtk_bin in candidates:
+        if gtk_bin.is_dir():
+            try:
+                os.add_dll_directory(str(gtk_bin))
+            except OSError:
+                pass
+            return
+
+
 def _bootstrap_django() -> None:
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.prod")
     import django
@@ -112,6 +154,7 @@ def cmd_manage(argv: list[str]) -> None:
 
 
 def main() -> None:
+    _ensure_native_pdf_libs()
     _apply_hotfix_overlay()
     if len(sys.argv) < 2 or sys.argv[1] not in ("serve", "manage"):
         print(__doc__)

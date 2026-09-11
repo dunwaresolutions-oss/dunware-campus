@@ -81,6 +81,12 @@ Source: "_thirdparty\gpg\*"; DestDir: "{app}\gpg"; Flags: recursesubdirs ignorev
 ; remote-access helpers (cloudflared / WireGuard) - staged only for sites that
 ; buy off-premises access; optional here exactly like caddy/pgsql above.
 Source: "_thirdparty\remote\*"; DestDir: "{app}\remote\bin"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
+; GTK3 runtime (Cairo/Pango/GObject/HarfBuzz/Fontconfig) - the native half of
+; WeasyPrint, which PyInstaller's own hook does not bundle (report-card PDFs
+; silently fall back to .html without this). campus_app.py's
+; _ensure_native_pdf_libs() finds it at {app}\gtk3\bin via
+; os.add_dll_directory(). Optional here exactly like the others above.
+Source: "_thirdparty\gtk3\*"; DestDir: "{app}\gtk3"; Flags: recursesubdirs ignoreversion skipifsourcedoesntexist
 
 ; the first-run wizard + day-2 ops scripts
 Source: "install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion

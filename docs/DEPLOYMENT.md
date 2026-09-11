@@ -28,6 +28,22 @@ and the two Windows services are skipped with a clear message instead of
 being registered (and encrypted backups can't run) — see `docs/PACKAGING.md`
 for the drill that proved this.
 
+**Automate the staging** with `deploy/install-dependencies.ps1` — a
+technical-staff-only tool, deliberately not run by `campus.iss`/`install.ps1`
+and not bundled in `Campus-Setup.exe` itself (see
+`Campus_Technical_and_Troubleshooting_Guide.pdf`, its companion doc, for the
+full write-up). It detects what's already staged and skips it, fetches
+what's missing from the real URLs in the table below, and needs no
+elevation — it only ever writes under `deploy\_thirdparty\`.
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1              # everything missing
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1 -CheckOnly   # report only, no downloads
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1 -Only gtk3,gpg
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1 -Force       # re-fetch even if present
+```
+The table below is still the reference for doing it by hand, or for what
+each row actually needs if the automated fetch ever breaks (URLs move).
+
 | What | Stage it at | Get it from | License |
 |---|---|---|---|
 | PostgreSQL 16, portable Windows zip build | `deploy/_thirdparty/pgsql/` (`pgsql/bin/initdb.exe` etc.) | https://www.enterprisedb.com/download-postgresql-binaries | PostgreSQL License |
@@ -35,6 +51,7 @@ for the drill that proved this.
 | NSSM — wraps `caddy.exe`/`campus-app.exe` as Windows services (neither speaks the Windows Service Control Protocol itself; `pg_ctl register` does, so Postgres needs no such shim) | `deploy/_thirdparty/caddy/nssm.exe` | https://nssm.cc/download | Public domain / permissive |
 | GnuPG 2.4, portable — encrypts (`backup.ps1`) and decrypts (`restore.ps1`) backup archives with `gpg --symmetric` (AES-256). Copy the `bin/` (`gpg.exe`, `gpg-agent.exe`, `gpgconf.exe` + their DLLs) **and** `lib/gnupg/` out of an installed GnuPG. The scripts try `{app}\gpg\bin\gpg.exe` first, then a `gpg` on PATH, and point `GNUPGHOME` at `{app}\gpg\home` (no user profile touched). Without it, backups fail with a clear "gpg was not found" until it's staged or a system-wide GnuPG/Git-for-Windows is installed. | `deploy/_thirdparty/gpg/` (→ `{app}\gpg`, so `{app}\gpg\bin\gpg.exe`) | https://gnupg.org/download/ (or Gpg4win) | GPLv3 |
 | **Remote access only** — `cloudflared.exe` and/or `wireguard.exe` + `wg.exe`. Needed *only* for a site that will run `remote-setup.ps1`; a LAN-only install ignores their absence exactly like the row above. | `deploy/_thirdparty/remote/` → `{app}\remote\bin` | https://github.com/cloudflare/cloudflared/releases · https://www.wireguard.com/install/ | Apache 2.0 · GPLv2 |
+| GTK3 runtime (Cairo/Pango/GObject/HarfBuzz/Fontconfig) — the native half of WeasyPrint, which report-card/document PDF generation needs (`apps/grades/services.py html_to_pdf()`); PyInstaller's own weasyprint hook does not bundle it. Without it, PDFs silently fall back to `.html`, no error. Extract with the GTK3-Runtime-Installer .exe (an NSIS installer — `installer.exe /S /D=<dir>`, direct invocation, not `Start-Process`, to avoid its elevation manifest; or use `innoextract`-style tooling if it's ever repackaged as Inno) and copy the whole tree (`bin/`, `lib/`, `share/`, `etc/`) — `campus_app.py`'s `_ensure_native_pdf_libs()` calls `os.add_dll_directory()` on `{app}\gtk3\bin` at startup, which is what actually resolves cffi's transitive DLL dependencies (PATH alone is not sufficient — confirmed by testing). | `deploy/_thirdparty/gtk3/` (→ `{app}\gtk3`, so `{app}\gtk3\bin\libgobject-2.0-0.dll`) | https://github.com/tschoonj/GTK-for-Windows-Runtime-Environment-Installer/releases | LGPL 2.1 (GTK) |
 
 Stage what you need before running Inno Setup (`deploy/campus.iss`) and the
 installer's `[Files]` step bundles them in; `install.ps1` picks them up
