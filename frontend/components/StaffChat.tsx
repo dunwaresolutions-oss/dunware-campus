@@ -125,7 +125,7 @@ export function StaffChat() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="glass campus-modal-panel absolute right-0 top-11 z-50 flex max-h-[70vh] w-[380px] flex-col overflow-hidden rounded-xl shadow-[var(--campus-shadow-lg)]">
+          <div className="glass campus-modal-panel absolute left-0 top-11 z-50 flex max-h-[70vh] w-[380px] flex-col overflow-hidden rounded-xl shadow-[var(--campus-shadow-lg)]">
             <div className="border-b border-[var(--campus-line)] px-3.5 py-2.5 text-sm font-semibold">
               Staff chat
               <span className="ml-1.5 font-normal text-[var(--campus-muted)]">
