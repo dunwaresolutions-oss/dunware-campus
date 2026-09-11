@@ -10,22 +10,16 @@ import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
 import { money, date, datetime, label, apiMessage, yn } from "@/lib/format";
+import { searchStudents, primaryGuardianForStudent } from "@/lib/students";
 import { useQueryClient } from "@tanstack/react-query";
-
-interface Student {
-  id: string;
-  display_name: string;
-}
 
 export default function BillingPage() {
   const [tab, setTab] = useState("invoices");
-  const students = useAll<Student>("students");
   const guardians = useAll<{ id: number; first_name: string; last_name: string }>(
     "guardians",
   );
   const terms = useAll<{ id: number; name: string }>("terms");
   const groups = useAll<{ id: number; name: string }>("groups");
-  const studentOpts = options(students.data, (s) => s.display_name);
   const guardianOpts = options(
     guardians.data,
     (g) => `${g.first_name} ${g.last_name}`,
@@ -60,12 +54,7 @@ export default function BillingPage() {
             reason (it is kept, never deleted). Press <b>Open</b> for the full
             picture.
           </p>
-          <Invoices
-            studentOpts={studentOpts}
-            guardianOpts={guardianOpts}
-            termOpts={termOpts}
-            students={students.data ?? []}
-          />
+          <Invoices guardianOpts={guardianOpts} termOpts={termOpts} />
         </>
       )}
 
@@ -176,17 +165,15 @@ export default function BillingPage() {
             resource="credits"
             singular="credit"
             columns={[
-              {
-                header: "Student",
-                cell: (r) =>
-                  students.data?.find((s) => s.id === r.student)?.display_name ??
-                  r.student,
-              },
+              { header: "Student", cell: (r) => (r.student_name as string) || (r.student as string) },
               { header: "Amount", cell: (r) => money(r.amount_cents as number) },
               { header: "Reason", cell: (r) => (r.reason as string) || "—" },
             ]}
             fields={[
-              { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+              {
+                name: "student", label: "Student", type: "search-select", required: true,
+                search: searchStudents, initialLabelKey: "student_name",
+              },
               { name: "amount_cents", label: "Amount", type: "money", required: true },
               { name: "reason", label: "Reason", required: true },
             ]}
@@ -198,15 +185,11 @@ export default function BillingPage() {
 }
 
 function Invoices({
-  studentOpts,
   guardianOpts,
   termOpts,
-  students,
 }: {
-  studentOpts: { value: string | number; label: string }[];
   guardianOpts: { value: string | number; label: string }[];
   termOpts: { value: string | number; label: string }[];
-  students: Student[];
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -216,14 +199,13 @@ function Invoices({
   const q = useList<{
     id: number;
     student: string;
+    student_name?: string;
     status: string;
     total_cents: number;
     balance_cents: number;
     due_date: string | null;
   }>("invoices", { page });
   const reload = () => qc.invalidateQueries({ queryKey: ["list", "invoices"] });
-  const studentName = (id: string) =>
-    students.find((s) => s.id === id)?.display_name ?? id;
 
   return (
     <Card>
@@ -253,7 +235,7 @@ function Invoices({
                 onClick={() => setDetailId(inv.id)}
                 className="cursor-pointer border-b border-[var(--campus-line)] transition-colors hover:bg-[var(--campus-accent-soft)]/60"
               >
-                <td className="px-3 py-2.5">{studentName(inv.student)}</td>
+                <td className="px-3 py-2.5">{inv.student_name || inv.student}</td>
                 <td className="px-3 py-2.5">{money(inv.total_cents)}</td>
                 <td className="px-3 py-2.5">{money(inv.balance_cents)}</td>
                 <td className="px-3 py-2.5">{date(inv.due_date)}</td>
@@ -349,7 +331,15 @@ function Invoices({
       <Modal open={creating} onClose={() => setCreating(false)} title="New invoice">
         <RecordForm
           fields={[
-            { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+            {
+              name: "student", label: "Student", type: "search-select", required: true,
+              search: searchStudents,
+              help: "Picking a student fills in their guardian below — override if needed.",
+              onValueChange: async (studentId, patch) => {
+                const g = await primaryGuardianForStudent(studentId);
+                patch({ guardian: g?.id ?? "" });
+              },
+            },
             { name: "guardian", label: "Billed to (guardian)", type: "select", options: guardianOpts },
             { name: "term", label: "Term", type: "select", options: termOpts },
             { name: "due_date", label: "Due date", type: "date" },
@@ -369,7 +359,6 @@ function Invoices({
       <InvoiceDetail
         invoiceId={detailId}
         onClose={() => setDetailId(null)}
-        studentName={studentName}
         onChanged={reload}
       />
     </Card>
@@ -379,6 +368,7 @@ function Invoices({
 interface InvoiceFull {
   id: number;
   student: string;
+  student_name?: string;
   status: string;
   issued_at: string | null;
   due_date: string | null;
@@ -406,12 +396,10 @@ interface InvoiceFull {
 function InvoiceDetail({
   invoiceId,
   onClose,
-  studentName,
   onChanged,
 }: {
   invoiceId: number | null;
   onClose: () => void;
-  studentName: (id: string) => string;
   onChanged: () => void;
 }) {
   const toast = useToast();
@@ -460,7 +448,7 @@ function InvoiceDetail({
               {label(inv.status)}
             </Badge>
             <span className="text-[var(--campus-muted)]">
-              {studentName(inv.student)}
+              {inv.student_name || inv.student}
             </span>
             {inv.issued_at && (
               <span className="text-[var(--campus-muted)]">

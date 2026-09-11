@@ -16,7 +16,11 @@ export interface SchoolProfile {
   website: string;
   principal_name: string;
   principal_title: string;
+  principal_user: string | null;
+  principal_user_name: string;
   logo_url: string | null;
+  has_signature: boolean;
+  signature_url: string | null;
   report_card_footer: string;
   updated_at: string;
 }
@@ -30,6 +34,13 @@ export const updateSchoolProfile = (patch: Partial<SchoolProfile>) =>
     body: JSON.stringify(patch),
   });
 
+/** Superadmin only — bind the one staff account allowed to sign report cards. */
+export const designatePrincipal = (userId: string) =>
+  api<SchoolProfile>("/school-profile/", {
+    method: "PATCH",
+    body: JSON.stringify({ principal_user: userId }),
+  });
+
 /** Replace the logo (multipart). */
 export const uploadSchoolLogo = (file: File) => {
   const fd = new FormData();
@@ -39,3 +50,14 @@ export const uploadSchoolLogo = (file: File) => {
 
 export const clearSchoolLogo = () =>
   api<SchoolProfile>("/school-profile/", { method: "DELETE" });
+
+/** Only the designated principal (or a superadmin) may succeed here — the
+ * server checks again regardless of what the UI allows. */
+export const uploadSignature = (file: File) => {
+  const fd = new FormData();
+  fd.append("signature", file);
+  return api<SchoolProfile>("/school-profile/", { method: "PATCH", body: fd });
+};
+
+export const clearSignature = () =>
+  api<void>("/school-profile/signature/", { method: "DELETE" });

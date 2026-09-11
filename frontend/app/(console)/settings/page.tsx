@@ -7,9 +7,14 @@ import {
   updateSchoolProfile,
   uploadSchoolLogo,
   clearSchoolLogo,
+  uploadSignature,
+  clearSignature,
+  designatePrincipal,
   type SchoolProfile,
 } from "@/lib/school";
 import { getSiteConfig, updateSiteConfig, type SiteConfig } from "@/lib/config";
+import { whoami } from "@/lib/auth";
+import { useAll } from "@/lib/hooks";
 import { useToast } from "@/components/Toast";
 import { PageHeader, Card, Badge, Button, Spinner, ErrorNote } from "@/components/ui";
 import { apiMessage, label } from "@/lib/format";
@@ -122,7 +127,9 @@ export default function SettingsPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const sigFileRef = useRef<HTMLInputElement>(null);
   const q = useQuery({ queryKey: ["school"], queryFn: getSchoolProfile });
+  const me = useQuery({ queryKey: ["me"], queryFn: whoami });
   const [draft, setDraft] = useState<Draft>({});
   const [busy, setBusy] = useState(false);
 
@@ -200,6 +207,37 @@ export default function SettingsPage() {
       qc.setQueryData(["school"], next);
       setDraft((d) => ({ ...d, logo_url: null }));
       toast("success", "Logo removed");
+    } catch (err) {
+      toast("error", apiMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onSignature(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const next = await uploadSignature(file);
+      qc.setQueryData(["school"], next);
+      setDraft((d) => ({ ...d, has_signature: next.has_signature, signature_url: next.signature_url }));
+      toast("success", "Signature saved");
+    } catch (err) {
+      toast("error", apiMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSignature() {
+    setBusy(true);
+    try {
+      await clearSignature();
+      qc.invalidateQueries({ queryKey: ["school"] });
+      setDraft((d) => ({ ...d, has_signature: false, signature_url: null }));
+      toast("success", "Signature removed");
     } catch (err) {
       toast("error", apiMessage(err));
     } finally {
@@ -307,6 +345,16 @@ export default function SettingsPage() {
           />
         </Section>
 
+        <SignatureSection
+          p={p}
+          me={me.data}
+          busy={busy}
+          sigFileRef={sigFileRef}
+          onSignature={onSignature}
+          removeSignature={removeSignature}
+          onDraft={setDraft}
+        />
+
         <div className="flex justify-end">
           <Button onClick={save} disabled={!dirty || busy}>
             {busy ? "Saving…" : "Save changes"}
@@ -316,6 +364,126 @@ export default function SettingsPage() {
         <RegionFees />
       </div>
     </div>
+  );
+}
+
+function SignatureSection({
+  p,
+  me,
+  busy,
+  sigFileRef,
+  onSignature,
+  removeSignature,
+  onDraft,
+}: {
+  p: SchoolProfile;
+  me: { id: string; role: string } | null | undefined;
+  busy: boolean;
+  sigFileRef: React.RefObject<HTMLInputElement | null>;
+  onSignature: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  removeSignature: () => void;
+  onDraft: (fn: (d: Draft) => Draft) => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const staff = useAll<{ id: string; display_name: string }>("auth/users");
+  const [pick, setPick] = useState("");
+  const [settingPrincipal, setSettingPrincipal] = useState(false);
+
+  const isSuperadmin = me?.role === "SUPERADMIN";
+  const isPrincipal = !!me && me.id === p.principal_user;
+  const canSign = isSuperadmin || isPrincipal;
+
+  async function setPrincipal() {
+    if (!pick) return;
+    setSettingPrincipal(true);
+    try {
+      const next = await designatePrincipal(pick);
+      qc.setQueryData(["school"], next);
+      onDraft((d) => ({ ...d, principal_user: next.principal_user, principal_user_name: next.principal_user_name }));
+      toast("success", "Principal designated");
+      setPick("");
+    } catch (err) {
+      toast("error", apiMessage(err));
+    } finally {
+      setSettingPrincipal(false);
+    }
+  }
+
+  return (
+    <Section
+      title="Signature"
+      hint="Placed on every generated report card. Only the designated principal (or a superadmin) can upload or replace it — this is enforced by the server, not just hidden in the UI."
+    >
+      <div className="sm:col-span-2 space-y-4">
+        {isSuperadmin && (
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] p-3">
+            <label className="min-w-[220px] flex-1">
+              <span className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
+                Designated principal
+              </span>
+              <select
+                className="w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm"
+                value={pick}
+                onChange={(e) => setPick(e.target.value)}
+              >
+                <option value="">
+                  {p.principal_user_name ? `Currently: ${p.principal_user_name}` : "— none set —"}
+                </option>
+                {(staff.data ?? []).map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.display_name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button size="sm" onClick={setPrincipal} disabled={!pick || settingPrincipal}>
+              {settingPrincipal ? "Saving…" : "Set principal"}
+            </Button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-4">
+          {p.signature_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={p.signature_url}
+              alt=""
+              className="h-14 w-auto max-w-[220px] rounded border border-[var(--campus-line)] bg-white object-contain p-1"
+            />
+          ) : (
+            <div className="grid h-14 w-40 place-items-center rounded border border-dashed border-[var(--campus-line)] text-xs text-[var(--campus-muted)]">
+              no signature
+            </div>
+          )}
+          <input
+            ref={sigFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={onSignature}
+          />
+          {canSign ? (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => sigFileRef.current?.click()} disabled={busy}>
+                {p.signature_url ? "Replace" : "Upload"}
+              </Button>
+              {p.signature_url && (
+                <Button size="sm" variant="ghost" onClick={removeSignature} disabled={busy}>
+                  Remove
+                </Button>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-[var(--campus-muted)]">
+              {p.principal_user_name
+                ? `Only ${p.principal_user_name} can update this.`
+                : "No principal designated yet — a superadmin can set one above."}
+            </p>
+          )}
+        </div>
+      </div>
+    </Section>
   );
 }
 

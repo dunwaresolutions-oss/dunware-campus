@@ -34,23 +34,28 @@ class MessageSerializer(serializers.ModelSerializer):
 class MessageThreadSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     messages = MessageSerializer(many=True, read_only=True)
+    student_name = serializers.CharField(
+        source="student.display_name", read_only=True, default=""
+    )
 
     class Meta:
         model = MessageThread
-        fields = ["id", "subject", "student", "created_by", "participants", "closed",
-                  "last_message_at", "messages", "created_at"]
+        fields = ["id", "subject", "student", "student_name", "created_by", "participants",
+                  "closed", "last_message_at", "messages", "created_at"]
         read_only_fields = ["last_message_at"]
 
 
 class IncidentReportSerializer(serializers.ModelSerializer):
     reported_by = serializers.PrimaryKeyRelatedField(read_only=True)
     acknowledged_count = serializers.SerializerMethodField()
+    student_name = serializers.CharField(source="student.display_name", read_only=True)
 
     class Meta:
         model = IncidentReport
-        fields = ["id", "student", "occurred_at", "location", "category", "severity",
-                  "description", "action_taken", "first_aid_given", "reported_by",
-                  "status", "guardians_notified_at", "acknowledged_count", "created_at"]
+        fields = ["id", "student", "student_name", "occurred_at", "location", "category",
+                  "severity", "description", "action_taken", "first_aid_given",
+                  "reported_by", "status", "guardians_notified_at", "acknowledged_count",
+                  "created_at"]
         read_only_fields = ["status", "guardians_notified_at"]
 
     def get_acknowledged_count(self, obj) -> int:

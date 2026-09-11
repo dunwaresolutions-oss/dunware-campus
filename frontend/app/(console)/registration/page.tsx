@@ -11,14 +11,11 @@ import { PageHeader, Tabs, Badge, Button } from "@/components/ui";
 import { act, patch, retrieve } from "@/lib/resource";
 import { useToast } from "@/components/Toast";
 import { apiMessage, date, datetime, label, today } from "@/lib/format";
+import { searchStudents } from "@/lib/students";
 
 interface Group {
   id: number;
   name: string;
-}
-interface Student {
-  id: string;
-  display_name: string;
 }
 interface AppRow {
   id: string;
@@ -46,9 +43,7 @@ export default function RegistrationPage() {
     if (paramTab) setTab(paramTab);
   }, [paramTab]);
   const groups = useAll<Group>("groups");
-  const students = useAll<Student>("students");
   const groupOpts = options(groups.data, (g) => g.name);
-  const studentOpts = options(students.data, (s) => s.display_name);
   const groupName = (id: number | null | undefined) =>
     id == null ? "—" : (groups.data?.find((g) => g.id === id)?.name ?? String(id));
 
@@ -302,10 +297,7 @@ export default function RegistrationPage() {
           columns={[
             {
               header: "Student",
-              cell: (r) =>
-                (r.student_name as string) ||
-                students.data?.find((s) => s.id === r.student)?.display_name ||
-                (r.student as string),
+              cell: (r) => (r.student_name as string) || (r.student as string),
             },
             { header: "Group", cell: (r) => (r.group_name as string) ?? groupName(r.group as number) },
             { header: "Start", cell: (r) => date(r.start_date as string) },
@@ -323,9 +315,10 @@ export default function RegistrationPage() {
             {
               name: "student",
               label: "Student",
-              type: "select",
+              type: "search-select",
               required: true,
-              options: studentOpts,
+              search: searchStudents,
+              initialLabelKey: "student_name",
             },
             {
               name: "group",
@@ -336,20 +329,11 @@ export default function RegistrationPage() {
             },
             { name: "start_date", label: "Start date", type: "date", required: true },
           ]}
-          detailTitle={(r) =>
-            `Enrolment — ${
-              (r.student_name as string) ||
-              students.data?.find((s) => s.id === r.student)?.display_name ||
-              "student"
-            }`
-          }
+          detailTitle={(r) => `Enrolment — ${(r.student_name as string) || "student"}`}
           detailFields={[
             {
               label: "Student",
-              value: (r) =>
-                (r.student_name as string) ||
-                students.data?.find((s) => s.id === r.student)?.display_name ||
-                String(r.student),
+              value: (r) => (r.student_name as string) || String(r.student),
             },
             {
               label: "Group",
@@ -392,10 +376,7 @@ export default function RegistrationPage() {
           columns={[
             {
               header: "Student",
-              cell: (r) =>
-                (r.student_name as string) ||
-                students.data?.find((s) => s.id === r.student)?.display_name ||
-                (r.student as string),
+              cell: (r) => (r.student_name as string) || (r.student as string),
             },
             { header: "Kind", cell: (r) => label(r.kind as string) },
             { header: "Version", cell: (r) => (r.version as number) ?? 1 },
@@ -413,9 +394,10 @@ export default function RegistrationPage() {
             {
               name: "student",
               label: "Student",
-              type: "select",
+              type: "search-select",
               required: true,
-              options: studentOpts,
+              search: searchStudents,
+              initialLabelKey: "student_name",
             },
             {
               name: "kind",
@@ -438,10 +420,7 @@ export default function RegistrationPage() {
           detailFields={[
             {
               label: "Student",
-              value: (r) =>
-                (r.student_name as string) ||
-                students.data?.find((s) => s.id === r.student)?.display_name ||
-                String(r.student),
+              value: (r) => (r.student_name as string) || String(r.student),
             },
             { label: "Kind", value: (r) => label(r.kind as string) },
             { label: "Decision", value: (r) => (r.granted ? "Granted" : "Withheld") },

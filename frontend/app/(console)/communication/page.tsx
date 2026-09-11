@@ -10,12 +10,9 @@ import { RecordForm } from "@/components/RecordForm";
 import { MessageTemplates } from "@/components/MessageTemplates";
 import { useToast } from "@/components/Toast";
 import { datetime, date, apiMessage, label } from "@/lib/format";
+import { searchStudents } from "@/lib/students";
 import { useQueryClient } from "@tanstack/react-query";
 
-interface Student {
-  id: string;
-  display_name: string;
-}
 interface AnnRow {
   id: number;
   title: string;
@@ -29,6 +26,7 @@ interface AnnRow {
 interface IncRow {
   id: number;
   student: string;
+  student_name?: string;
   occurred_at: string;
   location: string;
   category: string;
@@ -47,11 +45,7 @@ export default function CommunicationPage() {
   const [openInc, setOpenInc] = useState<IncRow | null>(null);
   const toast = useToast();
   const groups = useAll<{ id: number; name: string }>("groups");
-  const students = useAll<Student>("students");
   const groupOpts = options(groups.data, (g) => g.name);
-  const studentOpts = options(students.data, (s) => s.display_name);
-  const studentName = (id: string) =>
-    students.data?.find((s) => s.id === id)?.display_name ?? id;
 
   return (
     <div>
@@ -138,7 +132,7 @@ export default function CommunicationPage() {
         </>
       )}
 
-      {tab === "threads" && <Threads studentOpts={studentOpts} />}
+      {tab === "threads" && <Threads />}
 
       {tab === "incidents" && (
         <>
@@ -156,7 +150,7 @@ export default function CommunicationPage() {
             singular="incident report"
             onRowOpen={setOpenInc}
             columns={[
-              { header: "Student", cell: (r) => studentName(r.student) },
+              { header: "Student", cell: (r) => r.student_name || r.student },
               { header: "Category", cell: (r) => label(r.category) },
               {
                 header: "Severity",
@@ -181,7 +175,10 @@ export default function CommunicationPage() {
               },
             ]}
             fields={[
-              { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+              {
+                name: "student", label: "Student", type: "search-select", required: true,
+                search: searchStudents, initialLabelKey: "student_name",
+              },
               { name: "occurred_at", label: "When", type: "datetime", required: true },
               { name: "location", label: "Location" },
               {
@@ -315,7 +312,7 @@ export default function CommunicationPage() {
       <IncidentDrawer
         inc={openInc}
         onClose={() => setOpenInc(null)}
-        studentName={openInc ? studentName(openInc.student) : ""}
+        studentName={openInc?.student_name || openInc?.student || ""}
       />
     </div>
   );
@@ -643,11 +640,7 @@ interface ThreadRow {
   last_message_at: string | null;
 }
 
-function Threads({
-  studentOpts,
-}: {
-  studentOpts: { value: string | number; label: string }[];
-}) {
+function Threads() {
   const qc = useQueryClient();
   const toast = useToast();
   const [openThread, setOpenThread] = useState<ThreadRow | null>(null);
@@ -707,7 +700,10 @@ function Threads({
           <RecordForm
             fields={[
               { name: "subject", label: "Subject", required: true },
-              { name: "student", label: "About student", type: "select", options: studentOpts },
+              {
+                name: "student", label: "About student (optional)", type: "search-select",
+                search: searchStudents,
+              },
             ]}
             submitLabel="Create thread"
             onSubmit={async (v) => {

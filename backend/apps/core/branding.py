@@ -16,14 +16,24 @@ def logo_data_uri(profile: SchoolProfile | None = None) -> str:
     """The logo as a base64 ``data:`` URI so a document stays self-contained,
     or "" when there is no logo / it can't be read."""
     profile = profile or SchoolProfile.load()
-    if not profile.logo:
+    return _image_data_uri(profile.logo)
+
+
+def signature_data_uri(profile: SchoolProfile | None = None) -> str:
+    """The principal's uploaded signature, same treatment as the logo."""
+    profile = profile or SchoolProfile.load()
+    return _image_data_uri(profile.signature)
+
+
+def _image_data_uri(field) -> str:
+    if not field:
         return ""
     try:
-        with profile.logo.open("rb") as fh:
+        with field.open("rb") as fh:
             raw = fh.read()
     except (OSError, ValueError):
         return ""
-    mime = mimetypes.guess_type(profile.logo.name)[0] or "image/png"
+    mime = mimetypes.guess_type(field.name)[0] or "image/png"
     return f"data:{mime};base64,{base64.b64encode(raw).decode()}"
 
 
@@ -71,8 +81,16 @@ def signature_block_html(profile: SchoolProfile | None = None) -> str:
     p = profile or SchoolProfile.load()
     if not p.principal_name:
         return ""
+    sig = signature_data_uri(p)
+    img = (
+        f'<img src="{sig}" alt="" style="max-height:52px;max-width:200px;'
+        f'object-fit:contain;display:block;margin-bottom:2px">'
+        if sig
+        else ""
+    )
     return (
         '<div class="sigblock" style="margin-top:34px">'
+        f'{img}'
         '<div style="border-top:1px solid #1c2126;width:240px;padding-top:4px">'
         f"{_html.escape(p.principal_name)}<br>"
         f'<span style="font-size:12px;color:#5b6572">{_html.escape(p.principal_title or "")}</span>'

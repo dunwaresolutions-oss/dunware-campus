@@ -11,11 +11,14 @@ import { act, patch, retrieve } from "@/lib/resource";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { apiMessage, date, label } from "@/lib/format";
+import { searchStudents } from "@/lib/students";
 
 interface ReportCardRow {
   id: string;
   student: string;
+  student_name?: string;
   term: number;
+  term_name?: string;
   status: "DRAFT" | "FINALIZED" | "RELEASED";
   summary_narrative: string;
   document_url: string | null;
@@ -44,12 +47,10 @@ export default function GradesPage() {
   const terms = useAll<{ id: number; name: string }>("terms");
   const schemes = useAll<{ id: number; name: string }>("assessment-schemes");
   const assessments = useAll<{ id: number; title: string }>("assessments");
-  const students = useAll<{ id: string; display_name: string }>("students");
   const groupOpts = options(groups.data, (g) => g.name);
   const termOpts = options(terms.data, (t) => t.name);
   const schemeOpts = options(schemes.data, (s) => s.name);
   const assessmentOpts = options(assessments.data, (a) => a.title);
-  const studentOpts = options(students.data, (s) => s.display_name);
 
   async function run(res: string, id: number, verb: string, reload: () => void) {
     try {
@@ -203,16 +204,17 @@ export default function GradesPage() {
             },
             {
               header: "Student",
-              cell: (r) =>
-                students.data?.find((s) => s.id === r.student)?.display_name ??
-                r.student,
+              cell: (r) => (r.student_name as string) || String(r.student),
             },
             { header: "Mark", cell: (r) => (r.mark as string) ?? "—" },
             { header: "Level", cell: (r) => (r.level as number) ?? "—" },
           ]}
           fields={[
             { name: "assessment", label: "Assessment", type: "select", required: true, options: assessmentOpts },
-            { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+            {
+              name: "student", label: "Student", type: "search-select", required: true,
+              search: searchStudents, initialLabelKey: "student_name",
+            },
             { name: "mark", label: "Mark", type: "number" },
             { name: "level", label: "Level", type: "number" },
             { name: "narrative", label: "Narrative (encrypted)", type: "textarea" },
@@ -227,9 +229,7 @@ export default function GradesPage() {
             },
             {
               label: "Student",
-              value: (r) =>
-                students.data?.find((s) => s.id === r.student)?.display_name ??
-                String(r.student),
+              value: (r) => (r.student_name as string) || String(r.student),
             },
             { label: "Mark", value: (r) => (r.mark as string) ?? "—" },
             { label: "Level", value: (r) => (r.level as number) ?? "—" },
@@ -250,14 +250,14 @@ export default function GradesPage() {
           columns={[
             {
               header: "Student",
-              cell: (r) =>
-                students.data?.find((s) => s.id === r.student)?.display_name ??
-                r.student,
+              cell: (r) => (r.student_name as string) || r.student,
             },
             {
               header: "Term",
               cell: (r) =>
-                terms.data?.find((t) => t.id === r.term)?.name ?? r.term,
+                (r.term_name as string) ||
+                terms.data?.find((t) => t.id === r.term)?.name ||
+                r.term,
             },
             {
               header: "Status",
@@ -277,7 +277,10 @@ export default function GradesPage() {
             },
           ]}
           fields={[
-            { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+            {
+              name: "student", label: "Student", type: "search-select", required: true,
+              search: searchStudents, initialLabelKey: "student_name",
+            },
             { name: "term", label: "Term", type: "select", required: true, options: termOpts },
             { name: "summary_narrative", label: "Summary (encrypted)", type: "textarea" },
           ]}
@@ -287,11 +290,7 @@ export default function GradesPage() {
       <ReportCardDrawer
         card={openCard}
         onClose={() => setOpenCard(null)}
-        studentName={
-          students.data?.find((s) => s.id === openCard?.student)?.display_name ??
-          openCard?.student ??
-          ""
-        }
+        studentName={openCard?.student_name || openCard?.student || ""}
         termName={
           terms.data?.find((t) => t.id === openCard?.term)?.name ??
           String(openCard?.term ?? "")

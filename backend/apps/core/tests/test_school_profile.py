@@ -78,3 +78,94 @@ def test_report_card_html_uses_the_school_identity(django_user_model):
 
     html = letterhead_html()
     assert "Birchwood Academy" in html
+
+
+SIG_URL = "/api/school-profile/signature/"
+
+
+def test_designating_the_principal_is_superadmin_only(
+    auth_client, admin_user, superadmin, make_user
+):
+    candidate = make_user(username="dana", role="TEACHER")
+    resp = auth_client(admin_user).patch(
+        URL, {"principal_user": str(candidate.pk)}, format="json"
+    )
+    assert resp.status_code == 403
+
+    resp = auth_client(superadmin).patch(
+        URL, {"principal_user": str(candidate.pk)}, format="json"
+    )
+    assert resp.status_code == 200
+    assert resp.data["principal_user_name"]
+    assert SchoolProfile.load().principal_user_id == candidate.pk
+
+
+def test_only_the_designated_principal_may_upload_a_signature(
+    auth_client, admin_user, superadmin, make_user
+):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    principal = make_user(username="principal1", role="TEACHER")
+    other = make_user(username="notprincipal", role="TEACHER")
+    cfg = SchoolProfile.load()
+    cfg.principal_user = principal
+    cfg.save()
+
+    up = lambda: SimpleUploadedFile("sig.png", _png_bytes(), content_type="image/png")  # noqa: E731
+
+    # a random admin can't place the signature, even though they can edit
+    # everything else on the profile
+    assert auth_client(admin_user).patch(
+        URL, {"signature": up()}, format="multipart"
+    ).status_code == 403
+    # another teacher (not the designated principal) can't either
+    assert auth_client(other).patch(
+        URL, {"signature": up()}, format="multipart"
+    ).status_code == 403
+
+    resp = auth_client(principal).patch(URL, {"signature": up()}, format="multipart")
+    assert resp.status_code == 200
+    assert resp.data["has_signature"] is True
+    # a superadmin can act as a fallback (e.g. onboarding, principal turnover)
+    assert auth_client(superadmin).patch(
+        URL, {"signature": up()}, format="multipart"
+    ).status_code == 200
+
+
+def test_signature_streams_and_only_the_principal_or_superadmin_clears_it(
+    auth_client, staff, superadmin, make_user
+):
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    principal = make_user(username="principal2", role="TEACHER")
+    cfg = SchoolProfile.load()
+    cfg.principal_user = principal
+    cfg.save()
+    auth_client(principal).patch(
+        URL,
+        {"signature": SimpleUploadedFile("sig.png", _png_bytes(), content_type="image/png")},
+        format="multipart",
+    )
+
+    stream = auth_client(staff).get(SIG_URL)
+    assert stream.status_code == 200
+    assert b"".join(stream.streaming_content).startswith(b"\x89PNG")
+
+    assert auth_client(staff).delete(SIG_URL).status_code == 403
+    assert auth_client(principal).delete(SIG_URL).status_code == 204
+    assert auth_client(staff).get(SIG_URL).status_code == 404
+
+
+def test_signature_appears_on_the_generated_signature_block(make_user):
+    from django.core.files.base import ContentFile
+
+    from apps.core.branding import signature_block_html, signature_data_uri
+
+    principal = make_user(username="principal3", role="TEACHER")
+    cfg = SchoolProfile.load()
+    cfg.principal_name = "Dana Whitfield"
+    cfg.principal_user = principal
+    cfg.signature.save("sig.png", ContentFile(_png_bytes()), save=True)
+
+    assert signature_data_uri(cfg).startswith("data:image/png;base64,")
+    assert "<img src=\"data:image/png" in signature_block_html(cfg)

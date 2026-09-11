@@ -10,6 +10,7 @@ import { PageHeader, Tabs, Badge, Button, Spinner } from "@/components/ui";
 import { act, patch, retrieve } from "@/lib/resource";
 import { useToast } from "@/components/Toast";
 import { datetime, date, money, time, label, apiMessage, yn, WEEKDAYS } from "@/lib/format";
+import { searchStudents } from "@/lib/students";
 
 interface OfferingRow {
   id: number;
@@ -31,10 +32,8 @@ export default function BookingPage() {
   const toast = useToast();
   const offerings = useAll<{ id: number; title: string }>("offerings");
   const rooms = useAll<{ id: number; name: string }>("rooms");
-  const students = useAll<{ id: string; display_name: string }>("students");
   const offeringOpts = options(offerings.data, (o) => o.title);
   const roomOpts = options(rooms.data, (r) => r.name);
-  const studentOpts = options(students.data, (s) => s.display_name);
   const weekdayOpts = WEEKDAYS.map((w, i) => ({ value: i, label: w }));
   const roomName = (id: number | null) =>
     id == null ? "—" : (rooms.data?.find((r) => r.id === id)?.name ?? String(id));
@@ -268,7 +267,10 @@ export default function BookingPage() {
             ]}
             fields={[
               { name: "slot", label: "Slot id", type: "number", required: true },
-              { name: "student", label: "Student", type: "select", required: true, options: studentOpts },
+              {
+                name: "student", label: "Student", type: "search-select", required: true,
+                search: searchStudents, initialLabelKey: "student_name",
+              },
             ]}
             detailTitle={(r) => `Booking — ${(r.student_name as string) ?? "student"}`}
             detailFields={[

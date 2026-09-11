@@ -11,7 +11,12 @@ from django.http import JsonResponse
 from django.urls import include, path
 
 from apps.core.search import SearchView
-from apps.core.views import RemoteAccessStatusView, SchoolProfileView, SiteConfigView
+from apps.core.views import (
+    RemoteAccessStatusView,
+    SchoolProfileView,
+    SchoolSignatureView,
+    SiteConfigView,
+)
 
 
 def healthz(_request):
@@ -23,6 +28,9 @@ api_patterns = [
     path("search/", SearchView.as_view(), name="search"),
     path("config/", SiteConfigView.as_view(), name="site-config"),
     path("school-profile/", SchoolProfileView.as_view(), name="school-profile"),
+    path(
+        "school-profile/signature/", SchoolSignatureView.as_view(), name="school-signature"
+    ),
     path("remote-access/status/", RemoteAccessStatusView.as_view(), name="remote-access-status"),
     path("auth/", include("apps.accounts.urls")),
     path("", include("apps.audit.urls")),

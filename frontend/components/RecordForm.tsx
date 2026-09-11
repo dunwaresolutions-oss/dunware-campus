@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, ErrorNote } from "./ui";
+import { SearchSelect, type SearchOption } from "./SearchSelect";
 import { apiMessage } from "@/lib/format";
 
 export type FieldType =
@@ -13,6 +14,7 @@ export type FieldType =
   | "time"
   | "datetime"
   | "select"
+  | "search-select"
   | "checkbox"
   | "file";
 
@@ -26,6 +28,18 @@ export interface FieldDef {
   placeholder?: string;
   /** Force this field to span both grid columns (textarea/file already do). */
   wide?: boolean;
+  /** type: "search-select" only — live results as the user types (debounced). */
+  search?: (term: string) => Promise<SearchOption[]>;
+  /** type: "search-select" only — a field on the edited row to show as the
+   *  label before the user types anything (e.g. "student_name"). */
+  initialLabelKey?: string;
+  /** Runs after this field's value changes (select or search-select) — lets
+   *  one field auto-fill others, e.g. picking a student fills in their
+   *  guardian on a new invoice. */
+  onValueChange?: (
+    value: string,
+    patchOthers: (values: Record<string, unknown>) => void,
+  ) => void | Promise<void>;
 }
 
 type Values = Record<string, unknown>;
@@ -174,9 +188,13 @@ export function RecordForm({
                 <select
                   className={box(err)}
                   value={val as string}
-                  onChange={(e) =>
-                    setState((s) => ({ ...s, [f.name]: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setState((s) => ({ ...s, [f.name]: v }));
+                    f.onValueChange?.(v, (patch) =>
+                      setState((s) => ({ ...s, ...patch }) as Record<string, string | boolean>),
+                    );
+                  }}
                 >
                   <option value="">—</option>
                   {f.options?.map((o) => (
@@ -185,6 +203,23 @@ export function RecordForm({
                     </option>
                   ))}
                 </select>
+              ) : f.type === "search-select" ? (
+                <SearchSelect
+                  value={val as string}
+                  initialLabel={
+                    f.initialLabelKey
+                      ? String(initialValues[f.initialLabelKey] ?? "")
+                      : undefined
+                  }
+                  search={f.search!}
+                  error={err}
+                  onChange={(v) => {
+                    setState((s) => ({ ...s, [f.name]: v }));
+                    f.onValueChange?.(v, (patch) =>
+                      setState((s) => ({ ...s, ...patch }) as Record<string, string | boolean>),
+                    );
+                  }}
+                />
               ) : f.type === "file" ? (
                 <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-3 text-sm transition-colors hover:border-[var(--campus-accent)]">
                   <span className="rounded-md bg-[var(--campus-accent)] px-3 py-1.5 text-xs font-medium text-white">

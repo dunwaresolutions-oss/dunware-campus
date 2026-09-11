@@ -7,6 +7,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from apps.core.storage import document_storage
+
 
 class UUIDModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -133,6 +135,17 @@ class SchoolProfile(BaseModel):
 
     principal_name = models.CharField(max_length=150, blank=True)
     principal_title = models.CharField(max_length=80, blank=True, default="Principal")
+    # The one staff account allowed to place a signature on report cards.
+    # Assigning this is superadmin-only; uploading the image itself is
+    # restricted to this account (or a superadmin) — see SchoolProfileView.
+    principal_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+",
+    )
+    signature = models.ImageField(
+        upload_to="school/signatures/%Y/", storage=document_storage,
+        blank=True, null=True,
+    )
 
     logo = models.ImageField(upload_to=_school_logo_path, blank=True, null=True)
     report_card_footer = models.TextField(blank=True)

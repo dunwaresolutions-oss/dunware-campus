@@ -8,6 +8,7 @@ import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
 import { PageHeader, Badge, Button, Spinner } from "@/components/ui";
 import { date, label, apiMessage } from "@/lib/format";
+import { searchStudents } from "@/lib/students";
 import {
   iepDocument,
   IEP_STATUS,
@@ -25,21 +26,18 @@ export default function IEPPage() {
   const toast = useToast();
   const focusStudent = useQueryParam("student");
   const [open, setOpen] = useState<IEP | null>(null);
-  const students = useAll<{ id: string; display_name: string }>("students");
   const staff = useAll<{ id: string; display_name: string }>("auth/users");
 
-  const studentOpts = options(students.data, (s) => s.display_name);
   const staffOpts = options(staff.data, (s) => s.display_name);
-  const studentName = (id: string) =>
-    students.data?.find((s) => s.id === id)?.display_name ?? id;
 
   const fields = [
     {
       name: "student",
       label: "Student",
-      type: "select" as const,
+      type: "search-select" as const,
       required: true,
-      options: studentOpts,
+      search: searchStudents,
+      initialLabelKey: "student_name",
     },
     { name: "school_year", label: "School year", placeholder: "2026–2027" },
     {
@@ -76,7 +74,7 @@ export default function IEPPage() {
         fields={fields}
         onRowOpen={setOpen}
         columns={[
-          { header: "Student", cell: (r) => r.student_name || studentName(r.student) },
+          { header: "Student", cell: (r) => r.student_name || r.student },
           { header: "Concern", cell: (r) => r.primary_concern || "—" },
           { header: "Year", cell: (r) => r.school_year || "—" },
           { header: "Goals", cell: (r) => r.goal_count ?? 0 },
@@ -90,7 +88,7 @@ export default function IEPPage() {
       <IEPDrawer
         iep={open}
         onClose={() => setOpen(null)}
-        studentName={open ? studentName(open.student) : ""}
+        studentName={open ? open.student_name || open.student : ""}
         onErr={(e) => toast("error", apiMessage(e))}
       />
     </div>

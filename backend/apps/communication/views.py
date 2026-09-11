@@ -106,7 +106,9 @@ class MessageThreadViewSet(CampusViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = MessageThread.objects.prefetch_related("messages", "participants")
+        qs = MessageThread.objects.select_related("student").prefetch_related(
+            "messages", "participants"
+        )
         if getattr(user, "role", None) in (Role.SUPERADMIN, Role.ADMIN):
             return qs
         return qs.filter(participants=user).distinct()

@@ -32,11 +32,12 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 class CreditSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    student_name = serializers.CharField(source="student.display_name", read_only=True)
 
     class Meta:
         model = Credit
-        fields = ["id", "student", "amount_cents", "reason", "applied_to_invoice",
-                  "created_by", "created_at"]
+        fields = ["id", "student", "student_name", "amount_cents", "reason",
+                  "applied_to_invoice", "created_by", "created_at"]
 
 
 class InvoiceSerializer(serializers.ModelSerializer):
@@ -46,12 +47,19 @@ class InvoiceSerializer(serializers.ModelSerializer):
     paid_cents = serializers.IntegerField(read_only=True)
     balance_cents = serializers.IntegerField(read_only=True)
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    student_name = serializers.CharField(source="student.display_name", read_only=True)
+    guardian_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
         fields = [
-            "id", "student", "guardian", "term", "status", "currency", "issued_at",
-            "due_date", "notes", "created_by", "lines", "payments", "total_cents",
-            "paid_cents", "balance_cents", "created_at",
+            "id", "student", "student_name", "guardian", "guardian_name", "term",
+            "status", "currency", "issued_at", "due_date", "notes", "created_by",
+            "lines", "payments", "total_cents", "paid_cents", "balance_cents",
+            "created_at",
         ]
         read_only_fields = ["status", "issued_at", "currency"]
+
+    def get_guardian_name(self, obj) -> str:
+        g = obj.guardian
+        return f"{g.first_name} {g.last_name}".strip() if g else ""

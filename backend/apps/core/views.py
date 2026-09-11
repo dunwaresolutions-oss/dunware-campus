@@ -6,6 +6,8 @@ import subprocess
 import sys
 
 from django.conf import settings
+from django.http import FileResponse, Http404
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -56,13 +58,18 @@ class SchoolProfileView(APIView):
     (name, address, logo) used on report cards / IEPs and in the console chrome.
 
     Read: any staff role (the UI shows the name/logo everywhere). Write: admin
-    or superadmin, MFA-verified. Accepts multipart (for the logo) or JSON.
+    or superadmin, MFA-verified — *except* a signature-only PATCH, which the
+    designated principal may send even without an admin role (``patch()``
+    then still checks it really is them, or a superadmin). Accepts multipart
+    (for the logo/signature) or JSON.
     """
 
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_permissions(self):
         if self.request.method == "GET":
+            return [IsAuthenticated(), StaffOnly(), MFAVerified()]
+        if self.request.method == "PATCH" and _is_signature_only_patch(self.request.data):
             return [IsAuthenticated(), StaffOnly(), MFAVerified()]
         return [IsAuthenticated(), AdminOnly(), MFAVerified()]
 
@@ -72,8 +79,18 @@ class SchoolProfileView(APIView):
 
     def patch(self, request):
         profile = SchoolProfile.load()
+        data = request.data
+        # Designating who "is" the principal is a trust decision — superadmin
+        # only. Placing the signature image is further restricted to that one
+        # account (or a superadmin), enforced again on SchoolSignatureView.
+        if "principal_user" in data and getattr(request.user, "role", None) != "SUPERADMIN":
+            raise PermissionDenied("Only a superadmin may designate the principal.")
+        if _has_signature_payload(data) and not _may_sign(request.user, profile):
+            raise PermissionDenied(
+                "Only the designated principal may upload or replace the signature."
+            )
         ser = SchoolProfileSerializer(
-            profile, data=request.data, partial=True, context={"request": request}
+            profile, data=data, partial=True, context={"request": request}
         )
         ser.is_valid(raise_exception=True)
         ser.save()
@@ -87,6 +104,56 @@ class SchoolProfileView(APIView):
             profile.logo = None
             profile.save(update_fields=["logo", "updated_at"])
         return Response(SchoolProfileSerializer(profile, context={"request": request}).data)
+
+
+def _has_signature_payload(data) -> bool:
+    try:
+        return "signature" in data
+    except TypeError:  # pragma: no cover - defensive
+        return False
+
+
+def _is_signature_only_patch(data) -> bool:
+    try:
+        keys = set(data.keys())
+    except AttributeError:  # pragma: no cover - defensive
+        return False
+    return keys == {"signature"}
+
+
+def _may_sign(user, profile: SchoolProfile) -> bool:
+    if getattr(user, "role", None) == "SUPERADMIN":
+        return True
+    return bool(profile.principal_user_id) and str(profile.principal_user_id) == str(user.pk)
+
+
+class SchoolSignatureView(APIView):
+    """``GET`` streams the decrypted signature image (any staff); ``DELETE``
+    clears it — restricted, like the upload, to the designated principal or a
+    superadmin. There is no direct upload endpoint here: the image is set via
+    ``PATCH /api/school-profile/`` (multipart), which carries the same check.
+    """
+
+    permission_classes = [IsAuthenticated, StaffOnly, MFAVerified]
+
+    def get(self, request):
+        profile = SchoolProfile.load()
+        if not profile.signature:
+            raise Http404
+        fh = profile.signature.open("rb")  # EncryptedFileSystemStorage decrypts here
+        return FileResponse(fh, content_type="image/*")
+
+    def delete(self, request):
+        profile = SchoolProfile.load()
+        if not _may_sign(request.user, profile):
+            raise PermissionDenied(
+                "Only the designated principal may remove the signature."
+            )
+        if profile.signature:
+            profile.signature.delete(save=False)
+            profile.signature = None
+            profile.save(update_fields=["signature", "updated_at"])
+        return Response(status=204)
 
 
 def _currency_locked() -> bool:

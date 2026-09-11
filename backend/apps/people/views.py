@@ -89,7 +89,16 @@ class StudentViewSet(CampusViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return Student.visible_queryset(self.request.user).select_related("primary_group")
+        qs = Student.visible_queryset(self.request.user).select_related("primary_group")
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            from django.db.models import Q
+
+            qs = qs.filter(
+                Q(first_name__icontains=q) | Q(last_name__icontains=q)
+                | Q(preferred_name__icontains=q) | Q(student_number__icontains=q)
+            )
+        return qs
 
     def perform_create(self, serializer):
         number = serializer.validated_data.get("student_number") or _generate_student_number()
