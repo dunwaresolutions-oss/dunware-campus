@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { whoami, type Role } from "@/lib/auth";
 import { useAll } from "@/lib/hooks";
@@ -44,11 +45,34 @@ function timeAgo(iso: string): string {
  */
 export function StaffChat() {
   const qc = useQueryClient();
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const [recipient, setRecipient] = useState("");
   const [audience, setAudience] = useState<StaffAudience>("DIRECT");
   const [body, setBody] = useState("");
   const [urgent, setUrgent] = useState(false);
+
+  // The bell lives inside the sidebar, which is its own stacking context
+  // (position: sticky) that always paints *behind* the main content's own
+  // stacking contexts (every glass/backdrop-blur Card creates one) further
+  // down the DOM — no z-index inside the sidebar can out-rank that. Portal
+  // the popover to <body> and position it with fixed coordinates instead of
+  // relying on being a positioned descendant of the bell.
+  useEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = buttonRef.current?.getBoundingClientRect();
+      if (r) setPos({ top: r.bottom + 6, left: r.left });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: whoami });
   const canBroadcast = !!me?.role && OFFICE.includes(me.role);
@@ -104,6 +128,7 @@ export function StaffChat() {
   return (
     <div className="relative">
       <button
+        ref={buttonRef}
         onClick={() => setOpen((v) => !v)}
         className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] text-[var(--campus-muted)] transition-colors hover:border-[var(--campus-accent)] hover:text-[var(--campus-fg)]"
         title="Staff chat"
@@ -122,10 +147,16 @@ export function StaffChat() {
         )}
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="campus-modal-panel absolute left-0 top-11 z-50 flex max-h-[70vh] w-[380px] flex-col overflow-hidden rounded-xl border border-[var(--campus-line)] bg-[var(--campus-input-bg)] shadow-[var(--campus-shadow-lg)]">
+          <div className="fixed inset-0 z-[90]" onClick={() => setOpen(false)} />
+          <div
+            style={{
+              top: pos.top,
+              left: Math.min(pos.left, window.innerWidth - 380 - 12),
+            }}
+            className="campus-modal-panel fixed z-[91] flex max-h-[70vh] w-[380px] flex-col overflow-hidden rounded-xl border border-[var(--campus-line)] bg-[var(--campus-input-bg)] shadow-[var(--campus-shadow-lg)]"
+          >
             <div className="border-b border-[var(--campus-line)] px-3.5 py-2.5 text-sm font-semibold">
               Staff chat
               <span className="ml-1.5 font-normal text-[var(--campus-muted)]">
@@ -240,7 +271,8 @@ export function StaffChat() {
               </div>
             </div>
           </div>
-        </>
+        </>,
+        document.body,
       )}
     </div>
   );
