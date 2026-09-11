@@ -85,6 +85,7 @@ def _child_block(student: Student):
     from apps.booking.models import Booking
     from apps.communication.models import IncidentReport
     from apps.grades.models import ReportCard
+    from apps.iep.models import IEP
     from apps.registration.models import Consent
     from apps.scheduling.models import SessionOccurrence
 
@@ -122,6 +123,23 @@ def _child_block(student: Student):
     )
     pending_consents = [k for k in Consent.Kind.values if k not in given]
 
+    ieps = [
+        {
+            "id": str(p.pk),
+            "school_year": p.school_year,
+            "status": p.status,
+            "primary_concern": p.primary_concern,
+            "review_date": p.review_date,
+            "goals": [
+                {"area": g.get_area_display(), "progress": g.get_progress_display()}
+                for g in p.iepgoals.all()
+            ],
+        }
+        for p in IEP.objects.alive()
+        .filter(student=student, status__in=[IEP.Status.ACTIVE, IEP.Status.UNDER_REVIEW])
+        .prefetch_related("iepgoals")
+    ]
+
     return {
         "id": str(student.pk),
         "display_name": student.display_name,
@@ -144,6 +162,7 @@ def _child_block(student: Student):
         ],
         "open_incidents": [{**i, "id": str(i["id"])} for i in open_incidents],
         "pending_consents": pending_consents,
+        "ieps": ieps,
         "invoices": portal_summary(student),  # read-only; billing is the only writer
     }
 

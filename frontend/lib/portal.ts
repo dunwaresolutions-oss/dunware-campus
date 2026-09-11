@@ -47,6 +47,14 @@ export interface PortalChild {
   open_incidents: Array<{ id: string; occurred_at: string; category: string }>;
   pending_consents: string[];
   invoices: PortalInvoice[]; // billing is the only writer — read-only here
+  ieps: Array<{
+    id: string;
+    school_year: string;
+    status: string;
+    primary_concern: string;
+    review_date: string | null;
+    goals: Array<{ area: string; progress: string }>;
+  }>;
 }
 
 export interface PortalAnnouncement {

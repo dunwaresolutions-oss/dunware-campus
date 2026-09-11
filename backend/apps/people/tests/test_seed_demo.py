@@ -26,6 +26,8 @@ EXPECT_NONEMPTY = [
     "grades.AssessmentScheme", "grades.RubricCriterion", "grades.Assessment",
     "grades.AssessmentResult", "grades.RubricScore",
     "grades.ReportCard", "grades.ReportCardEntry",
+    "iep.IEP", "iep.IEPGoal", "iep.IEPAccommodation",
+    "iep.IEPService", "iep.IEPReview",
     "communication.Announcement", "communication.MessageThread",
     "communication.Message", "communication.MessageTemplate",
     "communication.IncidentReport",

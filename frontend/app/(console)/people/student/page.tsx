@@ -47,7 +47,7 @@ function ageOf(dob: string | null | undefined): string {
 }
 
 const TABS = [
-  "overview", "contacts", "health", "classes", "timetable",
+  "overview", "contacts", "health", "iep", "classes", "timetable",
   "attendance", "assessment", "discipline", "documents", "consents",
 ] as const;
 type Tab = (typeof TABS)[number];
@@ -385,6 +385,25 @@ export default function StudentProfilePage() {
                 { name: "review_by", label: "Review by", type: "date" },
               ]}
             />
+          </div>
+        )}
+
+        {tab === "iep" && (
+          <div className="space-y-2">
+            <RelList
+              resource="ieps"
+              studentId={s.id}
+              render={(r) =>
+                `${r.primary_concern || "IEP"} · ${label(String(r.status))} · ${r.goal_count ?? 0} goal(s)${r.review_date ? ` · review ${date(String(r.review_date))}` : ""}`
+              }
+              empty="No IEP on file."
+            />
+            <a
+              href={`/iep?student=${s.id}`}
+              className="inline-block text-sm text-[var(--campus-accent)] hover:underline"
+            >
+              Open in IEPs →
+            </a>
           </div>
         )}
 

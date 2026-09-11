@@ -97,6 +97,7 @@ LOCAL_APPS = [
     "apps.attendance",
     "apps.lessons",
     "apps.grades",
+    "apps.iep",
     "apps.booking",
     "apps.communication",
     "apps.billing",

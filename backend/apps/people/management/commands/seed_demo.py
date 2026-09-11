@@ -703,6 +703,69 @@ class Command(BaseCommand):
                 status=LessonPlan.Status.DRAFT,
             )
 
+        # ── IEPs on a handful of pupils ─────────────────────────────
+        from apps.iep.models import (
+            IEP,
+            IEPAccommodation,
+            IEPGoal,
+            IEPReview,
+            IEPService,
+        )
+
+        made["ieps"] = 0
+        _iep_specs = [
+            ("Specific learning disability — reading fluency", IEPGoal.Area.READING),
+            ("Speech / language delay", IEPGoal.Area.COMMUNICATION),
+            ("ADHD — organisation and self-regulation", IEPGoal.Area.ORGANISATION),
+        ]
+        for pupil, (concern, area) in zip(
+            all_pupils[: (1 if quick else 3)], _iep_specs, strict=False
+        ):
+            plan = IEP.objects.create(
+                student=pupil, school_year=YEAR_NAME,
+                status=IEP.Status.ACTIVE, primary_concern=concern,
+                start_date=YEAR_START, review_date=TERM2[0],
+                strengths="Engaged in hands-on tasks; strong verbal reasoning.",
+                needs="Extra time and scaffolding for extended written work.",
+                summary="Reviewed with the family; targets set for the year.",
+                case_manager=head, created_by=head,
+            )
+            IEPGoal.objects.create(
+                iep=plan, area=area, order=1,
+                description="Meet the grade-level benchmark for the target area by June.",
+                baseline="Currently ~1 year below grade level.",
+                target="Within 6 months of grade level on the spring assessment.",
+                progress=IEPGoal.Progress.PROGRESSING,
+                progress_notes="Steady gains through term 1.",
+            )
+            IEPGoal.objects.create(
+                iep=plan, area=IEPGoal.Area.SOCIAL_EMOTIONAL, order=2,
+                description="Use a self-regulation strategy independently when frustrated.",
+                progress=IEPGoal.Progress.EMERGING,
+            )
+            IEPAccommodation.objects.create(
+                iep=plan, category=IEPAccommodation.Category.TIMING,
+                description="Extended time (1.5x) on assessments.",
+                applies_to="Assessments",
+            )
+            IEPAccommodation.objects.create(
+                iep=plan, category=IEPAccommodation.Category.PRESENTATION,
+                description="Instructions given verbally and in writing; chunked tasks.",
+            )
+            IEPService.objects.create(
+                iep=plan, service="Resource room support", provider="Ms. Okafor",
+                frequency="3 x 40 min / week", location="Room 12",
+                start_date=YEAR_START,
+            )
+            IEPReview.objects.create(
+                iep=plan, review_date=TERM1[1],
+                attendees="Parent, classroom teacher, resource teacher",
+                outcome=IEPReview.Outcome.CONTINUE,
+                notes="On track; continue as written.",
+                next_review_date=TERM2[0], recorded_by=head,
+            )
+            made["ieps"] += 1
+
         # ── report cards: finalise (not release) a second class ─────
         for card in ReportCard.objects.filter(status=ReportCard.Status.DRAFT)[
             : (1 if quick else 25)
@@ -930,6 +993,13 @@ class Command(BaseCommand):
             RubricScore,
         )
         from apps.health.models import HealthAccessGrant
+        from apps.iep.models import (
+            IEP,
+            IEPAccommodation,
+            IEPGoal,
+            IEPReview,
+            IEPService,
+        )
         from apps.lessons.models import CurriculumUnit, LessonPlan, LessonResource
         from apps.people.models import ContactChangeRequest, Document
         from apps.registration.models import (
@@ -952,6 +1022,7 @@ class Command(BaseCommand):
 
         ordered = [
             BackupRun,
+            IEPReview, IEPService, IEPAccommodation, IEPGoal, IEP,
             Payment, InvoiceLine, Credit, Invoice,
             RubricScore, AssessmentResult, Assessment, RubricCriterion,
             ReportCardEntry, ReportCard,

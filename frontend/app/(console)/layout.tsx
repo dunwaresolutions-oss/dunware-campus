@@ -24,6 +24,7 @@ const NAV: [string, string, Role[]?][] = [
   ["/attendance/", "Attendance"],
   ["/lessons/", "Lessons", INSTRUCT],
   ["/grades/", "Grades"],
+  ["/iep/", "IEPs", INSTRUCT],
   ["/booking/", "Booking"],
   ["/communication/", "Messages"],
   ["/billing/", "Billing", OFFICE],

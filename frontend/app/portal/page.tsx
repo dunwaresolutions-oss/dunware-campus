@@ -269,6 +269,35 @@ function ChildCard({
         </div>
       </div>
 
+      {child.ieps.length > 0 && (
+        <div className="mt-4 rounded-md border border-[var(--campus-line)] p-3">
+          <div className="text-xs font-semibold uppercase text-[var(--campus-muted)]">
+            Individual Education Plan
+          </div>
+          {child.ieps.map((p) => (
+            <div key={p.id} className="mt-1 text-sm">
+              <span className="font-medium">{p.primary_concern || "IEP"}</span>{" "}
+              <span className="text-[var(--campus-muted)]">
+                · {label(p.status)}
+                {p.review_date ? ` · review ${date(p.review_date)}` : ""}
+              </span>
+              {p.goals.length > 0 && (
+                <ul className="mt-0.5 text-[var(--campus-muted)]">
+                  {p.goals.map((g, i) => (
+                    <li key={i}>
+                      {g.area} — {g.progress}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+          <p className="mt-1 text-xs text-[var(--campus-muted)]">
+            Contact the school for the full plan.
+          </p>
+        </div>
+      )}
+
       {child.pending_consents.length > 0 && (
         <div className="mt-4 rounded-md bg-amber-50 p-3">
           <div className="text-xs font-semibold uppercase text-amber-800">
