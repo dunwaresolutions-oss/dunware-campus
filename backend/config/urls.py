@@ -41,6 +41,7 @@ api_patterns = [
     path("", include("apps.attendance.urls")),
     path("", include("apps.lessons.urls")),
     path("", include("apps.communication.urls")),
+    path("", include("apps.staffchat.urls")),
     path("", include("apps.grades.urls")),
     path("", include("apps.iep.urls")),
     path("", include("apps.booking.urls")),

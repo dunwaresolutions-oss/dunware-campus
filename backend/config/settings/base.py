@@ -100,6 +100,7 @@ LOCAL_APPS = [
     "apps.iep",
     "apps.booking",
     "apps.communication",
+    "apps.staffchat",
     "apps.billing",
     "apps.reporting",
 ]
