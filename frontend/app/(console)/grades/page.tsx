@@ -296,6 +296,7 @@ export default function GradesPage() {
           terms.data?.find((t) => t.id === openCard?.term)?.name ??
           String(openCard?.term ?? "")
         }
+        groupOpts={groupOpts}
       />
     </div>
   );
@@ -306,11 +307,13 @@ function ReportCardDrawer({
   onClose,
   studentName,
   termName,
+  groupOpts,
 }: {
   card: ReportCardRow | null;
   onClose: () => void;
   studentName: string;
   termName: string;
+  groupOpts: { value: string | number; label: string }[];
 }) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -423,6 +426,9 @@ function ReportCardDrawer({
             return (
               <span>
                 <span className="font-medium">{String(r.subject ?? "")}</span>
+                {r.group_name ? (
+                  <span className="text-[var(--campus-muted)]"> ({String(r.group_name)})</span>
+                ) : null}
                 {mark ? ` · mark ${mark}` : ""}
                 {lvl ? ` · level ${lvl}` : ""}
                 {r.comment ? (
@@ -438,6 +444,7 @@ function ReportCardDrawer({
             editable
               ? [
                   { name: "subject", label: "Subject / learning area", required: true },
+                  { name: "group", label: "Your class (optional)", type: "select", options: groupOpts },
                   { name: "mark", label: "Mark", type: "number" },
                   { name: "level", label: "Level", type: "number" },
                   { name: "comment", label: "Comment (encrypted)", type: "textarea" },
@@ -446,6 +453,10 @@ function ReportCardDrawer({
               : undefined
           }
         />
+        <p className="text-xs text-[var(--campus-muted)]">
+          Every teacher of this student can add their own subject here — pick your
+          class so it&apos;s clear whose entry is whose.
+        </p>
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--campus-line)] pt-3">
           <Button

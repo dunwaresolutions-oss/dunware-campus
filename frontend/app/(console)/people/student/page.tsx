@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useQueryParam, useList, useAll, options } from "@/lib/hooks";
 import { retrieve, patch, create } from "@/lib/resource";
 import { api } from "@/lib/api";
-import { fetchCalendar, iso, addDays } from "@/lib/calendar";
+import { ScheduleCalendar } from "@/components/ScheduleCalendar";
 import { NestedList } from "@/components/NestedList";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
@@ -24,7 +24,7 @@ interface Student {
   pronouns?: string;
   student_number?: string;
   status: string;
-  primary_group: number | null;
+  primary_group: string | null;
   primary_group_name?: string;
   photo_url: string | null;
   government_id?: string;
@@ -71,7 +71,7 @@ export default function StudentProfilePage() {
     queryFn: () => api<{ prev: string | null; next: string | null }>(`/students/${id}/adjacent/`),
     enabled: !!id,
   });
-  const groups = useAll<{ id: number; name: string }>("groups");
+  const groups = useAll<{ id: string; name: string }>("groups");
 
   const s = q.data;
 
@@ -531,51 +531,35 @@ function RelList({
   );
 }
 
-function Timetable({ groupId }: { groupId: number | null }) {
-  const from = iso(new Date());
-  const to = iso(addDays(new Date(), 13));
-  const q = useQuery({
-    queryKey: ["student-timetable", groupId, from, to],
-    queryFn: () => fetchCalendar(from, to, groupId ?? ""),
-    enabled: !!groupId,
-  });
+function Timetable({ groupId }: { groupId: string | null }) {
+  const [open, setOpen] = useState<import("@/lib/calendar").CalendarSession | null>(null);
   if (!groupId)
     return (
       <div className="rounded-md border border-[var(--campus-line)] px-3 py-5 text-center text-sm text-[var(--campus-muted)]">
         No primary group — assign one on the Overview tab.
       </div>
     );
-  const sessions = q.data?.sessions ?? [];
   return (
-    <div className="rounded-md border border-[var(--campus-line)]">
-      <div className="border-b border-[var(--campus-line)] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
-        Next two weeks
-      </div>
-      {q.isLoading ? (
-        <Spinner />
-      ) : sessions.length === 0 ? (
-        <div className="px-3 py-5 text-center text-sm text-[var(--campus-muted)]">
-          No sessions scheduled.
-        </div>
-      ) : (
-        <ul className="divide-y divide-[var(--campus-line)] text-sm">
-          {sessions.map((s) => (
-            <li key={s.id} className="flex justify-between px-3 py-2">
-              <span>
-                {date(s.date)} · {time(s.start_time)}–{time(s.end_time)}
-                {s.status === "CANCELLED" && (
-                  <span className="text-red-600"> · cancelled</span>
-                )}
-              </span>
-              <span className="text-[var(--campus-muted)]">
-                {s.title || s.group_name}
-                {s.room_name ? ` · ${s.room_name}` : ""}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+    <>
+      <ScheduleCalendar groups={[]} fixedGroupId={groupId} initialView="week" onOpenSession={setOpen} />
+      <Modal
+        open={!!open}
+        onClose={() => setOpen(null)}
+        title={open ? open.title || open.group_name || "Session" : "Session"}
+      >
+        {open && (
+          <div className="space-y-1 text-sm">
+            <div>{date(open.date)} · {time(open.start_time)}–{time(open.end_time)}</div>
+            {open.room_name && <div className="text-[var(--campus-muted)]">{open.room_name}</div>}
+            {open.status === "CANCELLED" && (
+              <div className="text-red-600">
+                Cancelled{open.cancelled_reason ? `: ${open.cancelled_reason}` : ""}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 

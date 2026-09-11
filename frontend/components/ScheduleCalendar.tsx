@@ -88,17 +88,23 @@ function withLanes(items: CalendarSession[]) {
 export function ScheduleCalendar({
   groups,
   onOpenSession,
+  fixedGroupId,
+  initialView = "month",
 }: {
-  groups: { id: number; name: string }[];
+  groups: { id: string; name: string }[];
   onOpenSession: (s: CalendarSession) => void;
+  /** Lock to one group and hide the filter — e.g. a student's own timetable. */
+  fixedGroupId?: string;
+  initialView?: View;
 }) {
-  const [view, setView] = useState<View>("month");
+  const [view, setView] = useState<View>(initialView);
   const [anchor, setAnchor] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   });
-  const [groupId, setGroupId] = useState<number | "">("");
+  const [pickedGroupId, setPickedGroupId] = useState<string>("");
+  const groupId = fixedGroupId ?? pickedGroupId;
 
   const [from, to] = rangeFor(view, anchor);
   const q = useQuery({
@@ -177,20 +183,20 @@ export function ScheduleCalendar({
 
         <div className="text-sm font-semibold">{titleFor(view, anchor)}</div>
 
-        <select
-          value={groupId}
-          onChange={(e) =>
-            setGroupId(e.target.value ? Number(e.target.value) : "")
-          }
-          className="ml-auto rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-2.5 py-1.5 text-xs"
-        >
-          <option value="">All groups</option>
-          {groups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
+        {!fixedGroupId && (
+          <select
+            value={pickedGroupId}
+            onChange={(e) => setPickedGroupId(e.target.value)}
+            className="ml-auto rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-2.5 py-1.5 text-xs"
+          >
+            <option value="">All groups</option>
+            {groups.map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {q.isLoading ? (

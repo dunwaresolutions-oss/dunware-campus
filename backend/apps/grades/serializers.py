@@ -44,27 +44,35 @@ class RubricScoreSerializer(serializers.ModelSerializer):
 class AssessmentResultSerializer(serializers.ModelSerializer):
     graded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     rubric_scores = RubricScoreSerializer(many=True, read_only=True)
+    assessment_title = serializers.CharField(source="assessment.title", read_only=True)
+    student_name = serializers.CharField(source="student.display_name", read_only=True)
 
     class Meta:
         model = AssessmentResult
-        fields = ["id", "assessment", "student", "mark", "level", "narrative",
-                  "graded_by", "rubric_scores", "created_at"]
+        fields = ["id", "assessment", "assessment_title", "student", "student_name",
+                  "mark", "level", "narrative", "graded_by", "rubric_scores", "created_at"]
 
 
 class ReportCardEntrySerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source="group.name", read_only=True, default="")
+
     class Meta:
         model = ReportCardEntry
-        fields = ["id", "report_card", "subject", "group", "mark", "level", "comment", "order"]
+        fields = ["id", "report_card", "subject", "group", "group_name", "mark",
+                  "level", "comment", "order"]
 
 
 class ReportCardSerializer(serializers.ModelSerializer):
     entries = ReportCardEntrySerializer(many=True, read_only=True)
     document_url = serializers.SerializerMethodField()
+    student_name = serializers.CharField(source="student.display_name", read_only=True)
+    term_name = serializers.CharField(source="term.name", read_only=True)
 
     class Meta:
         model = ReportCard
-        fields = ["id", "student", "term", "status", "summary_narrative", "entries",
-                  "document_url", "generated_at", "released_at", "created_at"]
+        fields = ["id", "student", "student_name", "term", "term_name", "status",
+                  "summary_narrative", "entries", "document_url", "generated_at",
+                  "released_at", "created_at"]
         read_only_fields = ["status", "generated_at", "released_at"]
 
     def get_document_url(self, obj) -> str | None:

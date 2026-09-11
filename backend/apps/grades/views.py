@@ -252,4 +252,9 @@ class ReportCardEntryViewSet(_InstructorScopedViewSet):
             card = serializer.validated_data.get("report_card")
             if card is None or not card.student.is_visible_to(self.request.user):
                 self.permission_denied(self.request, message="Not your student.")
+            group = serializer.validated_data.get("group")
+            if group is not None and group.id not in _instructor_group_ids(self.request.user):
+                self.permission_denied(
+                    self.request, message="You don't teach that class — pick your own group."
+                )
         serializer.save()

@@ -126,6 +126,17 @@ def test_calendar_returns_sessions_and_closures_in_range(auth_client, admin_user
     assert len(data["closures"]) == 1 and data["closures"][0]["reason"] == "Teacher PD day"
 
 
+def test_calendar_group_filter_takes_the_uuid_pk(auth_client, admin_user):
+    term = _term()
+    g1, g2 = make_group(), make_group()
+    generate_occurrences(_template(g1, term, weekday=0))
+    generate_occurrences(_template(g2, term, weekday=1))
+    data = auth_client(admin_user).get(
+        CAL, {"from": "2026-09-01", "to": "2026-09-30", "group": str(g1.pk)}
+    ).json()
+    assert data["sessions"] and {str(s["group"]) for s in data["sessions"]} == {str(g1.pk)}
+
+
 def test_calendar_is_instructor_scoped(auth_client, staff):
     term = _term()
     mine, theirs = make_group(), make_group()

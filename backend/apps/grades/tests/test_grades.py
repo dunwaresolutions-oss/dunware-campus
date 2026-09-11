@@ -184,6 +184,51 @@ def test_parent_can_preview_released_card_only(auth_client, admin_user, make_use
     assert pc.get(f"/api/report-cards/{card.pk}/preview/").status_code == 200
 
 
+def test_two_different_teachers_can_each_add_their_own_entry(auth_client, make_user):
+    """Multiple teachers of the same student each contribute a subject to
+    one report card before it's finalized — no single "owner" required."""
+    from apps.people.models import GroupStaff
+
+    kid = make_student()
+    math_group, art_group = make_group(), make_group()
+    enrol(kid, math_group)
+    enrol(kid, art_group)
+    math_teacher = make_user(username="mathteacher", role="TEACHER")
+    art_teacher = make_user(username="artteacher", role="TEACHER")
+    assign_staff(math_group, math_teacher)
+    assign_staff(art_group, art_teacher)
+    card = ReportCard.objects.create(student=kid, term=_term())
+
+    r1 = auth_client(math_teacher).post(
+        "/api/report-card-entries/",
+        {"report_card": str(card.pk), "subject": "Math", "group": str(math_group.pk), "mark": 88},
+        format="json",
+    )
+    r2 = auth_client(art_teacher).post(
+        "/api/report-card-entries/",
+        {"report_card": str(card.pk), "subject": "Art", "group": str(art_group.pk), "mark": 95},
+        format="json",
+    )
+    assert r1.status_code == 201 and r2.status_code == 201
+    assert {e["subject"] for e in card.entries.values("subject")} == {"Math", "Art"}
+    assert GroupStaff.objects.filter(user=math_teacher, group=math_group).exists()
+
+
+def test_teacher_cannot_attribute_an_entry_to_a_group_they_do_not_teach(auth_client, staff):
+    mine, theirs = make_group(), make_group()
+    assign_staff(mine, staff)
+    kid = make_student()
+    enrol(kid, mine)
+    card = ReportCard.objects.create(student=kid, term=_term())
+
+    resp = auth_client(staff).post(
+        "/api/report-card-entries/",
+        {"report_card": str(card.pk), "subject": "Science", "group": str(theirs.pk)},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
 def test_pdf_engine_helper_raises_when_absent():
     from apps.grades.services import html_to_pdf
 

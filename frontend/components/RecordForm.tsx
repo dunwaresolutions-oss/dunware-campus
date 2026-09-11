@@ -24,6 +24,8 @@ export interface FieldDef {
   help?: string;
   options?: { value: string | number; label: string }[];
   placeholder?: string;
+  /** Force this field to span both grid columns (textarea/file already do). */
+  wide?: boolean;
 }
 
 type Values = Record<string, unknown>;
@@ -113,104 +115,126 @@ export function RecordForm({
     }
   }
 
-  const inputCls =
-    "w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] text-[var(--campus-fg)] px-3 py-2 text-sm transition-colors focus:border-[var(--campus-accent)] focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)]";
+  const box = (err?: string) =>
+    `w-full rounded-lg border bg-[var(--campus-input-bg)] text-[var(--campus-fg)] px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--campus-ring)] ${
+      err
+        ? "border-red-400 focus:border-red-400"
+        : "border-[var(--campus-line)] focus:border-[var(--campus-accent)]"
+    }`;
 
   return (
-    <form onSubmit={submit} className="space-y-4">
+    <form onSubmit={submit} className="space-y-5">
       {formError && <ErrorNote message={formError} />}
-      {fields.map((f) => {
-        const val = state[f.name];
-        const err = fieldErrors[f.name];
-        return (
-          <div key={f.name}>
-            <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
-              {f.label}
-              {f.required && <span className="text-red-500"> *</span>}
-            </label>
-            {f.type === "textarea" ? (
-              <textarea
-                className={inputCls}
-                rows={3}
-                value={val as string}
-                placeholder={f.placeholder}
-                onChange={(e) =>
-                  setState((s) => ({ ...s, [f.name]: e.target.value }))
-                }
-              />
-            ) : f.type === "select" ? (
-              <select
-                className={inputCls}
-                value={val as string}
-                onChange={(e) =>
-                  setState((s) => ({ ...s, [f.name]: e.target.value }))
-                }
-              >
-                <option value="">—</option>
-                {f.options?.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            ) : f.type === "checkbox" ? (
-              <input
-                type="checkbox"
-                className="h-4 w-4 rounded border-[var(--campus-line)]"
-                checked={val as boolean}
-                onChange={(e) =>
-                  setState((s) => ({ ...s, [f.name]: e.target.checked }))
-                }
-              />
-            ) : f.type === "file" ? (
-              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-3 text-sm transition-colors hover:border-[var(--campus-accent)]">
-                <span className="rounded-md bg-[var(--campus-accent)] px-3 py-1.5 text-xs font-medium text-white">
-                  Choose file
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[var(--campus-fg)]">
-                  {files[f.name]?.name ?? "No file selected"}
-                </span>
-                <input
-                  type="file"
-                  className="sr-only"
+      <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+        {fields.map((f) => {
+          const val = state[f.name];
+          const err = fieldErrors[f.name];
+          const wide = f.wide || f.type === "textarea" || f.type === "file";
+          if (f.type === "checkbox") {
+            return (
+              <div key={f.name} className={wide ? "sm:col-span-2" : ""}>
+                <label className="flex items-center gap-2.5 rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 rounded border-[var(--campus-line)] accent-[var(--campus-accent)]"
+                    checked={val as boolean}
+                    onChange={(e) =>
+                      setState((s) => ({ ...s, [f.name]: e.target.checked }))
+                    }
+                  />
+                  <span>
+                    {f.label}
+                    {f.help && (
+                      <span className="block text-xs text-[var(--campus-muted)]">
+                        {f.help}
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </div>
+            );
+          }
+          return (
+            <div key={f.name} className={wide ? "sm:col-span-2" : ""}>
+              <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
+                {f.label}
+                {f.required && <span className="text-red-500"> *</span>}
+              </label>
+              {f.type === "textarea" ? (
+                <textarea
+                  className={box(err)}
+                  rows={3}
+                  value={val as string}
+                  placeholder={f.placeholder}
                   onChange={(e) =>
-                    setFiles((s) => ({
-                      ...s,
-                      [f.name]: e.target.files?.[0] ?? null,
-                    }))
+                    setState((s) => ({ ...s, [f.name]: e.target.value }))
                   }
                 />
-              </label>
-            ) : (
-              <input
-                className={inputCls}
-                type={
-                  f.type === "number" || f.type === "money"
-                    ? "number"
-                    : f.type === "date"
-                      ? "date"
-                      : f.type === "time"
-                        ? "time"
-                        : f.type === "datetime"
-                          ? "datetime-local"
-                          : "text"
-                }
-                step={f.type === "money" ? "0.01" : undefined}
-                value={val as string}
-                placeholder={f.placeholder}
-                onChange={(e) =>
-                  setState((s) => ({ ...s, [f.name]: e.target.value }))
-                }
-              />
-            )}
-            {f.help && !err && (
-              <p className="mt-1 text-xs text-[var(--campus-muted)]">{f.help}</p>
-            )}
-            {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
-          </div>
-        );
-      })}
-      <div className="flex justify-end gap-2 pt-1">
+              ) : f.type === "select" ? (
+                <select
+                  className={box(err)}
+                  value={val as string}
+                  onChange={(e) =>
+                    setState((s) => ({ ...s, [f.name]: e.target.value }))
+                  }
+                >
+                  <option value="">—</option>
+                  {f.options?.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : f.type === "file" ? (
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-3 text-sm transition-colors hover:border-[var(--campus-accent)]">
+                  <span className="rounded-md bg-[var(--campus-accent)] px-3 py-1.5 text-xs font-medium text-white">
+                    Choose file
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[var(--campus-fg)]">
+                    {files[f.name]?.name ?? "No file selected"}
+                  </span>
+                  <input
+                    type="file"
+                    className="sr-only"
+                    onChange={(e) =>
+                      setFiles((s) => ({
+                        ...s,
+                        [f.name]: e.target.files?.[0] ?? null,
+                      }))
+                    }
+                  />
+                </label>
+              ) : (
+                <input
+                  className={box(err)}
+                  type={
+                    f.type === "number" || f.type === "money"
+                      ? "number"
+                      : f.type === "date"
+                        ? "date"
+                        : f.type === "time"
+                          ? "time"
+                          : f.type === "datetime"
+                            ? "datetime-local"
+                            : "text"
+                  }
+                  step={f.type === "money" ? "0.01" : undefined}
+                  value={val as string}
+                  placeholder={f.placeholder}
+                  onChange={(e) =>
+                    setState((s) => ({ ...s, [f.name]: e.target.value }))
+                  }
+                />
+              )}
+              {f.help && !err && (
+                <p className="mt-1 text-xs text-[var(--campus-muted)]">{f.help}</p>
+              )}
+              {err && <p className="mt-1 text-xs text-red-600">{err}</p>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-end gap-2 border-t border-[var(--campus-line)] pt-4">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

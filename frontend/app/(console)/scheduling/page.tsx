@@ -14,7 +14,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 
 interface Group {
-  id: number;
+  id: string;
   name: string;
 }
 interface Term {
@@ -27,7 +27,7 @@ interface Room {
 }
 interface SessionRow {
   id: number;
-  group: number;
+  group: string;
   group_name?: string;
   room_name?: string;
   date: string;

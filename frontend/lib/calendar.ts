@@ -2,7 +2,7 @@ import { api } from "./api";
 
 export interface CalendarSession {
   id: number;
-  group: number;
+  group: string;
   group_name?: string;
   room_name?: string;
   staff_name?: string;
@@ -19,7 +19,7 @@ export interface CalendarClosure {
   start_date: string;
   end_date: string;
   reason: string;
-  group: number | null;
+  group: string | null;
   group_name: string | null;
 }
 
@@ -33,10 +33,10 @@ export interface CalendarPayload {
 export const fetchCalendar = (
   from: string,
   to: string,
-  groupId?: number | "",
+  groupId?: string,
 ): Promise<CalendarPayload> => {
   const q = new URLSearchParams({ from, to });
-  if (groupId) q.set("group", String(groupId));
+  if (groupId) q.set("group", groupId);
   return api<CalendarPayload>(`/sessions/calendar/?${q.toString()}`);
 };
 

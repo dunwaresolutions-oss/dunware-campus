@@ -8,7 +8,7 @@ can navigate to:
     {"query": "...", "groups": [
         {"title": "Students", "items": [
             {"id": "...", "label": "...", "sublabel": "...",
-             "route": "/people/?tab=students&focus=..."}
+             "route": "/people/student?id=..."}
         ]}
     ]}
 """
@@ -70,7 +70,7 @@ class SearchView(APIView):
                     s.primary_group.name if s.primary_group_id else "",
                     s.get_status_display(),
                 ),
-                "route": f"/people/?tab=students&focus={s.pk}",
+                "route": f"/people/student?id={s.pk}",
             }
             for s in s_hits
         )))
