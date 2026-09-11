@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -27,6 +28,15 @@ _ADMIN_ROLES = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
 _INSTRUCTOR_ROLES = {Role.TEACHER, Role.TUTOR}
 
 
+def _student_search_q(term: str, prefix: str = "student__") -> Q:
+    return (
+        Q(**{f"{prefix}first_name__icontains": term})
+        | Q(**{f"{prefix}last_name__icontains": term})
+        | Q(**{f"{prefix}preferred_name__icontains": term})
+        | Q(**{f"{prefix}student_number__icontains": term})
+    )
+
+
 class CataloguePermission(BasePermission):
     """Offerings and slots: any authenticated user browses; front office (or the
     offering's own provider, checked per-object) manages."""
@@ -44,6 +54,13 @@ class OfferingViewSet(CampusViewSet):
     serializer_class = OfferingSerializer
     permission_classes = [CataloguePermission]
     audit_reads = False
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q))
+        return qs
 
     def _can_manage(self, offering=None) -> bool:
         role = getattr(self.request.user, "role", None)
@@ -81,6 +98,13 @@ class AvailabilityWindowViewSet(CampusViewSet):
     permission_classes = [FrontOffice, MFAVerified]
     audit_reads = False
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(offering__title__icontains=q)
+        return qs
+
 
 class SlotViewSet(CampusViewSet):
     serializer_class = SlotSerializer
@@ -99,6 +123,9 @@ class SlotViewSet(CampusViewSet):
             from django.utils import timezone
 
             qs = qs.filter(starts_at__gte=timezone.now())
+        q = (params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(offering__title__icontains=q)
         return qs
 
     @action(detail=True, methods=["post"])
@@ -126,14 +153,19 @@ class BookingViewSet(CampusViewSet):
         ).order_by("-created_at")
         role = getattr(self.request.user, "role", None)
         if role in _ADMIN_ROLES:
-            return qs
-        if role in _INSTRUCTOR_ROLES:
-            return qs.filter(slot__offering__provider=self.request.user) | qs.filter(
+            pass
+        elif role in _INSTRUCTOR_ROLES:
+            qs = qs.filter(slot__offering__provider=self.request.user) | qs.filter(
                 student__in=Student.visible_queryset(self.request.user)
             )
-        if role == Role.PARENT:
-            return qs.filter(student__in=Student.visible_queryset(self.request.user))
-        return qs.none()
+        elif role == Role.PARENT:
+            qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
+        else:
+            return qs.none()
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(_student_search_q(q) | Q(slot__offering__title__icontains=q))
+        return qs
 
     def create(self, request, *args, **kwargs):
         slot = get_object_or_404(Slot, pk=request.data.get("slot"))

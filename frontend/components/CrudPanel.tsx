@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useList } from "@/lib/hooks";
 import { create, patch, remove } from "@/lib/resource";
 import { apiMessage } from "@/lib/format";
@@ -38,6 +38,8 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   detailFields,
   detailTitle,
   onRowOpen,
+  searchable,
+  searchPlaceholder,
 }: {
   resource: string;
   columns: Column<T>[];
@@ -59,6 +61,10 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   detailTitle?: (row: T) => string;
   /** bespoke preview: row-click calls this instead of opening the edit form */
   onRowOpen?: (row: T) => void;
+  /** show a debounced "?q=" search box in the header — the resource's
+   *  viewset must support it (see backend `?q=` filters per app). */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -66,8 +72,22 @@ export function CrudPanel<T extends { id: string | number } = Row>({
   const [editing, setEditing] = useState<T | null>(null);
   const [creating, setCreating] = useState(false);
   const [detail, setDetail] = useState<T | null>(null);
+  const [term, setTerm] = useState("");
+  const [debounced, setDebounced] = useState("");
 
-  const q = useList<T>(resource, { ...query, page });
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(term.trim()), 300);
+    return () => clearTimeout(id);
+  }, [term]);
+  useEffect(() => {
+    setPage(1);
+  }, [debounced]);
+
+  const q = useList<T>(resource, {
+    ...query,
+    page,
+    ...(searchable ? { q: debounced || undefined } : {}),
+  });
   const reload = () =>
     qc.invalidateQueries({ queryKey: ["list", resource] });
 
@@ -129,14 +149,26 @@ export function CrudPanel<T extends { id: string | number } = Row>({
 
   return (
     <Card>
-      {(canCreate || headerActions) && fields && (
-        <div className="flex justify-end gap-2 border-b border-[var(--campus-line)] p-3">
-          {headerActions}
-          {canCreate && (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              New {singular}
-            </Button>
+      {(searchable || ((canCreate || headerActions) && fields)) && (
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--campus-line)] p-3">
+          {searchable ? (
+            <input
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              placeholder={searchPlaceholder ?? `Search ${singular}s…`}
+              className="w-full max-w-xs rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+            />
+          ) : (
+            <span />
           )}
+          <span className="flex items-center gap-2">
+            {headerActions}
+            {canCreate && fields && (
+              <Button size="sm" onClick={() => setCreating(true)}>
+                New {singular}
+              </Button>
+            )}
+          </span>
         </div>
       )}
 

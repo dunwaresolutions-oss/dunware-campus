@@ -233,6 +233,8 @@ export default function RegistrationPage() {
         <CrudPanel
           resource="offers"
           singular="offer"
+          searchable
+          searchPlaceholder="Search by child or group…"
           canCreate={false}
           columns={[
             { header: "Child", cell: (r) => (r.child_name as string) || `#${r.application}` },
@@ -294,6 +296,8 @@ export default function RegistrationPage() {
         <CrudPanel
           resource="enrolments"
           singular="enrolment"
+          searchable
+          searchPlaceholder="Search by student or group…"
           columns={[
             {
               header: "Student",
@@ -373,6 +377,8 @@ export default function RegistrationPage() {
         <CrudPanel
           resource="consents"
           singular="consent"
+          searchable
+          searchPlaceholder="Search by student…"
           columns={[
             {
               header: "Student",

@@ -55,6 +55,36 @@ def test_parent_sees_only_their_childs_consents(auth_client, make_user):
     assert student_ids == {str(kid_a.pk)}
 
 
+def test_enrolments_search_by_student_or_group_name(auth_client, admin_user):
+    from apps.people.tests.factories import enrol, make_group, make_student
+
+    findme = make_student(first_name="Zelda", last_name="Nohansen")
+    other = make_student(first_name="Bowser", last_name="Koopa")
+    group = make_group(name="Hyrule Homeroom")
+    enrol(findme, group)
+    enrol(other, make_group())
+
+    client = auth_client(admin_user)
+    resp = client.get("/api/enrolments/?q=Zelda")
+    names = {row["student_name"] for row in resp.data["results"]}
+    assert names == {"Zelda Nohansen"}
+
+    resp = client.get("/api/enrolments/?q=Hyrule")
+    assert any(str(row["student"]) == str(findme.pk) for row in resp.data["results"])
+
+
+def test_consents_search_by_student_name(auth_client, admin_user):
+    kid_a = make_student(first_name="Zelda", last_name="Nohansen")
+    kid_b = make_student(first_name="Bowser", last_name="Koopa")
+    Consent.objects.create(student=kid_a, kind=Consent.Kind.PHOTO, granted=True)
+    Consent.objects.create(student=kid_b, kind=Consent.Kind.PHOTO, granted=True)
+
+    client = auth_client(admin_user)
+    resp = client.get("/api/consents/?q=Zelda")
+    student_ids = {str(row["student"]) for row in resp.data["results"]}
+    assert student_ids == {str(kid_a.pk)}
+
+
 def test_offer_and_convert_over_the_api(auth_client, admin_user):
     from apps.people.tests.factories import make_group
 

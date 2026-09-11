@@ -68,6 +68,8 @@ export default function BookingPage() {
           <CrudPanel<OfferingRow>
             resource="offerings"
             singular="offering"
+            searchable
+            searchPlaceholder="Search offerings by title or description…"
             onRowOpen={setOpenOffering}
             columns={[
               { header: "Title", cell: (r) => r.title },
@@ -125,6 +127,8 @@ export default function BookingPage() {
           <CrudPanel
             resource="availability-windows"
             singular="availability window"
+            searchable
+            searchPlaceholder="Search by offering title…"
             columns={[
               {
                 header: "Offering",
@@ -180,6 +184,8 @@ export default function BookingPage() {
           <CrudPanel
             resource="slots"
             singular="slot"
+            searchable
+            searchPlaceholder="Search by offering title…"
             canCreate={false}
             columns={[
               {
@@ -235,6 +241,8 @@ export default function BookingPage() {
           <CrudPanel
             resource="bookings"
             singular="booking"
+            searchable
+            searchPlaceholder="Search by student or offering…"
             columns={[
               {
                 header: "Student",

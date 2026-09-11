@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -23,6 +24,16 @@ from .serializers import (
 from .services import convert_application, make_offer, respond_to_offer
 
 _FRONT_OFFICE = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
+
+
+def _student_search_q(term: str, prefix: str = "student__") -> Q:
+    """``?q=`` on any view scoped to a student FK — name/preferred-name/number."""
+    return (
+        Q(**{f"{prefix}first_name__icontains": term})
+        | Q(**{f"{prefix}last_name__icontains": term})
+        | Q(**{f"{prefix}preferred_name__icontains": term})
+        | Q(**{f"{prefix}student_number__icontains": term})
+    )
 
 
 class _FrontOfficeViewSet(CampusViewSet):
@@ -108,6 +119,17 @@ class OfferViewSet(_FrontOfficeViewSet):
     queryset = Offer.objects.select_related("application", "group")
     serializer_class = OfferSerializer
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(application__child_first_name__icontains=q)
+                | Q(application__child_last_name__icontains=q)
+                | Q(group__name__icontains=q)
+            )
+        return qs
+
     @action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
         offer = respond_to_offer(self.get_object(), accept=True, actor=request.user)
@@ -143,6 +165,9 @@ class EnrolmentViewSet(CampusViewSet):
         sid = self.request.query_params.get("student")
         if sid:
             qs = qs.filter(student_id=sid)
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(_student_search_q(q) | Q(group__name__icontains=q))
         return qs
 
     @action(detail=True, methods=["post"])
@@ -183,6 +208,9 @@ class ConsentViewSet(CampusViewSet):
         student = self.request.query_params.get("student")
         if student:
             qs = qs.filter(student_id=student)
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(_student_search_q(q))
         return qs
 
     def perform_create(self, serializer):
