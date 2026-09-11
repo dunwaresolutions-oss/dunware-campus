@@ -44,13 +44,30 @@ def _inbox_filter(user) -> Q:
     return Q(recipient=user) | Q(sender=user) | _role_audience_filter(user)
 
 
+def _can_delete(user, msg: StaffMessage) -> bool:
+    """Front office can clear anything (moderation); anyone else can only
+    remove a message they sent, or a direct message sent to them. A bystander
+    who merely sees a broadcast (matching their role) can't delete it for
+    everyone else -- only its sender or front office can."""
+    role = getattr(user, "role", None)
+    if role in (Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK):
+        return True
+    if msg.sender_id == user.pk:
+        return True
+    return msg.audience == StaffMessage.Audience.DIRECT and msg.recipient_id == user.pk
+
+
 class StaffMessageViewSet(viewsets.ModelViewSet):
-    """Append-only: no edit, no delete — this is a log of what was said, like
-    an incident hand-off, not a document to revise after the fact."""
+    """No edit -- a message's content is never revised after the fact. It can
+    be removed once read, so a busy inbox doesn't grow forever (there is no
+    "delete for everyone" subtlety to weigh here the way there would be for a
+    contested record: this is a hand-off note, not a legal document, and the
+    model carries no retention requirement -- see PII_FIELDS on StaffMessage
+    for what audited-read still applies to)."""
 
     serializer_class = StaffMessageSerializer
     permission_classes = [StaffOnly, MFAVerified]
-    http_method_names = ["get", "post", "head", "options"]
+    http_method_names = ["get", "post", "delete", "head", "options"]
 
     def get_queryset(self):
         user = self.request.user
@@ -78,6 +95,11 @@ class StaffMessageViewSet(viewsets.ModelViewSet):
         ):
             self.permission_denied(self.request, message="Staff chat is staff-only.")
         serializer.save(sender=self.request.user)
+
+    def perform_destroy(self, instance):
+        if not _can_delete(self.request.user, instance):
+            self.permission_denied(self.request, message="You can't remove this message.")
+        instance.delete()
 
     @action(detail=False, methods=["get"])
     def unread_count(self, request):

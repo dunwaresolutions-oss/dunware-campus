@@ -144,3 +144,71 @@ def test_message_body_is_encrypted_at_rest(make_user, auth_client):
 def test_a_parent_gets_no_access_to_staff_chat(parent, auth_client):
     resp = auth_client(parent).get("/api/staff-messages/")
     assert resp.status_code == 403
+
+
+def test_the_sender_can_delete_their_own_direct_message(make_user, auth_client):
+    sender = make_user(username="fd", role=Role.FRONT_DESK)
+    other = make_user(username="t1", role=Role.TEACHER)
+    client = auth_client(sender)
+    msg_id = client.post(
+        "/api/staff-messages/",
+        {"recipient": str(other.pk), "audience": "DIRECT", "body": "hi"},
+        format="json",
+    ).data["id"]
+    resp = client.delete(f"/api/staff-messages/{msg_id}/")
+    assert resp.status_code == 204
+    assert not StaffMessage.objects.filter(pk=msg_id).exists()
+
+
+def test_the_recipient_can_delete_a_direct_message_sent_to_them(make_user, auth_client):
+    sender = make_user(username="fd", role=Role.FRONT_DESK)
+    recipient = make_user(username="t1", role=Role.TEACHER)
+    msg_id = auth_client(sender).post(
+        "/api/staff-messages/",
+        {"recipient": str(recipient.pk), "audience": "DIRECT", "body": "hi"},
+        format="json",
+    ).data["id"]
+    resp = auth_client(recipient).delete(f"/api/staff-messages/{msg_id}/")
+    assert resp.status_code == 204
+
+
+def test_a_bystander_cannot_delete_a_broadcast_they_only_received(make_user, auth_client):
+    sender = make_user(username="fd", role=Role.FRONT_DESK)
+    teacher = make_user(username="t1", role=Role.TEACHER)
+    msg_id = auth_client(sender).post(
+        "/api/staff-messages/",
+        {"audience": "TEACHERS", "body": "assembly moved"},
+        format="json",
+    ).data["id"]
+    resp = auth_client(teacher).delete(f"/api/staff-messages/{msg_id}/")
+    assert resp.status_code == 403
+    assert StaffMessage.objects.filter(pk=msg_id).exists()
+
+
+def test_front_office_can_delete_any_message_they_can_see(make_user, auth_client):
+    a = make_user(username="t1", role=Role.TEACHER)
+    b = make_user(username="t2", role=Role.TEACHER)
+    admin = make_user(username="dir", role=Role.ADMIN)
+    msg_id = auth_client(a).post(
+        "/api/staff-messages/",
+        {"recipient": str(b.pk), "audience": "DIRECT", "body": "hi"},
+        format="json",
+    ).data["id"]
+    resp = auth_client(admin).delete(f"/api/staff-messages/{msg_id}/")
+    assert resp.status_code == 204
+
+
+def test_a_teacher_cannot_delete_someone_elses_direct_message(make_user, auth_client):
+    a = make_user(username="t1", role=Role.TEACHER)
+    b = make_user(username="t2", role=Role.TEACHER)
+    bystander = make_user(username="t3", role=Role.TEACHER)
+    msg_id = auth_client(a).post(
+        "/api/staff-messages/",
+        {"recipient": str(b.pk), "audience": "DIRECT", "body": "private"},
+        format="json",
+    ).data["id"]
+    resp = auth_client(bystander).delete(f"/api/staff-messages/{msg_id}/")
+    # a bystander can't even see this DM (get_queryset scopes it out), so the
+    # object lookup itself 404s rather than reaching the permission check.
+    assert resp.status_code == 404
+    assert StaffMessage.objects.filter(pk=msg_id).exists()

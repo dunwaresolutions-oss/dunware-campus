@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { create, list } from "./resource";
+import { create, list, remove } from "./resource";
 
 export type StaffAudience = "DIRECT" | "TEACHERS" | "TUTORS" | "ALL_STAFF";
 
@@ -30,3 +30,7 @@ export const unreadStaffMessageCount = () =>
 
 export const markStaffMessagesRead = () =>
   api<{ unread: number }>("/staff-messages/mark_read/", { method: "POST" });
+
+/** Sender, the direct-message recipient, or front office may remove one.
+ *  The server re-checks regardless of what the UI shows a delete button for. */
+export const deleteStaffMessage = (id: string) => remove("staff-messages", id);

@@ -36,7 +36,7 @@ from rest_framework.views import APIView
 
 from apps.audit.models import AuditAction
 from apps.audit.services import record
-from apps.core.permissions import AdminOnly
+from apps.core.permissions import AdminOnly, StaffOnly
 
 from .lockout import lockout_response
 from .mfa import (
@@ -48,7 +48,7 @@ from .mfa import (
     qr_data_uri,
     verify_login_token,
 )
-from .models import User
+from .models import STAFF_ROLES, User
 from .serializers import (
     InviteAcceptSerializer,
     LoginSerializer,
@@ -185,10 +185,12 @@ class MFAStatusView(APIView):
 
 
 class UsersView(APIView):
-    """Admin-only staff directory — just enough to populate a group-staff
-    assignment picker. No PII beyond name + role + active flag."""
+    """Staff directory — populates the group-staff assignment picker (admin)
+    and the staff-chat direct-message recipient picker (any staff role).
+    Scoped to staff accounts only (never parents/students, regardless of who
+    is asking); no PII beyond name + role + active flag."""
 
-    permission_classes = [IsAuthenticated, AdminOnly]
+    permission_classes = [IsAuthenticated, StaffOnly]
 
     def get(self, request):
         out = [
@@ -200,7 +202,7 @@ class UsersView(APIView):
                 "is_active": u.is_active,
                 "display_name": getattr(u, "display_name", "") or u.username,
             }
-            for u in User.objects.order_by("username")
+            for u in User.objects.filter(role__in=STAFF_ROLES).order_by("username")
         ]
         return Response(out)
 

@@ -8,6 +8,7 @@ import { useAll } from "@/lib/hooks";
 import { useToast } from "@/components/Toast";
 import { apiMessage } from "@/lib/format";
 import {
+  deleteStaffMessage,
   listStaffMessages,
   markStaffMessagesRead,
   sendStaffMessage,
@@ -123,6 +124,22 @@ export function StaffChat() {
     onError: (err) => toast("error", apiMessage(err)),
   });
 
+  const del = useMutation({
+    mutationFn: deleteStaffMessage,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["staffchat", "messages"] }),
+    onError: (err) => toast("error", apiMessage(err)),
+  });
+
+  // Mirrors the server's own rule (views.py _can_delete) so the button only
+  // shows where the request would actually succeed: front office can clear
+  // anything; anyone else only their own sent message, or a direct message
+  // sent to them -- not a broadcast they merely received.
+  function canDelete(m: StaffMessage): boolean {
+    if (canBroadcast) return true;
+    if (m.sender === me?.id) return true;
+    return m.audience === "DIRECT" && m.recipient === me?.id;
+  }
+
   const canSend = useMemo(() => {
     if (!body.trim()) return false;
     if (audience === "DIRECT") return !!recipient;
@@ -196,7 +213,19 @@ export function StaffChat() {
                           <span className="ml-1 font-semibold text-red-500">URGENT</span>
                         )}
                       </span>
-                      <span>{timeAgo(m.created_at)}</span>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {timeAgo(m.created_at)}
+                        {canDelete(m) && (
+                          <button
+                            onClick={() => del.mutate(m.id)}
+                            disabled={del.isPending}
+                            title="Remove this message"
+                            className="text-[var(--campus-muted)] hover:text-red-500 disabled:opacity-40"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
                     </div>
                     <div className="whitespace-pre-wrap text-[var(--campus-fg)]">{m.body}</div>
                   </div>
