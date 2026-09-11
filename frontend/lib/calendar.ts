@@ -12,6 +12,8 @@ export interface CalendarSession {
   title: string;
   status: "SCHEDULED" | "CANCELLED";
   cancelled_reason?: string;
+  /** HH:MM if this session runs past a same-day early dismissal, else null. */
+  early_dismissal_time?: string | null;
 }
 
 export interface CalendarClosure {
@@ -23,11 +25,21 @@ export interface CalendarClosure {
   group_name: string | null;
 }
 
+export interface CalendarEarlyDismissal {
+  id: string;
+  date: string;
+  dismissal_time: string; // HH:MM
+  reason: string;
+  group: string | null;
+  group_name: string | null;
+}
+
 export interface CalendarPayload {
   from: string;
   to: string;
   sessions: CalendarSession[];
   closures: CalendarClosure[];
+  early_dismissals: CalendarEarlyDismissal[];
 }
 
 export const fetchCalendar = (

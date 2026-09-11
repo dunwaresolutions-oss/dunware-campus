@@ -10,6 +10,7 @@ import {
   startOfMonthGrid,
   startOfWeek,
   type CalendarClosure,
+  type CalendarEarlyDismissal,
   type CalendarSession,
 } from "@/lib/calendar";
 import { Spinner, ErrorNote } from "@/components/ui";
@@ -61,6 +62,14 @@ function titleFor(view: View, anchor: Date): string {
 function closureOn(day: Date, closures: CalendarClosure[]): CalendarClosure | null {
   const d = iso(day);
   return closures.find((c) => c.start_date <= d && d <= c.end_date) ?? null;
+}
+
+function earlyDismissalOn(
+  day: Date,
+  dismissals: CalendarEarlyDismissal[],
+): CalendarEarlyDismissal | null {
+  const d = iso(day);
+  return dismissals.find((e) => e.date === d) ?? null;
 }
 
 /* lane-pack overlapping sessions in one column */
@@ -122,6 +131,7 @@ export function ScheduleCalendar({
     return map;
   }, [q.data]);
   const closures = q.data?.closures ?? [];
+  const earlyDismissals = q.data?.early_dismissals ?? [];
 
   const step = view === "month" ? "month" : view === "week" ? 7 : 1;
   const nav = (dir: -1 | 0 | 1) => {
@@ -209,6 +219,7 @@ export function ScheduleCalendar({
           anchorMonth={anchor.getMonth()}
           byDay={byDay}
           closures={closures}
+          earlyDismissals={earlyDismissals}
           onOpenSession={onOpenSession}
           onPickDay={(d) => {
             setAnchor(d);
@@ -224,6 +235,7 @@ export function ScheduleCalendar({
           }
           byDay={byDay}
           closures={closures}
+          earlyDismissals={earlyDismissals}
           onOpenSession={onOpenSession}
         />
       )}
@@ -238,6 +250,7 @@ function MonthGrid({
   anchorMonth,
   byDay,
   closures,
+  earlyDismissals,
   onOpenSession,
   onPickDay,
 }: {
@@ -245,6 +258,7 @@ function MonthGrid({
   anchorMonth: number;
   byDay: Map<string, CalendarSession[]>;
   closures: CalendarClosure[];
+  earlyDismissals: CalendarEarlyDismissal[];
   onOpenSession: (s: CalendarSession) => void;
   onPickDay: (d: Date) => void;
 }) {
@@ -263,6 +277,7 @@ function MonthGrid({
         {days.map((d, i) => {
           const list = byDay.get(iso(d)) ?? [];
           const cl = closureOn(d, closures);
+          const ed = earlyDismissalOn(d, earlyDismissals);
           const out = d.getMonth() !== anchorMonth;
           const isToday = sameDay(d, today);
           return (
@@ -271,7 +286,11 @@ function MonthGrid({
               className={`min-h-[104px] border-b border-r border-[var(--campus-line)] p-1.5 ${
                 i % 7 === 6 ? "border-r-0" : ""
               } ${out ? "bg-black/[0.015] dark:bg-white/[0.015]" : ""} ${
-                cl ? "bg-amber-50/60 dark:bg-amber-950/20" : ""
+                cl
+                  ? "bg-amber-50/60 dark:bg-amber-950/20"
+                  : ed
+                    ? "bg-sky-50/60 dark:bg-sky-950/20"
+                    : ""
               }`}
             >
               <div className="flex items-center justify-between">
@@ -289,6 +308,11 @@ function MonthGrid({
                 {cl && (
                   <span className="truncate text-[10px] text-amber-700 dark:text-amber-400">
                     {cl.reason}
+                  </span>
+                )}
+                {!cl && ed && (
+                  <span className="truncate text-[10px] text-sky-700 dark:text-sky-400">
+                    Ends {time(ed.dismissal_time)}
                   </span>
                 )}
               </div>
@@ -315,20 +339,24 @@ function MonthGrid({
 
 function Chip({ s, onClick }: { s: CalendarSession; onClick: () => void }) {
   const cancelled = s.status === "CANCELLED";
+  const early = !!s.early_dismissal_time;
   return (
     <button
       onClick={onClick}
       title={`${time(s.start_time)}–${time(s.end_time)} · ${s.group_name ?? ""}${
         s.room_name ? ` · ${s.room_name}` : ""
-      }`}
+      }${early ? ` · early dismissal ${time(s.early_dismissal_time!)}` : ""}`}
       className={`block w-full truncate rounded px-1 py-0.5 text-left text-[10.5px] ${
         cancelled
           ? "text-[var(--campus-muted)] line-through"
-          : "bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+          : early
+            ? "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
+            : "bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
       }`}
     >
       <span className="tabular-nums">{time(s.start_time)}</span>{" "}
       {s.title || s.group_name || "Session"}
+      {early && !cancelled && " ⏰"}
     </button>
   );
 }
@@ -339,11 +367,13 @@ function TimeGrid({
   days,
   byDay,
   closures,
+  earlyDismissals,
   onOpenSession,
 }: {
   days: Date[];
   byDay: Map<string, CalendarSession[]>;
   closures: CalendarClosure[];
+  earlyDismissals: CalendarEarlyDismissal[];
   onOpenSession: (s: CalendarSession) => void;
 }) {
   const today = new Date();
@@ -395,7 +425,11 @@ function TimeGrid({
         {days.map((d, i) => {
           const list = byDay.get(iso(d)) ?? [];
           const cl = closureOn(d, closures);
+          const ed = earlyDismissalOn(d, earlyDismissals);
           const { placed, lanes } = withLanes(list);
+          const edTop = ed
+            ? Math.max(0, (minutesOf(ed.dismissal_time) - DAY_START * 60) * PX_PER_MIN)
+            : null;
           return (
             <div
               key={i}
@@ -416,10 +450,25 @@ function TimeGrid({
                   {cl.reason}
                 </div>
               )}
+              {!cl && ed && edTop !== null && (
+                <>
+                  <div
+                    className="absolute inset-x-1 truncate rounded bg-sky-100 px-1 py-0.5 text-[10px] text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
+                    style={{ top: 1 }}
+                  >
+                    Early dismissal {time(ed.dismissal_time)} — {ed.reason}
+                  </div>
+                  <div
+                    className="absolute inset-x-0 border-t-2 border-dashed border-sky-400/70"
+                    style={{ top: edTop }}
+                  />
+                </>
+              )}
               {placed.map(({ s, start, end, lane }) => {
                 const top = Math.max(0, (start - DAY_START * 60) * PX_PER_MIN);
                 const height = Math.max(16, (end - start) * PX_PER_MIN - 2);
                 const cancelled = s.status === "CANCELLED";
+                const early = !!s.early_dismissal_time;
                 const w = 100 / lanes;
                 return (
                   <button
@@ -434,15 +483,23 @@ function TimeGrid({
                     className={`absolute overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[10.5px] leading-tight ${
                       cancelled
                         ? "border-[var(--campus-line)] bg-[var(--campus-input-bg)] text-[var(--campus-muted)] line-through"
-                        : "border-[var(--campus-accent)]/30 bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+                        : early
+                          ? "border-sky-400/40 bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
+                          : "border-[var(--campus-accent)]/30 bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
                     }`}
                   >
                     <div className="font-medium">
                       {s.title || s.group_name || "Session"}
+                      {early && !cancelled && " ⏰"}
                     </div>
                     <div className="tabular-nums opacity-80">
                       {time(s.start_time)}–{time(s.end_time)}
                     </div>
+                    {early && !cancelled && (
+                      <div className="opacity-80">
+                        ends {time(s.early_dismissal_time!)}
+                      </div>
+                    )}
                     {s.room_name && (
                       <div className="truncate opacity-70">{s.room_name}</div>
                     )}

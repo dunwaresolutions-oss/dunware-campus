@@ -109,6 +109,44 @@ class Closure(BaseModel):
         return self.group_id is None or self.group_id == group_id
 
 
+class EarlyDismissal(BaseModel):
+    """A day school still runs but ends earlier than usual (a storm warning,
+    a staff PD half-day, the last day before a break). Distinct from
+    `Closure`, which means no school at all that day.
+
+    Deliberately does not touch `SessionOccurrence.end_time` — a session
+    keeps its real scheduled time on the record; the calendar/roster surfaces
+    that it's affected and by how much (see `SessionOccurrenceViewSet.calendar`)
+    so staff can see and decide (end a session early, or leave it — some may
+    already end before the dismissal time and aren't affected at all)."""
+
+    date = models.DateField()
+    dismissal_time = models.TimeField(help_text="The new end-of-day time.")
+    reason = models.CharField(max_length=200)
+    group = models.ForeignKey(
+        Group,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="early_dismissals",
+        help_text="Blank = site-wide.",
+    )
+    notified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "scheduling_early_dismissal"
+        ordering = ["date"]
+
+    def __str__(self) -> str:
+        where = self.group.name if self.group_id else "site-wide"
+        return f"early dismissal {self.date} @ {self.dismissal_time:%H:%M} ({where}): {self.reason}"
+
+    def applies_to(self, day, group_id=None) -> bool:
+        if day != self.date:
+            return False
+        return self.group_id is None or self.group_id == group_id
+
+
 class SessionTemplate(BaseModel):
     """A weekly recurring meeting for a group within a term."""
 

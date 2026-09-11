@@ -67,6 +67,7 @@ export default function SchedulingPage() {
           { key: "sessions", label: "Sessions" },
           { key: "templates", label: "Templates" },
           { key: "closures", label: "Closures" },
+          { key: "early-dismissals", label: "Early dismissals" },
           { key: "terms", label: "Terms" },
           { key: "years", label: "Academic years" },
           { key: "rooms", label: "Rooms" },
@@ -78,7 +79,9 @@ export default function SchedulingPage() {
           <p className="mb-3 text-sm text-[var(--campus-muted)]">
             Every dated session, in a month / week / day view. Filter by group,
             and click a session to see its roster or cancel that one meeting.
-            Amber days are closures.
+            Amber days are closures (no school); sky-blue days are early
+            dismissals — school runs, just shorter — with a dashed line marking
+            the new end time and ⏰ on any session that runs past it.
           </p>
           <ScheduleCalendar
             groups={groups.data ?? []}
@@ -267,6 +270,82 @@ export default function SchedulingPage() {
               },
               { label: "Reason", value: (r) => (r.reason as string) || "—", long: true },
             ]}
+          />
+        </>
+      )}
+
+      {tab === "early-dismissals" && (
+        <>
+          <p className="mb-3 text-sm text-[var(--campus-muted)]">
+            An <b>early dismissal</b> is a day school still runs, just shorter —
+            a storm warning, a staff half-day, the last day before a break.
+            Unlike a closure it doesn&apos;t cancel anything; the calendar just
+            flags which sessions run past the new end time. Leave the group
+            blank for a site-wide dismissal. <b>Notify guardians</b> sends a
+            one-click announcement email (the same audience an announcement to
+            that scope would reach).
+          </p>
+          <CrudPanel
+            resource="early-dismissals"
+            singular="early dismissal"
+            columns={[
+              { header: "Date", cell: (r) => date(r.date as string) },
+              { header: "Ends at", cell: (r) => time(r.dismissal_time as string) },
+              { header: "Reason", cell: (r) => (r.reason as string) || "—" },
+              {
+                header: "Scope",
+                cell: (r) =>
+                  r.group
+                    ? (groups.data?.find((g) => g.id === r.group)?.name ?? "Group")
+                    : "Site-wide",
+              },
+              {
+                header: "Notified",
+                cell: (r) =>
+                  r.notified_at ? (
+                    <Badge tone="sky">Sent</Badge>
+                  ) : (
+                    <span className="text-[var(--campus-muted)]">Not yet</span>
+                  ),
+              },
+            ]}
+            fields={[
+              { name: "date", label: "Date", type: "date", required: true },
+              { name: "dismissal_time", label: "Dismisses at", type: "time", required: true },
+              { name: "reason", label: "Reason", required: true },
+              {
+                name: "group",
+                label: "Group (blank = whole site)",
+                type: "select",
+                options: groupOpts,
+              },
+            ]}
+            detailTitle={() => "Early dismissal"}
+            detailFields={[
+              { label: "Date", value: (r) => date(r.date as string) },
+              { label: "Dismisses at", value: (r) => time(r.dismissal_time as string) },
+              {
+                label: "Scope",
+                value: (r) =>
+                  r.group
+                    ? (groups.data?.find((g) => g.id === r.group)?.name ?? "one group")
+                    : "Site-wide",
+              },
+              { label: "Reason", value: (r) => (r.reason as string) || "—", long: true },
+              {
+                label: "Guardians notified",
+                value: (r) => (r.notified_at ? date(r.notified_at as string) : "Not yet"),
+              },
+            ]}
+            extraRowActions={(row, reload) => (
+              <ActionButton
+                label="Notify guardians"
+                title="Send an early-dismissal announcement"
+                confirm="Email the affected guardians about this early dismissal now?"
+                onRun={() => act("early-dismissals", row.id as string, "notify")}
+                onDone={reload}
+              />
+            )}
           />
         </>
       )}

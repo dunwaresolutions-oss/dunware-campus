@@ -5,6 +5,7 @@ from rest_framework import serializers
 from .models import (
     AcademicYear,
     Closure,
+    EarlyDismissal,
     Room,
     SessionOccurrence,
     SessionTemplate,
@@ -34,6 +35,16 @@ class ClosureSerializer(serializers.ModelSerializer):
     class Meta:
         model = Closure
         fields = ["id", "start_date", "end_date", "reason", "group"]
+
+
+class EarlyDismissalSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source="group.name", read_only=True, default="")
+
+    class Meta:
+        model = EarlyDismissal
+        fields = ["id", "date", "dismissal_time", "reason", "group", "group_name",
+                  "notified_at", "created_at"]
+        read_only_fields = ["notified_at"]
 
 
 class SessionTemplateSerializer(serializers.ModelSerializer):

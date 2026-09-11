@@ -16,6 +16,7 @@ from apps.people.models import GroupStaff
 from .models import (
     AcademicYear,
     Closure,
+    EarlyDismissal,
     Room,
     SessionOccurrence,
     SessionTemplate,
@@ -24,6 +25,7 @@ from .models import (
 from .serializers import (
     AcademicYearSerializer,
     ClosureSerializer,
+    EarlyDismissalSerializer,
     RoomSerializer,
     RosterEntrySerializer,
     SessionOccurrenceSerializer,
@@ -70,6 +72,22 @@ class TermViewSet(_RefViewSet):
 class ClosureViewSet(_RefViewSet):
     queryset = Closure.objects.select_related("group")
     serializer_class = ClosureSerializer
+
+
+class EarlyDismissalViewSet(_RefViewSet):
+    queryset = EarlyDismissal.objects.select_related("group")
+    serializer_class = EarlyDismissalSerializer
+
+    @action(detail=True, methods=["post"])
+    def notify(self, request, pk=None):
+        from apps.communication.services import notify_early_dismissal
+
+        dismissal = self.get_object()
+        log = notify_early_dismissal(dismissal, actor=request.user)
+        return Response(
+            {"sent": bool(log.sent_at), "recipients": len(log.to)},
+            status=status.HTTP_200_OK,
+        )
 
 
 def _instructor_group_ids(user):
@@ -164,13 +182,32 @@ class SessionOccurrenceViewSet(CampusViewSet):
                 models.Q(group__isnull=True) | models.Q(group_id__in=group_ids)
             )
 
+        dismissals = EarlyDismissal.objects.select_related("group").filter(
+            date__gte=start, date__lte=end
+        )
+        if group_ids is not None:
+            dismissals = dismissals.filter(
+                models.Q(group__isnull=True) | models.Q(group_id__in=group_ids)
+            )
+        dismissals = list(dismissals)
+        by_date: dict[dt.date, list[EarlyDismissal]] = {}
+        for ed in dismissals:
+            by_date.setdefault(ed.date, []).append(ed)
+
+        occurrences = list(qs.order_by("date", "start_time"))
+        sessions_data = SessionOccurrenceSerializer(occurrences, many=True).data
+        for row, occ in zip(sessions_data, occurrences, strict=True):
+            match = next(
+                (ed for ed in by_date.get(occ.date, ()) if ed.applies_to(occ.date, occ.group_id)),
+                None,
+            )
+            row["early_dismissal_time"] = match.dismissal_time.strftime("%H:%M") if match else None
+
         return Response(
             {
                 "from": start.isoformat(),
                 "to": end.isoformat(),
-                "sessions": SessionOccurrenceSerializer(
-                    qs.order_by("date", "start_time"), many=True
-                ).data,
+                "sessions": sessions_data,
                 "closures": [
                     {
                         "id": str(c.id),
@@ -181,6 +218,17 @@ class SessionOccurrenceViewSet(CampusViewSet):
                         "group_name": c.group.name if c.group_id else None,
                     }
                     for c in closures
+                ],
+                "early_dismissals": [
+                    {
+                        "id": str(ed.id),
+                        "date": ed.date.isoformat(),
+                        "dismissal_time": ed.dismissal_time.strftime("%H:%M"),
+                        "reason": ed.reason,
+                        "group": ed.group_id,
+                        "group_name": ed.group.name if ed.group_id else None,
+                    }
+                    for ed in dismissals
                 ],
             }
         )

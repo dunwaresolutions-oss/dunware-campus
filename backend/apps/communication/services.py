@@ -86,7 +86,7 @@ def _send_personalized(kind, items, *, obj=None, actor=None) -> OutboundEmail:
     return log
 
 
-def send_announcement(announcement: Announcement, *, actor=None) -> OutboundEmail:
+def send_announcement(announcement: Announcement, *, actor=None, event=None) -> OutboundEmail:
     from apps.people.models import Guardian
 
     if announcement.audience == Announcement.Audience.ALL_STAFF:
@@ -116,7 +116,8 @@ def send_announcement(announcement: Announcement, *, actor=None) -> OutboundEmai
     tmpl = get_active(MessageTemplate.Kind.ANNOUNCEMENT)
     if tmpl:
         subject, body = render_template(
-            tmpl, build_context(announcement=announcement, group=announcement.group)
+            tmpl,
+            build_context(announcement=announcement, group=announcement.group, event=event),
         )
     else:
         subject, body = f"[Campus] {announcement.title}", announcement.body
@@ -211,3 +212,31 @@ def notify_absence(*, student, event, actor=None, group=None) -> OutboundEmail:
         obj=student,
         actor=actor,
     )
+
+
+def notify_early_dismissal(dismissal, *, actor=None) -> OutboundEmail:
+    """Send guardians an announcement for a scheduling.EarlyDismissal. Reuses
+    the Announcement pipeline (audience resolution, the ANNOUNCEMENT
+    template, the OutboundEmail log) rather than a parallel one -- an early
+    dismissal notice is exactly the "school closes early" case that template
+    kind's sample content already describes. ``dismissal.date`` is site-wide
+    when no group is set, group-only otherwise, matching Closure's model."""
+    import datetime as _dt
+
+    when = _dt.datetime.combine(dismissal.date, dismissal.dismissal_time)
+    day = f"{dismissal.date:%B} {dismissal.date.day}, {dismissal.date.year}"
+    dismiss_at = dismissal.dismissal_time.strftime("%I:%M %p").lstrip("0")
+    title = f"Early dismissal — {day}"
+    body = f"School will dismiss at {dismiss_at} on {day}. Reason: {dismissal.reason}"
+
+    audience = (
+        Announcement.Audience.GROUP if dismissal.group_id else Announcement.Audience.WHOLE_SITE
+    )
+    announcement = Announcement.objects.create(
+        title=title, body=body, audience=audience, group=dismissal.group,
+        author=actor, published_at=timezone.now(),
+    )
+    log = send_announcement(announcement, actor=actor, event=when)
+    dismissal.notified_at = timezone.now()
+    dismissal.save(update_fields=["notified_at"])
+    return log

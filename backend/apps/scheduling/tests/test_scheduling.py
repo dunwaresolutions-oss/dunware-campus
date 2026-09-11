@@ -3,9 +3,23 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from django.core import mail
 
-from apps.people.tests.factories import assign_staff, enrol, make_group, make_student
-from apps.scheduling.models import AcademicYear, Closure, SessionOccurrence, SessionTemplate, Term
+from apps.people.tests.factories import (
+    assign_staff,
+    enrol,
+    link_guardian,
+    make_group,
+    make_student,
+)
+from apps.scheduling.models import (
+    AcademicYear,
+    Closure,
+    EarlyDismissal,
+    SessionOccurrence,
+    SessionTemplate,
+    Term,
+)
 from apps.scheduling.services import generate_occurrences
 
 pytestmark = pytest.mark.django_db
@@ -152,3 +166,98 @@ def test_calendar_caps_the_span_at_62_days(auth_client, admin_user):
         CAL, {"from": "2026-01-01", "to": "2026-12-31"}
     ).json()
     assert data["to"] == "2026-03-04"  # 2026-01-01 + 62 days
+
+
+# --------------------------------------------------------- early dismissals
+
+
+def test_front_office_can_create_an_early_dismissal(auth_client, admin_user):
+    resp = auth_client(admin_user).post(
+        "/api/early-dismissals/",
+        {"date": "2026-09-15", "dismissal_time": "13:00", "reason": "Storm warning"},
+        format="json",
+    )
+    assert resp.status_code == 201
+    assert resp.data["group"] is None
+
+
+def test_teacher_cannot_create_an_early_dismissal(auth_client, staff):
+    resp = auth_client(staff).post(
+        "/api/early-dismissals/",
+        {"date": "2026-09-15", "dismissal_time": "13:00", "reason": "Storm warning"},
+        format="json",
+    )
+    assert resp.status_code == 403
+
+
+def test_any_staff_can_read_early_dismissals(auth_client, staff):
+    EarlyDismissal.objects.create(
+        date=dt.date(2026, 9, 15), dismissal_time=dt.time(13, 0), reason="Storm warning"
+    )
+    resp = auth_client(staff).get("/api/early-dismissals/")
+    assert resp.status_code == 200
+    assert resp.data["count"] == 1
+
+
+def test_calendar_includes_early_dismissals_and_flags_affected_sessions(auth_client, admin_user):
+    term = _term()
+    g1, g2 = make_group(), make_group()
+    generate_occurrences(_template(g1, term, weekday=0))  # 09:00-10:00, Mondays
+    generate_occurrences(_template(g2, term, weekday=0))
+    # site-wide early dismissal on the first Monday at 09:30 -- affects both
+    # groups' 09:00-10:00 session (it runs past the dismissal time)
+    EarlyDismissal.objects.create(
+        date=dt.date(2026, 9, 7), dismissal_time=dt.time(9, 30), reason="Storm warning"
+    )
+    data = auth_client(admin_user).get(CAL, {"from": "2026-09-01", "to": "2026-09-30"}).json()
+
+    assert len(data["early_dismissals"]) == 1
+    assert data["early_dismissals"][0]["dismissal_time"] == "09:30"
+
+    sept7 = [s for s in data["sessions"] if s["date"] == "2026-09-07"]
+    assert len(sept7) == 2
+    assert all(s["early_dismissal_time"] == "09:30" for s in sept7)
+    other_days = [s for s in data["sessions"] if s["date"] != "2026-09-07"]
+    assert all(s["early_dismissal_time"] is None for s in other_days)
+
+
+def test_group_specific_early_dismissal_only_flags_that_groups_sessions(auth_client, admin_user):
+    term = _term()
+    g1, g2 = make_group(), make_group()
+    generate_occurrences(_template(g1, term, weekday=0))
+    generate_occurrences(_template(g2, term, weekday=0))
+    EarlyDismissal.objects.create(
+        date=dt.date(2026, 9, 7), dismissal_time=dt.time(9, 30), reason="Half day", group=g1,
+    )
+    data = auth_client(admin_user).get(CAL, {"from": "2026-09-01", "to": "2026-09-30"}).json()
+    sept7 = {
+        str(s["group"]): s["early_dismissal_time"]
+        for s in data["sessions"] if s["date"] == "2026-09-07"
+    }
+    assert sept7[str(g1.pk)] == "09:30"
+    assert sept7[str(g2.pk)] is None
+
+
+def test_notify_early_dismissal_emails_communications_guardians(auth_client, admin_user):
+    kid = make_student()
+    link_guardian(kid, email="wants@example.test", receives_communications=True)
+    link_guardian(kid, email="optedout@example.test", receives_communications=False)
+    dismissal = EarlyDismissal.objects.create(
+        date=dt.date(2026, 9, 15), dismissal_time=dt.time(13, 0), reason="Storm warning",
+    )
+    resp = auth_client(admin_user).post(f"/api/early-dismissals/{dismissal.pk}/notify/")
+    assert resp.status_code == 200
+    assert resp.data["sent"] is True
+    assert len(mail.outbox) == 1
+    assert "wants@example.test" in mail.outbox[0].to
+    assert "optedout@example.test" not in mail.outbox[0].to
+    dismissal.refresh_from_db()
+    assert dismissal.notified_at is not None
+
+
+def test_teacher_cannot_trigger_the_notify_action(auth_client, staff):
+    dismissal = EarlyDismissal.objects.create(
+        date=dt.date(2026, 9, 15), dismissal_time=dt.time(13, 0), reason="Storm warning",
+    )
+    resp = auth_client(staff).post(f"/api/early-dismissals/{dismissal.pk}/notify/")
+    assert resp.status_code == 403

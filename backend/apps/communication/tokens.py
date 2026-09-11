@@ -83,7 +83,7 @@ KIND_CONTEXT: dict[str, set[str]] = {
     "INCIDENT": {"student", "guardian", "school", "group", "term", "event", "incident"},
     "REPORT_CARD": {"student", "guardian", "school", "group", "term"},
     "ABSENCE": {"student", "guardian", "school", "group", "term", "event"},
-    "ANNOUNCEMENT": {"school", "announcement", "group"},
+    "ANNOUNCEMENT": {"school", "announcement", "group", "event"},
     "GENERAL": {"student", "guardian", "school", "group", "term", "event"},
 }
 
