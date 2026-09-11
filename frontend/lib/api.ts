@@ -50,8 +50,35 @@ export async function api<T = unknown>(
   });
 
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(res.status, data);
+  let data: unknown = null;
+  let unparseable = false;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Not JSON -- an HTML error page (Django's default 404/500 page, a
+      // Caddy proxy error, a route the running backend doesn't know about
+      // yet) rather than a DRF error body. Without this, JSON.parse's raw
+      // exception ("Unexpected token '<' ... is not valid JSON") leaked
+      // straight through to the UI instead of a readable message.
+      unparseable = true;
+    }
+  }
+  if (!res.ok) {
+    throw new ApiError(
+      res.status,
+      unparseable
+        ? {
+            detail: `The server returned an error page (HTTP ${res.status}) instead of a normal response. It may be out of date, restarting, or misconfigured.`,
+          }
+        : data,
+    );
+  }
+  if (unparseable) {
+    throw new ApiError(res.status, {
+      detail: "The server sent back something unexpected, not data.",
+    });
+  }
   return data as T;
 }
 
