@@ -78,12 +78,30 @@ class LessonPlan(SoftDeleteModel):
 
 
 class LessonResource(BaseModel):
+    """A link, file, or note. Always for one **group** — usually attached to
+    one dated lesson within it, but a resource that applies to the group
+    generally (a standing reading list, a permission slip template) can skip
+    ``lesson`` and hang directly off the group instead."""
+
     class Kind(models.TextChoices):
         LINK = "LINK", "Link"
         FILE = "FILE", "File"
         NOTE = "NOTE", "Note"
 
-    lesson = models.ForeignKey(LessonPlan, on_delete=models.CASCADE, related_name="resources")
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="lesson_resources",
+        help_text="Who this is for. Auto-filled from the lesson plan when one is set.",
+    )
+    lesson = models.ForeignKey(
+        LessonPlan,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="resources",
+        help_text="Optional — leave blank for a resource that isn't tied to one dated lesson.",
+    )
     kind = models.CharField(max_length=6, choices=Kind.choices, default=Kind.LINK)
     title = models.CharField(max_length=200)
     url = models.URLField(blank=True)
@@ -93,9 +111,15 @@ class LessonResource(BaseModel):
     class Meta:
         db_table = "lessons_lesson_resource"
         ordering = ["title"]
+        indexes = [models.Index(fields=["group"])]
 
     def __str__(self) -> str:
         return self.title
 
+    def save(self, *args, **kwargs):
+        if self.lesson_id and not self.group_id:
+            self.group_id = self.lesson.group_id
+        super().save(*args, **kwargs)
+
     def is_visible_to(self, user) -> bool:
-        return self.lesson.is_visible_to(user)
+        return _instructor_can_touch_group(user, self.group_id)

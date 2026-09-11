@@ -32,9 +32,14 @@ class CurriculumUnitViewSet(_LessonsViewSet):
 
     def get_queryset(self):
         qs = CurriculumUnit.objects.select_related("group", "term").order_by("group", "sequence")
-        if getattr(self.request.user, "role", None) in _ADMIN_ROLES:
-            return qs
-        return qs.filter(group_id__in=_instructor_group_ids(self.request.user))
+        if getattr(self.request.user, "role", None) not in _ADMIN_ROLES:
+            qs = qs.filter(group_id__in=_instructor_group_ids(self.request.user))
+        params = self.request.query_params
+        if params.get("group"):
+            qs = qs.filter(group_id=params["group"])
+        if params.get("term"):
+            qs = qs.filter(term_id=params["term"])
+        return qs
 
 
 class LessonPlanViewSet(_LessonsViewSet):
@@ -42,12 +47,18 @@ class LessonPlanViewSet(_LessonsViewSet):
 
     def get_queryset(self):
         qs = LessonPlan.objects.alive().select_related("group", "unit", "author").order_by("-date")
+        if getattr(self.request.user, "role", None) not in _ADMIN_ROLES:
+            qs = qs.filter(group_id__in=_instructor_group_ids(self.request.user))
         params = self.request.query_params
         if params.get("group"):
             qs = qs.filter(group_id=params["group"])
-        if getattr(self.request.user, "role", None) in _ADMIN_ROLES:
-            return qs
-        return qs.filter(group_id__in=_instructor_group_ids(self.request.user))
+        if params.get("unit"):
+            qs = qs.filter(unit_id=params["unit"])
+        if params.get("status"):
+            qs = qs.filter(status=params["status"])
+        if params.get("term"):
+            qs = qs.filter(unit__term_id=params["term"])
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
@@ -64,7 +75,12 @@ class LessonResourceViewSet(_LessonsViewSet):
     serializer_class = LessonResourceSerializer
 
     def get_queryset(self):
-        qs = LessonResource.objects.select_related("lesson", "lesson__group")
-        if getattr(self.request.user, "role", None) in _ADMIN_ROLES:
-            return qs
-        return qs.filter(lesson__group_id__in=_instructor_group_ids(self.request.user))
+        qs = LessonResource.objects.select_related("group", "lesson")
+        if getattr(self.request.user, "role", None) not in _ADMIN_ROLES:
+            qs = qs.filter(group_id__in=_instructor_group_ids(self.request.user))
+        params = self.request.query_params
+        if params.get("group"):
+            qs = qs.filter(group_id=params["group"])
+        if params.get("lesson"):
+            qs = qs.filter(lesson_id=params["lesson"])
+        return qs

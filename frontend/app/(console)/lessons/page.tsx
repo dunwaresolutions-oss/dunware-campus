@@ -39,10 +39,18 @@ interface PlanRow {
   resources?: { id: number }[];
 }
 
+const STATUS_OPTS = [
+  { value: "DRAFT", label: "Draft" },
+  { value: "PUBLISHED", label: "Published" },
+];
+
 export default function LessonsPage() {
   const [tab, setTab] = useState("plans");
   const [openPlan, setOpenPlan] = useState<PlanRow | null>(null);
   const [openUnit, setOpenUnit] = useState<UnitRow | null>(null);
+  const [planFilter, setPlanFilter] = useState({ group: "", unit: "", term: "", status: "" });
+  const [unitFilter, setUnitFilter] = useState({ group: "", term: "" });
+  const [resourceFilter, setResourceFilter] = useState({ group: "" });
 
   const paramTab = useQueryParam("tab");
   useEffect(() => {
@@ -92,9 +100,41 @@ export default function LessonsPage() {
             it when it is final. Click a row to edit the header fields; press{" "}
             <b>Open</b> to read and work on the full plan.
           </p>
+          <FilterBar>
+            <FilterSelect
+              value={planFilter.group}
+              onChange={(v) => setPlanFilter((f) => ({ ...f, group: v }))}
+              placeholder="All groups"
+              options={groupOpts}
+            />
+            <FilterSelect
+              value={planFilter.unit}
+              onChange={(v) => setPlanFilter((f) => ({ ...f, unit: v }))}
+              placeholder="All units"
+              options={unitOpts}
+            />
+            <FilterSelect
+              value={planFilter.term}
+              onChange={(v) => setPlanFilter((f) => ({ ...f, term: v }))}
+              placeholder="All terms"
+              options={termOpts}
+            />
+            <FilterSelect
+              value={planFilter.status}
+              onChange={(v) => setPlanFilter((f) => ({ ...f, status: v }))}
+              placeholder="All statuses"
+              options={STATUS_OPTS}
+            />
+          </FilterBar>
           <CrudPanel<PlanRow>
             resource="lesson-plans"
             singular="lesson plan"
+            query={{
+              group: planFilter.group || undefined,
+              unit: planFilter.unit || undefined,
+              term: planFilter.term || undefined,
+              status: planFilter.status || undefined,
+            }}
             onRowOpen={setOpenPlan}
             columns={[
               { header: "Title", cell: (r) => r.title },
@@ -146,9 +186,27 @@ export default function LessonsPage() {
             together. Press <b>Open</b> to read the summary and see every lesson
             plan filed under it.
           </p>
+          <FilterBar>
+            <FilterSelect
+              value={unitFilter.group}
+              onChange={(v) => setUnitFilter((f) => ({ ...f, group: v }))}
+              placeholder="All groups"
+              options={groupOpts}
+            />
+            <FilterSelect
+              value={unitFilter.term}
+              onChange={(v) => setUnitFilter((f) => ({ ...f, term: v }))}
+              placeholder="All terms"
+              options={termOpts}
+            />
+          </FilterBar>
           <CrudPanel<UnitRow>
             resource="curriculum-units"
             singular="unit"
+            query={{
+              group: unitFilter.group || undefined,
+              term: unitFilter.term || undefined,
+            }}
             onRowOpen={setOpenUnit}
             columns={[
               { header: "Seq", cell: (r) => r.sequence ?? "—" },
@@ -189,20 +247,37 @@ export default function LessonsPage() {
       {tab === "resources" && (
         <>
           <p className="mb-3 text-sm text-[var(--campus-muted)]">
-            A <b>resource</b> is something attached to a lesson plan: a <b>link</b>{" "}
-            (URL), a <b>file</b>, or a <b>note</b> (free text). You can add these
-            here against any plan, or from inside a plan on <b>Open</b>.
+            A <b>resource</b> is a <b>link</b> (URL), a <b>file</b>, or a{" "}
+            <b>note</b> (free text), always for a <b>group</b> — either
+            attached to one dated lesson (its group fills in automatically),
+            or standing on its own for the group generally, like a permission
+            slip template or a standing reading list.
           </p>
+          <FilterBar>
+            <FilterSelect
+              value={resourceFilter.group}
+              onChange={(v) => setResourceFilter({ group: v })}
+              placeholder="All groups"
+              options={groupOpts}
+            />
+          </FilterBar>
           <CrudPanel
             resource="lesson-resources"
             singular="resource"
+            query={{ group: resourceFilter.group || undefined }}
             columns={[
               { header: "Title", cell: (r) => r.title as string },
               { header: "Kind", cell: (r) => label(r.kind as string) },
               {
+                header: "Group",
+                cell: (r) => (r.group_name as string) ?? groupName(r.group as number),
+              },
+              {
                 header: "Lesson plan",
                 cell: (r) =>
-                  plans.data?.find((p) => p.id === r.lesson)?.title ?? r.lesson,
+                  (r.lesson_title as string) ||
+                  (r.lesson ? plans.data?.find((p) => p.id === r.lesson)?.title : null) ||
+                  "—",
               },
               {
                 header: "Link",
@@ -222,7 +297,20 @@ export default function LessonsPage() {
               },
             ]}
             fields={[
-              { name: "lesson", label: "Lesson plan", type: "select", required: true, options: planOpts },
+              {
+                name: "group",
+                label: "Group",
+                type: "select",
+                options: groupOpts,
+                help: "Only needed if you don't pick a lesson plan below.",
+              },
+              {
+                name: "lesson",
+                label: "Lesson plan",
+                type: "select",
+                options: planOpts,
+                help: "Optional — leave blank for a resource that isn't tied to one dated lesson.",
+              },
               {
                 name: "kind",
                 label: "Kind",
@@ -241,10 +329,16 @@ export default function LessonsPage() {
               { label: "Title", value: (r) => r.title as string },
               { label: "Kind", value: (r) => label(r.kind as string) },
               {
+                label: "Group",
+                value: (r) => (r.group_name as string) ?? groupName(r.group as number),
+              },
+              {
                 label: "Lesson plan",
                 value: (r) =>
-                  plans.data?.find((p) => p.id === r.lesson)?.title ??
-                  String(r.lesson),
+                  (r.lesson_title as string) ||
+                  (r.lesson
+                    ? (plans.data?.find((p) => p.id === r.lesson)?.title ?? String(r.lesson))
+                    : "—"),
               },
               { label: "URL", value: (r) => (r.url as string) || "—" },
               { label: "Note", value: (r) => (r.body as string) || "—", long: true },
@@ -621,5 +715,38 @@ function CurriculumUnitDrawer({
         </section>
       </div>
     </Modal>
+  );
+}
+
+/* ------------------------------------------------------------------ filters */
+
+function FilterBar({ children }: { children: React.ReactNode }) {
+  return <div className="mb-3 flex flex-wrap gap-2">{children}</div>;
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  placeholder,
+  options: opts,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  options: { value: string | number; label: string }[];
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-2.5 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+    >
+      <option value="">{placeholder}</option>
+      {opts.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
   );
 }
