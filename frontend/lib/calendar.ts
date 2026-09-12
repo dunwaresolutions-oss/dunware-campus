@@ -46,9 +46,13 @@ export const fetchCalendar = (
   from: string,
   to: string,
   groupId?: string,
+  studentId?: string,
 ): Promise<CalendarPayload> => {
   const q = new URLSearchParams({ from, to });
-  if (groupId) q.set("group", groupId);
+  // a student filter means "her whole timetable" - every group she's
+  // enrolled in - so it takes precedence over a single group pick.
+  if (studentId) q.set("student", studentId);
+  else if (groupId) q.set("group", groupId);
   return api<CalendarPayload>(`/sessions/calendar/?${q.toString()}`);
 };
 

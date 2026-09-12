@@ -4,6 +4,8 @@ from .views import (
     AssessmentResultViewSet,
     AssessmentSchemeViewSet,
     AssessmentViewSet,
+    GradeBandViewSet,
+    GradingSchemeViewSet,
     ReportCardEntryViewSet,
     ReportCardViewSet,
     RubricCriterionViewSet,
@@ -18,5 +20,7 @@ router.register("assessment-results", AssessmentResultViewSet, basename="assessm
 router.register("rubric-scores", RubricScoreViewSet, basename="rubric-score")
 router.register("report-cards", ReportCardViewSet, basename="report-card")
 router.register("report-card-entries", ReportCardEntryViewSet, basename="report-card-entry")
+router.register("grading-schemes", GradingSchemeViewSet, basename="grading-scheme")
+router.register("grade-bands", GradeBandViewSet, basename="grade-band")
 
 urlpatterns = router.urls

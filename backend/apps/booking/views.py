@@ -162,6 +162,9 @@ class BookingViewSet(CampusViewSet):
             qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
         else:
             return qs.none()
+        sid = self.request.query_params.get("student")
+        if sid:
+            qs = qs.filter(student_id=sid)
         q = (self.request.query_params.get("q") or "").strip()
         if q:
             qs = qs.filter(_student_search_q(q) | Q(slot__offering__title__icontains=q))

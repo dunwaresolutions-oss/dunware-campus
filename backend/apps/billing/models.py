@@ -58,6 +58,10 @@ class Invoice(SensitiveModel):
         OVERDUE = "OVERDUE", "Overdue"
         VOID = "VOID", "Void"
 
+    invoice_number = models.CharField(
+        max_length=20, unique=True, blank=True, editable=False,
+        help_text="Human-readable reference (INV-000123), assigned on creation.",
+    )
     student = models.ForeignKey(Student, on_delete=models.CASCADE, related_name="invoices")
     guardian = models.ForeignKey(
         Guardian, null=True, blank=True, on_delete=models.SET_NULL, related_name="invoices",
@@ -89,7 +93,21 @@ class Invoice(SensitiveModel):
             from apps.core.models import SiteConfiguration
 
             self.currency = SiteConfiguration.load().currency
+        if self._state.adding and not self.invoice_number:
+            self.invoice_number = self._generate_invoice_number()
         super().save(*args, **kwargs)
+
+    @classmethod
+    def _generate_invoice_number(cls) -> str:
+        """INV-000123, sequential enough for a human to reference on the
+        phone or a cheque memo. Not concurrency-hardened with a DB sequence
+        (the PK is a UUID, not an integer) - fine for this product's actual
+        usage pattern (front-desk staff creating invoices one at a time);
+        the existence check is a cheap defensive backstop, not a real lock."""
+        n = cls.objects.count() + 1
+        while cls.objects.filter(invoice_number=f"INV-{n:06d}").exists():
+            n += 1
+        return f"INV-{n:06d}"
 
     @property
     def total_cents(self) -> int:

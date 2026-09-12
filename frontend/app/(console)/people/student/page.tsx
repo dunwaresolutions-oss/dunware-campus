@@ -27,12 +27,17 @@ interface Student {
   primary_group: string | null;
   primary_group_name?: string;
   photo_url: string | null;
+  government_id_type?: string;
   government_id?: string;
   custody_notes?: string;
   legal_hold?: boolean;
 }
 
 const STATUS = ["PROSPECTIVE", "ENROLLED", "WITHDRAWN", "GRADUATED"];
+const GOV_ID_TYPES = [
+  "NATIONAL_ID", "PASSPORT", "BIRTH_CERTIFICATE",
+  "SOCIAL_INSURANCE", "VOTER_ID", "OTHER",
+];
 const statusTone = (s: string) =>
   s === "ENROLLED" ? "green" : s === "WITHDRAWN" ? "red" : "neutral";
 
@@ -230,7 +235,13 @@ export default function StudentProfilePage() {
                   type: "select",
                   options: options(groups.data, (g) => g.name),
                 },
-                { name: "government_id", label: "Government ID (encrypted)" },
+                {
+                  name: "government_id_type",
+                  label: "Government ID type",
+                  type: "select",
+                  options: GOV_ID_TYPES.map((v) => ({ value: v, label: label(v) })),
+                },
+                { name: "government_id", label: "Government ID number (encrypted)" },
                 { name: "custody_notes", label: "Custody notes (encrypted)", type: "textarea" },
                 { name: "legal_hold", label: "Legal hold (blocks erasure)", type: "checkbox" },
               ]}
@@ -407,11 +418,28 @@ export default function StudentProfilePage() {
           </div>
         )}
 
-        {tab === "classes" && <RelList resource="enrolments" studentId={s.id} render={(r) => `${r.group_name ?? r.group} · ${label(String(r.status))} · from ${date(String(r.start_date))}${r.end_date ? ` to ${date(String(r.end_date))}` : ""}`} empty="Not enrolled in any group." />}
+        {tab === "classes" && (
+          <div className="space-y-4">
+            <RelList
+              resource="enrolments"
+              studentId={s.id}
+              title="Classes &amp; course sections"
+              render={(r) => `${r.group_name ?? r.group} · ${label(String(r.status))} · from ${date(String(r.start_date))}${r.end_date ? ` to ${date(String(r.end_date))}` : ""}`}
+              empty="Not enrolled in any group."
+            />
+            <RelList
+              resource="bookings"
+              studentId={s.id}
+              title="After-school offerings"
+              render={(r) => `${r.offering_title ?? "Offering"} · ${r.starts_at ? datetime(String(r.starts_at)) : "—"} · ${label(String(r.status))}`}
+              empty="Not booked into any after-school offering."
+            />
+          </div>
+        )}
 
-        {tab === "timetable" && <Timetable groupId={s.primary_group} />}
+        {tab === "timetable" && <Timetable studentId={s.id} groupId={s.primary_group} />}
 
-        {tab === "attendance" && <RelList resource="attendance" studentId={s.id} render={(r) => `${date(String(r.date))} · ${label(String(r.status))}${r.group_name ? ` · ${r.group_name}` : ""}`} empty="No attendance records." />}
+        {tab === "attendance" && <StudentAttendance studentId={s.id} />}
 
         {tab === "assessment" && (
           <div className="space-y-4">
@@ -531,7 +559,67 @@ function RelList({
   );
 }
 
-function Timetable({ groupId }: { groupId: string | null }) {
+const ATTENDANCE_STATUSES = ["PRESENT", "ABSENT", "LATE", "EXCUSED", "LEFT_EARLY", "EXPECTED"];
+
+function StudentAttendance({ studentId }: { studentId: string }) {
+  const [filter, setFilter] = useState("");
+  const q = useList<{ id: string; date: string; status: string; group_name?: string }>(
+    "attendance",
+    { student: studentId },
+  );
+  const rows = q.data?.results ?? [];
+  const totals = new Map<string, number>();
+  for (const r of rows) totals.set(r.status, (totals.get(r.status) ?? 0) + 1);
+  const shown = filter ? rows.filter((r) => r.status === filter) : rows;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {ATTENDANCE_STATUSES.filter((s) => totals.get(s)).map((s) => (
+          <button
+            key={s}
+            onClick={() => setFilter(filter === s ? "" : s)}
+            className={`rounded-full border px-2.5 py-1 text-xs ${
+              filter === s
+                ? "border-[var(--campus-accent)] bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+                : "border-[var(--campus-line)] text-[var(--campus-muted)] hover:text-[var(--campus-fg)]"
+            }`}
+          >
+            {label(s)}: {totals.get(s)}
+          </button>
+        ))}
+        {filter && (
+          <button
+            onClick={() => setFilter("")}
+            className="text-xs text-[var(--campus-accent)] hover:underline"
+          >
+            Clear filter
+          </button>
+        )}
+      </div>
+      <div className="rounded-md border border-[var(--campus-line)]">
+        {q.isLoading ? (
+          <Spinner />
+        ) : shown.length === 0 ? (
+          <div className="px-3 py-5 text-center text-sm text-[var(--campus-muted)]">
+            {filter ? `No ${label(filter).toLowerCase()} records.` : "No attendance records."}
+          </div>
+        ) : (
+          <ul className="divide-y divide-[var(--campus-line)] text-sm">
+            {shown.map((r) => (
+              <li key={r.id} className="px-3 py-2">
+                {date(r.date)} · {label(r.status)}
+                {r.group_name ? ` · ${r.group_name}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Timetable({ studentId, groupId }: { studentId: string; groupId: string | null }) {
   const [open, setOpen] = useState<import("@/lib/calendar").CalendarSession | null>(null);
   if (!groupId)
     return (
@@ -541,7 +629,11 @@ function Timetable({ groupId }: { groupId: string | null }) {
     );
   return (
     <>
-      <ScheduleCalendar groups={[]} fixedGroupId={groupId} initialView="week" onOpenSession={setOpen} />
+      <p className="mb-3 text-sm text-[var(--campus-muted)]">
+        Every class this student is actually enrolled in — homeroom plus every
+        course-of-study section — not just their homeroom block.
+      </p>
+      <ScheduleCalendar groups={[]} fixedStudentId={studentId} initialView="week" onOpenSession={setOpen} />
       <Modal
         open={!!open}
         onClose={() => setOpen(null)}
@@ -615,7 +707,9 @@ const CONSENT_KINDS = [
 
 function StudentConsents({ studentId }: { studentId: string }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [adding, setAdding] = useState(false);
+  const [requesting, setRequesting] = useState(false);
   const q = useList<{
     id: string;
     kind: string;
@@ -633,9 +727,36 @@ function StudentConsents({ studentId }: { studentId: string }) {
         <span className="text-xs font-semibold uppercase tracking-wide text-[var(--campus-muted)]">
           Consents
         </span>
-        <Button size="sm" variant="subtle" onClick={() => setAdding(true)}>
-          + Record
-        </Button>
+        <span className="flex gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={requesting}
+            onClick={async () => {
+              setRequesting(true);
+              try {
+                const res = await create<{ sent: boolean; to: string[] }>(
+                  "consents/request", { student: studentId },
+                );
+                toast(
+                  res.sent ? "success" : "error",
+                  res.sent
+                    ? `Requested from ${res.to.length} guardian(s)`
+                    : "No communications-eligible guardian on file",
+                );
+              } catch (e) {
+                toast("error", apiMessage(e));
+              } finally {
+                setRequesting(false);
+              }
+            }}
+          >
+            {requesting ? "Sending…" : "Request consent"}
+          </Button>
+          <Button size="sm" variant="subtle" onClick={() => setAdding(true)}>
+            + Record
+          </Button>
+        </span>
       </div>
       {q.isLoading ? (
         <Spinner />

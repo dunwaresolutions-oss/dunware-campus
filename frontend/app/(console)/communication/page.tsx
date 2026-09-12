@@ -148,6 +148,8 @@ export default function CommunicationPage() {
           <CrudPanel<IncRow>
             resource="incident-reports"
             singular="incident report"
+            searchable
+            searchPlaceholder="Search by student, location or category…"
             onRowOpen={setOpenInc}
             columns={[
               { header: "Student", cell: (r) => r.student_name || r.student },

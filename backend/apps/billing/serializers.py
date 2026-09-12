@@ -22,11 +22,13 @@ class InvoiceLineSerializer(serializers.ModelSerializer):
 
 class PaymentSerializer(serializers.ModelSerializer):
     received_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+    student_name = serializers.CharField(source="invoice.student.display_name", read_only=True)
 
     class Meta:
         model = Payment
-        fields = ["id", "invoice", "amount_cents", "method", "reference",
-                  "received_at", "received_by", "note", "created_at"]
+        fields = ["id", "invoice", "invoice_number", "student_name", "amount_cents",
+                  "method", "reference", "received_at", "received_by", "note", "created_at"]
         read_only_fields = ["received_at", "received_by"]
 
 
@@ -53,12 +55,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = [
-            "id", "student", "student_name", "guardian", "guardian_name", "term",
-            "status", "currency", "issued_at", "due_date", "notes", "created_by",
+            "id", "invoice_number", "student", "student_name", "guardian", "guardian_name",
+            "term", "status", "currency", "issued_at", "due_date", "notes", "created_by",
             "lines", "payments", "total_cents", "paid_cents", "balance_cents",
             "created_at",
         ]
-        read_only_fields = ["status", "issued_at", "currency"]
+        read_only_fields = ["status", "issued_at", "currency", "invoice_number"]
 
     def get_guardian_name(self, obj) -> str:
         g = obj.guardian

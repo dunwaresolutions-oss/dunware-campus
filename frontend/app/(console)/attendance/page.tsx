@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAll, useList } from "@/lib/hooks";
 import { actList, act } from "@/lib/resource";
 import { apiMessage, today, time, label } from "@/lib/format";
@@ -15,6 +15,8 @@ import {
 } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { useToast } from "@/components/Toast";
+import { SearchSelect } from "@/components/SearchSelect";
+import { searchStudents } from "@/lib/students";
 
 interface Group {
   id: number;
@@ -53,6 +55,8 @@ export default function AttendancePage() {
   const [checkout, setCheckout] = useState<{ rec: Rec; student: Student } | null>(
     null,
   );
+  const [pickedStudent, setPickedStudent] = useState("");
+  const [highlight, setHighlight] = useState("");
 
   const groups = useAll<Group>("groups");
   const students = useAll<Student>("students");
@@ -66,6 +70,16 @@ export default function AttendancePage() {
 
   const reload = () =>
     qc.invalidateQueries({ queryKey: ["list", "attendance"] });
+
+  useEffect(() => {
+    if (!pickedStudent) return;
+    const s = (students.data ?? []).find((x) => x.id === pickedStudent);
+    if (s?.primary_group != null) {
+      setGroup(String(s.primary_group));
+      setHighlight(pickedStudent);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickedStudent, students.data]);
 
   const roster = (students.data ?? []).filter(
     (s) => String(s.primary_group) === group,
@@ -117,11 +131,23 @@ export default function AttendancePage() {
         subtitle="Pick a group and date, then check children in and out — check-out is only allowed to an authorized pickup or a guardian cleared for pickup."
       />
 
-      <div className="mb-5 flex flex-wrap gap-3">
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        <span className="w-64">
+          <SearchSelect
+            value={pickedStudent}
+            onChange={setPickedStudent}
+            search={searchStudents}
+            placeholder="Find a student's status…"
+          />
+        </span>
         <select
           className="rounded-md border border-[var(--campus-line)] px-3 py-2 text-sm"
           value={group}
-          onChange={(e) => setGroup(e.target.value)}
+          onChange={(e) => {
+            setGroup(e.target.value);
+            setPickedStudent("");
+            setHighlight("");
+          }}
         >
           <option value="">Select a group…</option>
           {(groups.data ?? []).map((g) => (
@@ -153,7 +179,9 @@ export default function AttendancePage() {
                 return (
                   <tr
                     key={s.id}
-                    className="border-b border-[var(--campus-line)] last:border-0"
+                    className={`border-b border-[var(--campus-line)] last:border-0 ${
+                      s.id === highlight ? "bg-[var(--campus-accent-soft)]" : ""
+                    }`}
                   >
                     <td className="px-3 py-2.5 font-medium">
                       {s.display_name}

@@ -17,10 +17,18 @@ import {
 } from "@/components/ui";
 import { RecordForm } from "@/components/RecordForm";
 import { useToast } from "@/components/Toast";
+import { api } from "@/lib/api";
 import { label, apiMessage } from "@/lib/format";
+import { useQueryClient } from "@tanstack/react-query";
 
 const INVITE_ROLES = ["ADMIN", "TEACHER", "TUTOR", "FRONT_DESK"];
 const DIRECTORY_ROLES: Role[] = ["SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR"];
+const STAFF_STATUSES = [
+  "ACTIVE", "SICK_LEAVE", "ON_LEAVE", "SEDENTARY_DUTY",
+  "TRANSFERRED", "SUSPENDED", "TERMINATED",
+];
+const statusTone = (s: string) =>
+  s === "ACTIVE" ? "green" : s === "TERMINATED" || s === "SUSPENDED" ? "red" : "amber";
 
 interface Assignment {
   id: string | number;
@@ -37,7 +45,9 @@ export default function StaffPage() {
     if (paramTab) setTab(paramTab);
   }, [paramTab]);
   const toast = useToast();
+  const qc = useQueryClient();
   const users = useQuery({ queryKey: ["users"], queryFn: listUsers });
+  const reloadUsers = () => qc.invalidateQueries({ queryKey: ["users"] });
   const groups = useAll<{ id: number; name: string }>("groups");
   const assignments = useAll<Assignment>("group-staff");
   const [invite, setInvite] = useState<{ token: string; email: string } | null>(
@@ -91,13 +101,19 @@ export default function StaffPage() {
       },
     },
     {
-      header: "Status",
+      header: "Login",
       cell: (u) =>
         u.is_active ? (
           <Badge tone="green">Active</Badge>
         ) : (
           <Badge tone="red">Disabled</Badge>
         ),
+    },
+    {
+      header: "Status",
+      cell: (u) => (
+        <StaffStatusPicker user={u} onChanged={reloadUsers} />
+      ),
     },
   ];
 
@@ -287,5 +303,52 @@ export default function StaffPage() {
         />
       )}
     </div>
+  );
+}
+
+function StaffStatusPicker({
+  user,
+  onChanged,
+}: {
+  user: DirectoryUser;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function change(next: string) {
+    if (next === user.status) return;
+    setBusy(true);
+    try {
+      await api(`/auth/users/${user.id}/status/`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: next }),
+      });
+      toast("success", `${user.display_name || user.username} marked ${label(next)}`);
+      onChanged();
+    } catch (e) {
+      toast("error", apiMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-1.5">
+      <Badge tone={statusTone(user.status)}>{label(user.status)}</Badge>
+      <select
+        value={user.status}
+        disabled={busy}
+        onChange={(e) => change(e.target.value)}
+        className="rounded-md border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-1.5 py-1 text-xs text-[var(--campus-fg)]"
+        aria-label={`Change status for ${user.display_name || user.username}`}
+      >
+        {STAFF_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {label(s)}
+          </option>
+        ))}
+      </select>
+    </span>
   );
 }

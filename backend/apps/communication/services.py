@@ -131,6 +131,31 @@ def send_announcement(announcement: Announcement, *, actor=None, event=None) -> 
     return log
 
 
+def request_consent(student, *, kinds=None, actor=None) -> OutboundEmail:
+    """Ask every communications-eligible guardian of `student` to log into
+    the portal and record a consent decision — for kinds still missing (or
+    an explicit list) rather than guessing what changed. This only asks; the
+    guardian still records the actual decision themselves via
+    `POST /api/portal/consents/` (see registration.Consent), matching the
+    portal's existing propose/confirm pattern for everything else."""
+    from apps.registration.models import Consent
+
+    recipients = _guardian_emails_for_student(student)
+    if kinds is None:
+        recorded = set(
+            Consent.objects.filter(student=student).values_list("kind", flat=True)
+        )
+        kinds = [k for k in Consent.Kind.values if k not in recorded]
+    kind_lines = "\n".join(f"  - {Consent.Kind(k).label}" for k in kinds) or "  (all forms)"
+    subject = f"Consent needed for {student.display_name}"
+    body = (
+        f"Dear guardian,\n\nPlease log into the parent portal to record your "
+        f"consent decision for {student.display_name} on the following:\n\n"
+        f"{kind_lines}\n\nThank you."
+    )
+    return _send(OutboundEmail.Kind.CONSENT, subject, body, recipients, obj=student, actor=actor)
+
+
 def notify_incident(incident: IncidentReport, *, actor=None) -> OutboundEmail:
     from .models import MessageTemplate
     from .templating import build_context, get_active, render_template

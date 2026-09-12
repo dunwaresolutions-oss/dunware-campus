@@ -227,6 +227,7 @@ class OutboundEmail(BaseModel):
         THREAD = "THREAD", "Message thread"
         REPORT_CARD = "REPORT_CARD", "Report card released"
         ABSENCE = "ABSENCE", "Absence notification"
+        CONSENT = "CONSENT", "Consent request"
 
     kind = models.CharField(max_length=12, choices=Kind.choices)
     subject = models.CharField(max_length=255)

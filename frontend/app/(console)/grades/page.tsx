@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAll, useQueryParam, options } from "@/lib/hooks";
+import { useAll, useList, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { NestedList } from "@/components/NestedList";
 import { Modal } from "@/components/Modal";
-import { PageHeader, Tabs, Badge, Button, Spinner } from "@/components/ui";
-import { act, patch, retrieve } from "@/lib/resource";
+import { RecordForm } from "@/components/RecordForm";
+import { PageHeader, Tabs, Badge, Button, Card, Spinner } from "@/components/ui";
+import { act, create, patch, retrieve } from "@/lib/resource";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import { apiMessage, date, label } from "@/lib/format";
 import { searchStudents } from "@/lib/students";
+import { SearchSelect } from "@/components/SearchSelect";
 
 interface ReportCardRow {
   id: string;
@@ -22,6 +24,9 @@ interface ReportCardRow {
   status: "DRAFT" | "FINALIZED" | "RELEASED";
   summary_narrative: string;
   document_url: string | null;
+  grading_scheme: string | null;
+  grading_scheme_name: string | null;
+  cumulative_gpa: number | null;
   generated_at: string | null;
   released_at: string | null;
 }
@@ -29,6 +34,10 @@ interface ReportCardRow {
 export default function GradesPage() {
   const [tab, setTab] = useState("assessments");
   const [openCard, setOpenCard] = useState<ReportCardRow | null>(null);
+  const [resultsStudent, setResultsStudent] = useState("");
+  const [resultsSubject, setResultsSubject] = useState("");
+  const [cardsStudent, setCardsStudent] = useState("");
+  const [cardsSubject, setCardsSubject] = useState("");
   const toast = useToast();
   const paramTab = useQueryParam("tab");
   const focusId = useQueryParam("focus");
@@ -76,6 +85,7 @@ export default function GradesPage() {
           { key: "results", label: "Results" },
           { key: "schemes", label: "Schemes" },
           { key: "reportcards", label: "Report cards" },
+          { key: "grading", label: "Report card grading" },
         ]}
       />
 
@@ -192,10 +202,39 @@ export default function GradesPage() {
       )}
 
       {tab === "results" && (
-        <CrudPanel
-          resource="assessment-results"
-          singular="result"
-          columns={[
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="w-56">
+              <SearchSelect
+                value={resultsStudent}
+                onChange={setResultsStudent}
+                search={searchStudents}
+                placeholder="Filter by student…"
+              />
+            </span>
+            <input
+              value={resultsSubject}
+              onChange={(e) => setResultsSubject(e.target.value)}
+              placeholder="Filter by subject (e.g. English)…"
+              className="w-56 rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+            />
+            {(resultsStudent || resultsSubject) && (
+              <button
+                className="text-xs text-[var(--campus-accent)] hover:underline"
+                onClick={() => {
+                  setResultsStudent("");
+                  setResultsSubject("");
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <CrudPanel
+            resource="assessment-results"
+            singular="result"
+            query={{ student: resultsStudent || undefined, subject: resultsSubject || undefined }}
+            columns={[
             {
               header: "Assessment",
               cell: (r) =>
@@ -239,15 +278,45 @@ export default function GradesPage() {
               value: (r) => (r.narrative as string) || "—",
             },
           ]}
-        />
+          />
+        </>
       )}
 
       {tab === "reportcards" && (
-        <CrudPanel<ReportCardRow>
-          resource="report-cards"
-          singular="report card"
-          onRowOpen={setOpenCard}
-          columns={[
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <span className="w-56">
+              <SearchSelect
+                value={cardsStudent}
+                onChange={setCardsStudent}
+                search={searchStudents}
+                placeholder="Filter by student…"
+              />
+            </span>
+            <input
+              value={cardsSubject}
+              onChange={(e) => setCardsSubject(e.target.value)}
+              placeholder="Filter by subject (e.g. English)…"
+              className="w-56 rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+            />
+            {(cardsStudent || cardsSubject) && (
+              <button
+                className="text-xs text-[var(--campus-accent)] hover:underline"
+                onClick={() => {
+                  setCardsStudent("");
+                  setCardsSubject("");
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <CrudPanel<ReportCardRow>
+            resource="report-cards"
+            singular="report card"
+            query={{ student: cardsStudent || undefined, subject: cardsSubject || undefined }}
+            onRowOpen={setOpenCard}
+            columns={[
             {
               header: "Student",
               cell: (r) => (r.student_name as string) || r.student,
@@ -284,8 +353,11 @@ export default function GradesPage() {
             { name: "term", label: "Term", type: "select", required: true, options: termOpts },
             { name: "summary_narrative", label: "Summary (encrypted)", type: "textarea" },
           ]}
-        />
+          />
+        </>
       )}
+
+      {tab === "grading" && <GradingSchemes />}
 
       <ReportCardDrawer
         card={openCard}
@@ -379,6 +451,14 @@ function ReportCardDrawer({
               released {date(live.released_at)}
             </span>
           )}
+          {live.grading_scheme_name && (
+            <span className="text-[var(--campus-muted)]">
+              grading: {live.grading_scheme_name}
+            </span>
+          )}
+          {live.cumulative_gpa != null && (
+            <Badge tone="violet">Cumulative GPA {Number(live.cumulative_gpa).toFixed(2)}</Badge>
+          )}
         </div>
 
         <div>
@@ -422,6 +502,8 @@ function ReportCardDrawer({
           render={(r) => {
             const mark = r.mark == null || r.mark === "" ? null : String(r.mark);
             const lvl = r.level == null || r.level === "" ? null : String(r.level);
+            const gradeLabel = r.grade_label ? String(r.grade_label) : null;
+            const gpaPoints = r.gpa_points != null ? String(r.gpa_points) : null;
             return (
               <span>
                 <span className="font-medium">{String(r.subject ?? "")}</span>
@@ -429,6 +511,8 @@ function ReportCardDrawer({
                   <span className="text-[var(--campus-muted)]"> ({String(r.group_name)})</span>
                 ) : null}
                 {mark ? ` · mark ${mark}` : ""}
+                {gradeLabel ? ` · grade ${gradeLabel}` : ""}
+                {gpaPoints ? ` (${gpaPoints} pts)` : ""}
                 {lvl ? ` · level ${lvl}` : ""}
                 {r.comment ? (
                   <span className="text-[var(--campus-muted)]">
@@ -547,5 +631,171 @@ function ReportCardDrawer({
         )}
       </Modal>
     </Modal>
+  );
+}
+
+/* --------------------------------------------------------- grading scheme */
+
+interface GradeBandRow {
+  id: string;
+  scheme: string;
+  label: string;
+  min_percent: number;
+  max_percent: number;
+  gpa_points: number | null;
+  description: string;
+  order: number;
+}
+interface SchemeRow {
+  id: string;
+  name: string;
+  description: string;
+  uses_gpa: boolean;
+  gpa_scale: number | null;
+  is_active: boolean;
+  bands: GradeBandRow[];
+}
+
+function GradingSchemes() {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState<SchemeRow | null>(null);
+  const q = useList<SchemeRow>("grading-schemes");
+  const reload = () => qc.invalidateQueries({ queryKey: ["list", "grading-schemes"] });
+  const schemes = q.data?.results ?? [];
+
+  async function activate(id: string) {
+    try {
+      await act("grading-schemes", id, "activate");
+      toast("success", "Grading scheme activated");
+      reload();
+      if (open) setOpen((o) => (o ? { ...o, is_active: o.id === id } : o));
+    } catch (e) {
+      toast("error", apiMessage(e));
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-[var(--campus-muted)]">
+        Exactly one scheme is <b>active</b> at a time — it&apos;s what every report card&apos;s
+        grade column, and cumulative GPA if the scheme uses one, is computed from
+        going forward. A card already generated keeps whatever scheme was active
+        when it was made, so changing this never rewrites history. With none
+        active, report cards just show the raw mark.
+      </p>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)}>
+          New scheme
+        </Button>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {schemes.map((s) => (
+          <Card key={s.id} className="p-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{s.name}</span>
+                  {s.is_active && <Badge tone="green">Active</Badge>}
+                  {s.uses_gpa && <Badge tone="violet">GPA / {Number(s.gpa_scale ?? 4).toFixed(2)}</Badge>}
+                </div>
+                {s.description && (
+                  <p className="mt-1 text-xs text-[var(--campus-muted)]">{s.description}</p>
+                )}
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1">
+              {s.bands.map((b) => (
+                <span
+                  key={b.id}
+                  className="rounded-full border border-[var(--campus-line)] px-2 py-0.5 text-xs"
+                  title={b.description}
+                >
+                  {b.label} ({b.min_percent}–{b.max_percent}%
+                  {b.gpa_points != null ? ` · ${b.gpa_points}` : ""})
+                </span>
+              ))}
+              {s.bands.length === 0 && (
+                <span className="text-xs text-[var(--campus-muted)]">No bands yet.</span>
+              )}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setOpen(s)}>
+                Manage bands
+              </Button>
+              {!s.is_active && (
+                <Button size="sm" variant="subtle" onClick={() => activate(s.id)}>
+                  Activate
+                </Button>
+              )}
+            </div>
+          </Card>
+        ))}
+        {schemes.length === 0 && !q.isLoading && (
+          <p className="text-sm text-[var(--campus-muted)]">No grading schemes yet.</p>
+        )}
+      </div>
+
+      <Modal open={creating} onClose={() => setCreating(false)} title="New grading scheme">
+        <RecordForm
+          fields={[
+            { name: "name", label: "Name", required: true },
+            { name: "description", label: "Description" },
+            { name: "uses_gpa", label: "Uses a GPA", type: "checkbox" },
+            { name: "gpa_scale", label: "GPA scale (e.g. 4.00)", type: "number" },
+          ]}
+          submitLabel="Create scheme"
+          onSubmit={async (v) => {
+            await create("grading-schemes", v);
+            toast("success", "Scheme created — add its bands next");
+            setCreating(false);
+            reload();
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      </Modal>
+
+      <Modal
+        open={!!open}
+        onClose={() => setOpen(null)}
+        title={open ? `Bands — ${open.name}` : "Bands"}
+        wide
+      >
+        {open && (
+          <div className="space-y-3">
+            {!open.is_active && (
+              <Button size="sm" onClick={() => activate(open.id)}>
+                Activate this scheme
+              </Button>
+            )}
+            <NestedList
+              resource="grade-bands"
+              parentKey="scheme"
+              parentId={open.id}
+              title="Bands, highest first"
+              render={(r) => (
+                <span>
+                  <span className="font-medium">{String(r.label)}</span>{" "}
+                  {String(r.min_percent)}–{String(r.max_percent)}%
+                  {r.gpa_points != null ? ` · ${r.gpa_points} pts` : ""}
+                  {r.description ? (
+                    <span className="text-[var(--campus-muted)]"> — {String(r.description)}</span>
+                  ) : null}
+                </span>
+              )}
+              addFields={[
+                { name: "label", label: "Label", required: true, placeholder: "A, Level 4, 7, Distinction…" },
+                { name: "min_percent", label: "Min %", type: "number", required: true },
+                { name: "max_percent", label: "Max %", type: "number", required: true },
+                { name: "gpa_points", label: "GPA points (if this scheme uses a GPA)", type: "number" },
+                { name: "description", label: "Description" },
+                { name: "order", label: "Order (highest band = 1)", type: "number" },
+              ]}
+            />
+          </div>
+        )}
+      </Modal>
+    </div>
   );
 }

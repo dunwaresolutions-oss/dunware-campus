@@ -38,6 +38,17 @@ _ADMIN_ROLES = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
 _INSTRUCTOR_ROLES = {Role.TEACHER, Role.TUTOR}
 
 
+def _student_group_ids(student_id):
+    """Every group a student is actively enrolled in — homeroom AND every
+    course-of-study section, so "show her schedule" means her whole
+    timetable, not just the one primary_group."""
+    from apps.registration.models import Enrolment
+
+    return Enrolment.objects.filter(
+        student_id=student_id, status=Enrolment.Status.ACTIVE
+    ).values_list("group_id", flat=True)
+
+
 class StaffReadFrontOfficeWrite(BasePermission):
     """Reference / calendar data: any staff may read, front office writes."""
 
@@ -131,6 +142,8 @@ class SessionOccurrenceViewSet(CampusViewSet):
         params = self.request.query_params
         if params.get("group"):
             qs = qs.filter(group_id=params["group"])
+        if params.get("student"):
+            qs = qs.filter(group_id__in=_student_group_ids(params["student"]))
         if params.get("date"):
             qs = qs.filter(date=params["date"])
         if params.get("from"):
@@ -168,6 +181,8 @@ class SessionOccurrenceViewSet(CampusViewSet):
         )
         if request.query_params.get("group"):
             qs = qs.filter(group_id=request.query_params["group"])
+        if request.query_params.get("student"):
+            qs = qs.filter(group_id__in=_student_group_ids(request.query_params["student"]))
         role = getattr(request.user, "role", None)
         group_ids = None
         if role not in _ADMIN_ROLES:

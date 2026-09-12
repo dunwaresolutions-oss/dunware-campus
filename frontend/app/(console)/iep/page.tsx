@@ -70,6 +70,8 @@ export default function IEPPage() {
       <CrudPanel<IEP>
         resource="ieps"
         singular="IEP"
+        searchable
+        searchPlaceholder="Search by student or primary concern…"
         query={focusStudent ? { student: focusStudent } : undefined}
         fields={fields}
         onRowOpen={setOpen}

@@ -425,7 +425,7 @@ export default function DashboardPage() {
                 label="Outstanding fees"
                 value={money(m.operations.billing.outstanding_cents)}
                 sub={`${pct(m.operations.billing.collection_pct)} collected`}
-                href="/billing/"
+                href="/billing/?tab=invoices&outstanding=1"
                 tone="amber"
               />
             )}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import status
@@ -8,13 +9,21 @@ from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.core.api import CampusViewSet
-from apps.core.permissions import FrontOffice, IsObjectOwnerOrStaff, MFAVerified, StaffOnly
+from apps.core.permissions import (
+    AdminOnly,
+    FrontOffice,
+    IsObjectOwnerOrStaff,
+    MFAVerified,
+    StaffOnly,
+)
 from apps.people.models import GroupStaff, Student
 
 from .models import (
     Assessment,
     AssessmentResult,
     AssessmentScheme,
+    GradeBand,
+    GradingScheme,
     ReportCard,
     ReportCardEntry,
     RubricCriterion,
@@ -24,6 +33,8 @@ from .serializers import (
     AssessmentResultSerializer,
     AssessmentSchemeSerializer,
     AssessmentSerializer,
+    GradeBandSerializer,
+    GradingSchemeSerializer,
     ReportCardEntrySerializer,
     ReportCardSerializer,
     RubricCriterionSerializer,
@@ -73,6 +84,45 @@ class _InstructorScopedViewSet(CampusViewSet):
             if not allowed:
                 self.permission_denied(self.request, message="Not your group.")
         serializer.save()
+
+
+class GradingSchemeViewSet(CampusViewSet):
+    """Institution-wide report-card grading policy — a name, whether it uses
+    a GPA, and its bands (read-only nested; use GradeBandViewSet to edit
+    them). Admin-only: this is a school-wide policy call, the same trust
+    level as the currency/region settings it sits next to."""
+
+    queryset = GradingScheme.objects.prefetch_related("bands")
+    serializer_class = GradingSchemeSerializer
+    permission_classes = [AdminOnly, MFAVerified]
+    audit_reads = False
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [StaffOnly(), MFAVerified()]
+        return super().get_permissions()
+
+    @action(detail=True, methods=["post"])
+    def activate(self, request, pk=None):
+        scheme = self.get_object()
+        scheme.activate()
+        return Response(self.get_serializer(scheme).data)
+
+
+class GradeBandViewSet(CampusViewSet):
+    serializer_class = GradeBandSerializer
+    permission_classes = [AdminOnly, MFAVerified]
+    audit_reads = False
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [StaffOnly(), MFAVerified()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        qs = GradeBand.objects.select_related("scheme")
+        scheme_id = self.request.query_params.get("scheme")
+        return qs.filter(scheme_id=scheme_id) if scheme_id else qs
 
 
 class AssessmentSchemeViewSet(_InstructorScopedViewSet):
@@ -132,11 +182,29 @@ class AssessmentResultViewSet(_InstructorScopedViewSet):
         )
         role = getattr(self.request.user, "role", None)
         if self._admin() or role in _INSTRUCTOR_ROLES:
-            return self.scope(qs)
-        return qs.filter(
-            assessment__released=True,
-            student__in=Student.visible_queryset(self.request.user),
-        )
+            qs = self.scope(qs)
+        else:
+            qs = qs.filter(
+                assessment__released=True,
+                student__in=Student.visible_queryset(self.request.user),
+            )
+        params = self.request.query_params
+        if params.get("student"):
+            qs = qs.filter(student_id=params["student"])
+        q = (params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(student__first_name__icontains=q)
+                | Q(student__last_name__icontains=q)
+                | Q(student__preferred_name__icontains=q)
+            )
+        subject = (params.get("subject") or "").strip()
+        if subject:
+            qs = qs.filter(
+                Q(assessment__scheme__name__icontains=subject)
+                | Q(assessment__title__icontains=subject)
+            )
+        return qs
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
@@ -193,8 +261,21 @@ class ReportCardViewSet(CampusViewSet):
             )
         else:
             return qs.none()
-        sid = self.request.query_params.get("student")
-        return qs.filter(student_id=sid) if sid else qs
+        params = self.request.query_params
+        sid = params.get("student")
+        if sid:
+            qs = qs.filter(student_id=sid)
+        q = (params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(student__first_name__icontains=q)
+                | Q(student__last_name__icontains=q)
+                | Q(student__preferred_name__icontains=q)
+            )
+        subject = (params.get("subject") or "").strip()
+        if subject:
+            qs = qs.filter(entries__subject__icontains=subject).distinct()
+        return qs
 
     def get_permissions(self):
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
@@ -255,13 +336,14 @@ class ReportCardEntryViewSet(_InstructorScopedViewSet):
     audit_reads = True
 
     def get_queryset(self):
-        qs = ReportCardEntry.objects.select_related("report_card", "report_card__student")
-        role = getattr(self.request.user, "role", None)
-        if role in _ADMIN_ROLES:
-            return qs
-        return qs.filter(
-            report_card__student__in=Student.visible_queryset(self.request.user)
+        qs = ReportCardEntry.objects.select_related(
+            "report_card", "report_card__student", "report_card__grading_scheme"
         )
+        role = getattr(self.request.user, "role", None)
+        if role not in _ADMIN_ROLES:
+            qs = qs.filter(report_card__student__in=Student.visible_queryset(self.request.user))
+        card_id = self.request.query_params.get("report_card")
+        return qs.filter(report_card_id=card_id) if card_id else qs
 
     def perform_create(self, serializer):
         if not self._admin():

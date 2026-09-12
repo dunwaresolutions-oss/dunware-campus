@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAll, useList, options } from "@/lib/hooks";
+import { useAll, useList, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
 import { create, act, retrieve } from "@/lib/resource";
@@ -15,6 +15,11 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export default function BillingPage() {
   const [tab, setTab] = useState("invoices");
+  const paramTab = useQueryParam("tab");
+  const outstandingOnly = useQueryParam("outstanding");
+  useEffect(() => {
+    if (paramTab) setTab(paramTab);
+  }, [paramTab]);
   const guardians = useAll<{ id: number; first_name: string; last_name: string }>(
     "guardians",
   );
@@ -54,7 +59,11 @@ export default function BillingPage() {
             reason (it is kept, never deleted). Press <b>Open</b> for the full
             picture.
           </p>
-          <Invoices guardianOpts={guardianOpts} termOpts={termOpts} />
+          <Invoices
+            guardianOpts={guardianOpts}
+            termOpts={termOpts}
+            initialOutstandingOnly={!!outstandingOnly}
+          />
         </>
       )}
 
@@ -68,6 +77,7 @@ export default function BillingPage() {
           <CrudPanel
             resource="fee-schedules"
             singular="fee schedule"
+            searchable
             columns={[
               { header: "Name", cell: (r) => r.name as string },
               { header: "Amount", cell: (r) => money(r.amount_cents as number) },
@@ -130,8 +140,14 @@ export default function BillingPage() {
             canCreate={false}
             canEdit={false}
             canDelete={false}
+            searchable
+            searchPlaceholder="Search by student, invoice # or reference…"
             columns={[
-              { header: "Invoice", cell: (r) => `#${r.invoice}` },
+              {
+                header: "Invoice",
+                cell: (r) => (r.invoice_number as string) || `#${r.invoice}`,
+              },
+              { header: "Student", cell: (r) => (r.student_name as string) || "—" },
               { header: "Amount", cell: (r) => money(r.amount_cents as number) },
               { header: "Method", cell: (r) => label(r.method as string) },
               { header: "Reference", cell: (r) => (r.reference as string) || "—" },
@@ -139,7 +155,11 @@ export default function BillingPage() {
             ]}
             detailTitle={(r) => `Payment — ${money(r.amount_cents as number)}`}
             detailFields={[
-              { label: "Invoice", value: (r) => `#${r.invoice}` },
+              {
+                label: "Invoice",
+                value: (r) => (r.invoice_number as string) || `#${r.invoice}`,
+              },
+              { label: "Student", value: (r) => (r.student_name as string) || "—" },
               { label: "Amount", value: (r) => money(r.amount_cents as number) },
               { label: "Method", value: (r) => label(r.method as string) },
               { label: "Reference", value: (r) => (r.reference as string) || "—" },
@@ -164,6 +184,8 @@ export default function BillingPage() {
           <CrudPanel
             resource="credits"
             singular="credit"
+            searchable
+            searchPlaceholder="Search by student or reason…"
             columns={[
               { header: "Student", cell: (r) => (r.student_name as string) || (r.student as string) },
               { header: "Amount", cell: (r) => money(r.amount_cents as number) },
@@ -187,29 +209,64 @@ export default function BillingPage() {
 function Invoices({
   guardianOpts,
   termOpts,
+  initialOutstandingOnly,
 }: {
   guardianOpts: { value: string | number; label: string }[];
   termOpts: { value: string | number; label: string }[];
+  initialOutstandingOnly: boolean;
 }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [term, setTerm] = useState("");
+  const [debounced, setDebounced] = useState("");
+  const [outstandingOnly, setOutstandingOnly] = useState(initialOutstandingOnly);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(term.trim()), 300);
+    return () => clearTimeout(id);
+  }, [term]);
+  useEffect(() => {
+    setPage(1);
+  }, [debounced, outstandingOnly]);
   const q = useList<{
     id: number;
+    invoice_number?: string;
     student: string;
     student_name?: string;
     status: string;
     total_cents: number;
     balance_cents: number;
     due_date: string | null;
-  }>("invoices", { page });
+  }>("invoices", {
+    page,
+    q: debounced || undefined,
+    outstanding: outstandingOnly ? 1 : undefined,
+  });
   const reload = () => qc.invalidateQueries({ queryKey: ["list", "invoices"] });
 
   return (
     <Card>
-      <div className="flex justify-end border-b border-[var(--campus-line)] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--campus-line)] p-3">
+        <span className="flex flex-wrap items-center gap-2">
+          <input
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+            placeholder="Search by student or invoice number…"
+            className="w-full max-w-xs rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-1.5 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none"
+          />
+          <button
+            onClick={() => setOutstandingOnly((v) => !v)}
+            className={`rounded-full border px-2.5 py-1 text-xs ${
+              outstandingOnly
+                ? "border-[var(--campus-accent)] bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+                : "border-[var(--campus-line)] text-[var(--campus-muted)] hover:text-[var(--campus-fg)]"
+            }`}
+          >
+            Outstanding only
+          </button>
+        </span>
         <Button size="sm" onClick={() => setCreating(true)}>
           New invoice
         </Button>
@@ -220,6 +277,7 @@ function Invoices({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-[var(--campus-line)] text-left text-xs uppercase text-[var(--campus-muted)]">
+              <th className="px-3 py-2 font-medium">Invoice #</th>
               <th className="px-3 py-2 font-medium">Student</th>
               <th className="px-3 py-2 font-medium">Total</th>
               <th className="px-3 py-2 font-medium">Balance</th>
@@ -235,6 +293,9 @@ function Invoices({
                 onClick={() => setDetailId(inv.id)}
                 className="cursor-pointer border-b border-[var(--campus-line)] transition-colors hover:bg-[var(--campus-accent-soft)]/60"
               >
+                <td className="px-3 py-2.5 font-mono text-xs text-[var(--campus-muted)]">
+                  {inv.invoice_number || "—"}
+                </td>
                 <td className="px-3 py-2.5">{inv.student_name || inv.student}</td>
                 <td className="px-3 py-2.5">{money(inv.total_cents)}</td>
                 <td className="px-3 py-2.5">{money(inv.balance_cents)}</td>
@@ -303,8 +364,8 @@ function Invoices({
             ))}
             {(q.data?.results ?? []).length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-[var(--campus-muted)]">
-                  No invoices yet.
+                <td colSpan={7} className="p-6 text-center text-[var(--campus-muted)]">
+                  No invoices match.
                 </td>
               </tr>
             )}
@@ -367,6 +428,7 @@ function Invoices({
 
 interface InvoiceFull {
   id: number;
+  invoice_number?: string;
   student: string;
   student_name?: string;
   status: string;
@@ -430,7 +492,7 @@ function InvoiceDetail({
   const editable = inv?.status === "DRAFT";
 
   return (
-    <Modal open onClose={onClose} title={`Invoice #${invoiceId}`} wide>
+    <Modal open onClose={onClose} title={`Invoice ${inv?.invoice_number || `#${invoiceId}`}`} wide>
       {loading || !inv ? (
         <Spinner />
       ) : (

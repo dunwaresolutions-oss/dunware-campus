@@ -32,6 +32,7 @@ Models a real secondary-school shape, not just a bigger primary school:
 from __future__ import annotations
 
 import datetime as dt
+import itertools
 import random
 
 from django.conf import settings
@@ -165,6 +166,17 @@ SPECIAL_ROOMS = {
     "Child Development": "Home Economics Room",
 }
 ALL_TRACK_SUBJECTS = [s for subs in TRACKS.values() for s in subs]
+
+# a homeroom's own daily period grid (compulsory/junior-shared subjects);
+# course-of-study sections get their own separate single weekly slot instead.
+PERIODS_PER_DAY = [
+    (dt.time(8, 0), dt.time(8, 50)),
+    (dt.time(9, 0), dt.time(9, 50)),
+    (dt.time(10, 0), dt.time(10, 50)),
+    (dt.time(11, 0), dt.time(11, 50)),
+    (dt.time(12, 30), dt.time(13, 20)),
+    (dt.time(13, 30), dt.time(14, 20)),
+]
 
 GRADES = [7, 8, 9, 10, 11, 12]
 # relative grade sizes (some natural senior attrition) — rescaled to whatever
@@ -350,6 +362,17 @@ class Command(BaseCommand):
         )
         made["school_profile"] = 1
 
+        # ── grading policy: activate the Bahamas 4.0 GPA preset (seeded by
+        #    a migration, present on every install) — matches this school's
+        #    own identity and exercises the cumulative-GPA calculation on
+        #    every report card generated below.
+        from apps.grades.models import GradingScheme
+
+        bahamas_gpa = GradingScheme.objects.filter(name="Bahamas — 4.0 GPA").first()
+        if bahamas_gpa:
+            bahamas_gpa.activate()
+        made["grading_scheme"] = bahamas_gpa.name if bahamas_gpa else "none"
+
         # ── the school year and its two terms ────────────────────────
         year = AcademicYear.objects.create(
             name=YEAR_NAME, start_date=YEAR_START, end_date=YEAR_END, is_current=True,
@@ -497,22 +520,35 @@ class Command(BaseCommand):
                     )
         made["course_of_study_sections"] = len(section_groups)
 
-        # ── the timetable ──────────────────────────────────────────────
+        # ── the timetable: a real period-by-period breakdown, not one
+        #    all-day "school day" blob — every homeroom subject gets its own
+        #    weekly slot(s), cycling through the grade's subject list to fill
+        #    the week, so the calendar shows what a student is actually in. ──
         made["sessions"] = 0
         terms = [term1] if quick else [term1, term2]
         homerooms_flat = [hr for lst in homerooms_by_grade.values() for hr in lst]
+        periods = PERIODS_PER_DAY[:2] if quick else PERIODS_PER_DAY
+        period_slots = [(wd, p) for wd in range(5) for p in range(len(periods))]
         for term in terms:
             to_date = None
             if quick:
                 to_date = min(term.start_date + dt.timedelta(days=13), term.end_date)
-            for grp, room, lead in homerooms_flat:
-                for weekday in range(5):  # Mon-Fri
-                    tmpl = SessionTemplate.objects.create(
-                        group=grp, term=term, room=room, staff=lead, weekday=weekday,
-                        start_time=dt.time(8, 0), end_time=dt.time(14, 30),
-                        title=f"{grp.name} - school day",
-                    )
-                    made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
+            for g in GRADES:
+                homeroom_subjects = COMPULSORY_SUBJECTS + (
+                    JUNIOR_SHARED_SUBJECTS if g <= 9 else [CAREER_GUIDANCE]
+                )
+                subject_cycle = list(
+                    itertools.islice(itertools.cycle(homeroom_subjects), len(period_slots))
+                )
+                for grp, room, lead in homerooms_by_grade[g]:
+                    for (weekday, p_idx), subj in zip(period_slots, subject_cycle, strict=True):
+                        start, end = periods[p_idx]
+                        teacher = subject_teacher.get(subj, lead)
+                        tmpl = SessionTemplate.objects.create(
+                            group=grp, term=term, room=room, staff=teacher, weekday=weekday,
+                            start_time=start, end_time=end, title=subj,
+                        )
+                        made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
         # subject sections meet once a week, term 1 only, at a subject-specific
         # period so they're not all stacked on top of each other.
         to_date = min(term1.start_date + dt.timedelta(days=13), term1.end_date) if quick else None

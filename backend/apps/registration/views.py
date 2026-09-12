@@ -215,3 +215,18 @@ class ConsentViewSet(CampusViewSet):
 
     def perform_create(self, serializer):
         serializer.save(recorded_by=self.request.user)
+
+    @action(detail=False, methods=["post"], url_path="request",
+            permission_classes=[FrontOffice, MFAVerified])
+    def request_consent_action(self, request):
+        """``POST /api/consents/request/`` — {student, kinds?[]} — emails every
+        communications-eligible guardian asking them to record a decision on
+        the portal for the given kinds (default: whatever's still missing)."""
+        from apps.communication.services import request_consent
+
+        student = get_object_or_404(Student, pk=request.data.get("student"))
+        kinds = request.data.get("kinds") or None
+        log = request_consent(student, kinds=kinds, actor=request.user)
+        return Response({
+            "sent": bool(log.sent_at), "to": log.to, "error": log.error,
+        }, status=status.HTTP_200_OK if log.sent_at else status.HTTP_502_BAD_GATEWAY)

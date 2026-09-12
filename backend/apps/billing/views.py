@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -43,10 +44,24 @@ class BillingAccess(BasePermission):
 
 
 class FeeScheduleViewSet(CampusViewSet):
-    queryset = FeeSchedule.objects.select_related("group")
     serializer_class = FeeScheduleSerializer
     permission_classes = [BillingEnabled, FrontOffice, MFAVerified]
     audit_reads = False
+
+    def get_queryset(self):
+        qs = FeeSchedule.objects.select_related("group")
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+        return qs
+
+
+# statuses that mean "this family still owes money on it" - matches the
+# open/unpaid check already used when the collects-fees toggle is turned off
+# (apps/core/views.py) and the dashboard's own outstanding-fees figure.
+_OUTSTANDING_STATUSES = [
+    Invoice.Status.ISSUED, Invoice.Status.PARTIALLY_PAID, Invoice.Status.OVERDUE,
+]
 
 
 class InvoiceViewSet(CampusViewSet):
@@ -61,12 +76,27 @@ class InvoiceViewSet(CampusViewSet):
         qs = Invoice.objects.select_related("student", "guardian", "term")
         role = getattr(self.request.user, "role", None)
         if role in _ADMIN_ROLES:
-            return qs
-        if role == Role.PARENT:
-            return qs.exclude(status=Invoice.Status.DRAFT).filter(
+            pass
+        elif role == Role.PARENT:
+            qs = qs.exclude(status=Invoice.Status.DRAFT).filter(
                 student__in=Student.visible_queryset(self.request.user)
             )
-        return qs.none()
+        else:
+            return qs.none()
+        params = self.request.query_params
+        if params.get("outstanding"):
+            qs = qs.filter(status__in=_OUTSTANDING_STATUSES)
+        elif params.get("status"):
+            qs = qs.filter(status=params["status"])
+        q = (params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(invoice_number__icontains=q)
+                | Q(student__first_name__icontains=q)
+                | Q(student__last_name__icontains=q)
+                | Q(student__preferred_name__icontains=q)
+            )
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -118,10 +148,20 @@ class PaymentViewSet(CampusViewSet):
         qs = Payment.objects.select_related("invoice", "invoice__student")
         role = getattr(self.request.user, "role", None)
         if role in _ADMIN_ROLES:
-            return qs
-        if role == Role.PARENT:
-            return qs.filter(invoice__student__in=Student.visible_queryset(self.request.user))
-        return qs.none()
+            pass
+        elif role == Role.PARENT:
+            qs = qs.filter(invoice__student__in=Student.visible_queryset(self.request.user))
+        else:
+            return qs.none()
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(invoice__invoice_number__icontains=q)
+                | Q(invoice__student__first_name__icontains=q)
+                | Q(invoice__student__last_name__icontains=q)
+                | Q(reference__icontains=q)
+            )
+        return qs
 
 
 class CreditViewSet(CampusViewSet):
@@ -130,7 +170,15 @@ class CreditViewSet(CampusViewSet):
     audit_reads = False
 
     def get_queryset(self):
-        return Credit.objects.select_related("student", "applied_to_invoice")
+        qs = Credit.objects.select_related("student", "applied_to_invoice")
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(student__first_name__icontains=q)
+                | Q(student__last_name__icontains=q)
+                | Q(reason__icontains=q)
+            )
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)

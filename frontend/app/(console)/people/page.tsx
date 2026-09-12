@@ -9,15 +9,18 @@ import {
   PageHeader,
   Tabs,
   Badge,
+  Button,
   Card,
   Spinner,
   Table,
 } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { act } from "@/lib/resource";
+import { api } from "@/lib/api";
 import { RecordDetail } from "@/components/RecordDetail";
 import { useQueryClient } from "@tanstack/react-query";
-import { datetime, date, label, yn } from "@/lib/format";
+import { useToast } from "@/components/Toast";
+import { datetime, date, label, apiMessage, yn } from "@/lib/format";
 
 interface Group {
   id: number;
@@ -177,6 +180,8 @@ export default function PeoplePage() {
         <CrudPanel
           resource="guardians"
           singular="guardian"
+          searchable
+          searchPlaceholder="Search guardians by name or email…"
           columns={[
             {
               header: "Name",
@@ -249,7 +254,9 @@ export default function PeoplePage() {
             { label: "Address", value: (g) => (g.address as string) || "—", long: true },
           ]}
           extraRowActions={(row, reload) =>
-            row.user ? null : (
+            row.user ? (
+              <GuardianLoginActions userId={row.user as string} reload={reload} />
+            ) : (
               <ActionButton
                 label="Create portal login"
                 title="Give this guardian a portal account"
@@ -281,6 +288,75 @@ export default function PeoplePage() {
       )}
 
     </div>
+  );
+}
+
+function GuardianLoginActions({
+  userId,
+  reload,
+}: {
+  userId: string;
+  reload: () => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState<string | null>(null);
+
+  async function resetPassword() {
+    setBusy("reset");
+    try {
+      const res = await api<{ username: string; new_password: string }>(
+        `/auth/portal-logins/${userId}/`,
+        { method: "POST" },
+      );
+      setNewPassword(res.new_password);
+    } catch (e) {
+      toast("error", apiMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function removeLogin() {
+    if (!window.confirm("Remove this guardian's portal login? They keep their record — only the login goes.")) return;
+    setBusy("delete");
+    try {
+      await api(`/auth/portal-logins/${userId}/`, { method: "DELETE" });
+      toast("success", "Portal login removed");
+      reload();
+    } catch (e) {
+      toast("error", apiMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="ghost" disabled={!!busy} onClick={resetPassword}>
+        Reset password
+      </Button>
+      <Button size="sm" variant="ghost" disabled={!!busy} onClick={removeLogin}>
+        Remove login
+      </Button>
+      <Modal
+        open={newPassword != null}
+        onClose={() => setNewPassword(null)}
+        title="Password reset"
+      >
+        <div className="space-y-3 text-sm">
+          <p>Give this to the guardian directly — it won&apos;t be shown again:</p>
+          <code className="block rounded-md border border-[var(--campus-line)] bg-black/[0.03] px-3 py-2 text-base dark:bg-white/[0.04]">
+            {newPassword}
+          </code>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setNewPassword(null)}>
+              Done
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 

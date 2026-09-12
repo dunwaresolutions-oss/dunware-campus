@@ -162,8 +162,22 @@ class IncidentReportViewSet(CampusViewSet):
             qs = qs.filter(student__in=Student.visible_queryset(self.request.user))
             if role == Role.PARENT:
                 qs = qs.exclude(status=IncidentReport.Status.DRAFT)
-        sid = self.request.query_params.get("student")
-        return qs.filter(student_id=sid) if sid else qs
+        params = self.request.query_params
+        sid = params.get("student")
+        if sid:
+            qs = qs.filter(student_id=sid)
+        q = (params.get("q") or "").strip()
+        if q:
+            # description/action_taken are encrypted at rest - not filterable
+            # by plaintext content at the DB level, by design (docs/PII_SECURITY.md).
+            qs = qs.filter(
+                Q(student__first_name__icontains=q)
+                | Q(student__last_name__icontains=q)
+                | Q(student__preferred_name__icontains=q)
+                | Q(location__icontains=q)
+                | Q(category__icontains=q)
+            )
+        return qs
 
     def perform_create(self, serializer):
         student = serializer.validated_data["student"]

@@ -38,21 +38,81 @@ def _row(label, value):
     return f"<tr><th>{_html.escape(str(label))}</th><td>{_html.escape(str(value or ''))}</td></tr>"
 
 
+def grade_for_mark(mark, *, scheme=None):
+    """The GradeBand `mark` (a percentage) falls into under `scheme` (the
+    active one if not given), or None if there's no active scheme, no mark,
+    or the mark falls outside every band (a gap in the school's own table —
+    surfaced as blank rather than guessed at)."""
+    from .models import GradingScheme
+
+    scheme = scheme if scheme is not None else GradingScheme.active()
+    if scheme is None or mark is None:
+        return None
+    return scheme.band_for(mark)
+
+
+def compute_cumulative_gpa(entries, *, scheme=None):
+    """Unweighted average of grade points across every entry whose mark
+    maps to a GPA-bearing band. Unweighted because Campus has no notion of
+    credit-hours per subject to weight by — every subject counts equally,
+    which is the honest thing to do with the data actually on file rather
+    than fabricating a weighting scheme. Returns None when the active scheme
+    doesn't use a GPA at all, or no entry could be scored."""
+    from .models import GradingScheme
+
+    scheme = scheme if scheme is not None else GradingScheme.active()
+    if scheme is None or not scheme.uses_gpa:
+        return None
+    points = []
+    for e in entries:
+        band = grade_for_mark(e.mark, scheme=scheme)
+        if band is not None and band.gpa_points is not None:
+            points.append(band.gpa_points)
+    if not points:
+        return None
+    return round(sum(points) / len(points), 2)
+
+
 def render_report_card_html(card) -> str:
+    from .models import GradingScheme
+
     s = card.student
     entries = card.entries.all()
-    body_rows = "".join(
-        f"<tr><td>{_html.escape(e.subject)}</td>"
-        f"<td>{'' if e.mark is None else e.mark}</td>"
-        f"<td>{'' if e.level is None else e.level}</td>"
-        f"<td>{_html.escape(e.comment or '')}</td></tr>"
-        for e in entries
-    )
+    scheme = card.grading_scheme or GradingScheme.active()
+    gpa = card.cumulative_gpa
+    if gpa is None and scheme is not None:
+        gpa = compute_cumulative_gpa(entries, scheme=scheme)
+
+    grade_col = f"<th>{_html.escape(scheme.name)}</th>" if scheme else ""
+
+    def entry_row(e):
+        band = grade_for_mark(e.mark, scheme=scheme) if scheme else None
+        grade_cell = f"<td>{_html.escape(band.label)}</td>" if (scheme and band) else (
+            "<td>—</td>" if scheme else ""
+        )
+        return (
+            f"<tr><td>{_html.escape(e.subject)}</td>"
+            f"<td>{'' if e.mark is None else e.mark}</td>"
+            f"{grade_cell}"
+            f"<td>{'' if e.level is None else e.level}</td>"
+            f"<td>{_html.escape(e.comment or '')}</td></tr>"
+        )
+
+    body_rows = "".join(entry_row(e) for e in entries)
     from apps.core.models import SchoolProfile
 
     profile = SchoolProfile.load()
     footer = _html.escape(profile.report_card_footer or "").replace("\n", "<br>")
     footer_html = f'<div class="footer">{footer}</div>' if footer else ""
+
+    gpa_html = ""
+    if scheme and scheme.uses_gpa:
+        gpa_display = f"{gpa:.2f}" if gpa is not None else "—"
+        scale = f" / {scheme.gpa_scale:.2f}" if scheme.gpa_scale is not None else ""
+        gpa_html = (
+            f'<div class="gpa"><b>Cumulative GPA</b> ({_html.escape(scheme.name)}): '
+            f"{gpa_display}{scale}</div>"
+        )
 
     return f"""<!doctype html>
 <html><head><meta charset="utf-8"><title>Report card</title>
@@ -62,6 +122,7 @@ def render_report_card_html(card) -> str:
  table{{border-collapse:collapse;width:100%;margin-top:16px;font-size:13px}}
  th,td{{border:1px solid #ccc;padding:6px 8px;text-align:left;vertical-align:top}}
  .summary{{margin-top:18px;white-space:pre-wrap;border:1px solid #ccc;padding:10px}}
+ .gpa{{margin-top:12px;font-size:14px}}
  .footer{{margin-top:24px;font-size:11px;color:#5b6572;white-space:pre-line;
    border-top:1px solid #ccc;padding-top:8px}}
  {LETTERHEAD_CSS}
@@ -76,9 +137,10 @@ def render_report_card_html(card) -> str:
  {_row("Status", card.get_status_display())}
 </table>
 <table>
- <tr><th>Subject / learning area</th><th>Mark</th><th>Level</th><th>Comment</th></tr>
- {body_rows or '<tr><td colspan="4">No entries.</td></tr>'}
+ <tr><th>Subject / learning area</th><th>Mark</th>{grade_col}<th>Level</th><th>Comment</th></tr>
+ {body_rows or '<tr><td colspan="5">No entries.</td></tr>'}
 </table>
+{gpa_html}
 <div class="summary"><b>Summary</b>\n{_html.escape(card.summary_narrative or '')}</div>
 {signature_block_html(profile)}
 {footer_html}
@@ -98,6 +160,17 @@ def html_to_pdf(html: str) -> bytes:
 
 
 def generate_report_card(card, *, actor=None) -> dict:
+    from .models import GradingScheme
+
+    # freeze the scheme + GPA as of *this* generation - a later change to the
+    # institution's grading policy must never silently rewrite a historical
+    # report card the family already received.
+    scheme = GradingScheme.active()
+    card.grading_scheme = scheme
+    card.cumulative_gpa = (
+        compute_cumulative_gpa(card.entries.all(), scheme=scheme) if scheme else None
+    )
+
     html = render_report_card_html(card)
     try:
         pdf = html_to_pdf(html)
@@ -111,7 +184,7 @@ def generate_report_card(card, *, actor=None) -> dict:
         card.status = card.Status.FINALIZED
     card.save()
     record(AuditAction.CREATE, card, summary=f"report card generated ({fmt})", actor=actor)
-    return {"format": fmt, "document": card.document.name}
+    return {"format": fmt, "document": card.document.name, "cumulative_gpa": card.cumulative_gpa}
 
 
 def release_report_card(card, *, actor=None) -> None:

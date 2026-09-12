@@ -15,6 +15,8 @@ import {
 } from "@/lib/calendar";
 import { Spinner, ErrorNote } from "@/components/ui";
 import { apiMessage, time } from "@/lib/format";
+import { SearchSelect } from "@/components/SearchSelect";
+import { searchStudents } from "@/lib/students";
 
 type View = "month" | "week" | "day";
 const DAY_START = 7;
@@ -72,6 +74,28 @@ function earlyDismissalOn(
   return dismissals.find((e) => e.date === d) ?? null;
 }
 
+/* Each distinct subject/title gets its own stable color, the way a real
+ * timetable does (registration/homeroom is not one all-day block — every
+ * period is its own class, and same subject = same color everywhere). */
+const SESSION_PALETTE = [
+  { bg: "bg-violet-100 dark:bg-violet-900/40", text: "text-violet-800 dark:text-violet-300", border: "border-violet-400/40" },
+  { bg: "bg-orange-100 dark:bg-orange-900/40", text: "text-orange-800 dark:text-orange-300", border: "border-orange-400/40" },
+  { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-800 dark:text-blue-300", border: "border-blue-400/40" },
+  { bg: "bg-rose-100 dark:bg-rose-900/40", text: "text-rose-800 dark:text-rose-300", border: "border-rose-400/40" },
+  { bg: "bg-emerald-100 dark:bg-emerald-900/40", text: "text-emerald-800 dark:text-emerald-300", border: "border-emerald-400/40" },
+  { bg: "bg-amber-100 dark:bg-amber-900/40", text: "text-amber-800 dark:text-amber-300", border: "border-amber-400/40" },
+  { bg: "bg-teal-100 dark:bg-teal-900/40", text: "text-teal-800 dark:text-teal-300", border: "border-teal-400/40" },
+  { bg: "bg-fuchsia-100 dark:bg-fuchsia-900/40", text: "text-fuchsia-800 dark:text-fuchsia-300", border: "border-fuchsia-400/40" },
+  { bg: "bg-cyan-100 dark:bg-cyan-900/40", text: "text-cyan-800 dark:text-cyan-300", border: "border-cyan-400/40" },
+  { bg: "bg-lime-100 dark:bg-lime-900/40", text: "text-lime-800 dark:text-lime-300", border: "border-lime-400/40" },
+];
+
+function colorFor(label: string) {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  return SESSION_PALETTE[hash % SESSION_PALETTE.length];
+}
+
 /* lane-pack overlapping sessions in one column */
 function withLanes(items: CalendarSession[]) {
   const sorted = [...items].sort(
@@ -98,12 +122,16 @@ export function ScheduleCalendar({
   groups,
   onOpenSession,
   fixedGroupId,
+  fixedStudentId,
   initialView = "month",
 }: {
   groups: { id: string; name: string }[];
   onOpenSession: (s: CalendarSession) => void;
   /** Lock to one group and hide the filter — e.g. a student's own timetable. */
   fixedGroupId?: string;
+  /** Lock to one student's whole schedule (every group she's enrolled in,
+   * not just one) and hide the group/student pickers. */
+  fixedStudentId?: string;
   initialView?: View;
 }) {
   const [view, setView] = useState<View>(initialView);
@@ -113,12 +141,16 @@ export function ScheduleCalendar({
     return d;
   });
   const [pickedGroupId, setPickedGroupId] = useState<string>("");
-  const groupId = fixedGroupId ?? pickedGroupId;
+  const [pickedStudentId, setPickedStudentId] = useState<string>("");
+  const groupId = fixedGroupId ?? (pickedStudentId ? "" : pickedGroupId);
+  const studentId = fixedStudentId ?? pickedStudentId;
 
   const [from, to] = rangeFor(view, anchor);
   const q = useQuery({
-    queryKey: ["calendar", view === "month" ? "m" : view, iso(from), iso(to), groupId],
-    queryFn: () => fetchCalendar(iso(from), iso(to), groupId),
+    queryKey: [
+      "calendar", view === "month" ? "m" : view, iso(from), iso(to), groupId, studentId,
+    ],
+    queryFn: () => fetchCalendar(iso(from), iso(to), groupId, studentId),
   });
 
   const byDay = useMemo(() => {
@@ -193,19 +225,31 @@ export function ScheduleCalendar({
 
         <div className="text-sm font-semibold">{titleFor(view, anchor)}</div>
 
-        {!fixedGroupId && (
-          <select
-            value={pickedGroupId}
-            onChange={(e) => setPickedGroupId(e.target.value)}
-            className="ml-auto rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-2.5 py-1.5 text-xs"
-          >
-            <option value="">All groups</option>
-            {groups.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.name}
-              </option>
-            ))}
-          </select>
+        {!fixedGroupId && !fixedStudentId && (
+          <span className="ml-auto flex items-center gap-2">
+            <span className="w-48">
+              <SearchSelect
+                value={pickedStudentId}
+                onChange={setPickedStudentId}
+                search={searchStudents}
+                placeholder="Find a student's schedule…"
+              />
+            </span>
+            {!pickedStudentId && (
+              <select
+                value={pickedGroupId}
+                onChange={(e) => setPickedGroupId(e.target.value)}
+                className="rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-2.5 py-1.5 text-xs"
+              >
+                <option value="">All groups</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </span>
         )}
       </div>
 
@@ -340,6 +384,8 @@ function MonthGrid({
 function Chip({ s, onClick }: { s: CalendarSession; onClick: () => void }) {
   const cancelled = s.status === "CANCELLED";
   const early = !!s.early_dismissal_time;
+  const label = s.title || s.group_name || "Session";
+  const c = colorFor(label);
   return (
     <button
       onClick={onClick}
@@ -351,11 +397,10 @@ function Chip({ s, onClick }: { s: CalendarSession; onClick: () => void }) {
           ? "text-[var(--campus-muted)] line-through"
           : early
             ? "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
-            : "bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+            : `${c.bg} ${c.text}`
       }`}
     >
-      <span className="tabular-nums">{time(s.start_time)}</span>{" "}
-      {s.title || s.group_name || "Session"}
+      <span className="tabular-nums">{time(s.start_time)}</span> {label}
       {early && !cancelled && " ⏰"}
     </button>
   );
@@ -469,6 +514,8 @@ function TimeGrid({
                 const height = Math.max(16, (end - start) * PX_PER_MIN - 2);
                 const cancelled = s.status === "CANCELLED";
                 const early = !!s.early_dismissal_time;
+                const label = s.title || s.group_name || "Session";
+                const c = colorFor(label);
                 const w = 100 / lanes;
                 return (
                   <button
@@ -485,11 +532,11 @@ function TimeGrid({
                         ? "border-[var(--campus-line)] bg-[var(--campus-input-bg)] text-[var(--campus-muted)] line-through"
                         : early
                           ? "border-sky-400/40 bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
-                          : "border-[var(--campus-accent)]/30 bg-[var(--campus-accent-soft)] text-[var(--campus-accent)]"
+                          : `${c.border} ${c.bg} ${c.text}`
                     }`}
                   >
                     <div className="font-medium">
-                      {s.title || s.group_name || "Session"}
+                      {label}
                       {early && !cancelled && " ⏰"}
                     </div>
                     <div className="tabular-nums opacity-80">

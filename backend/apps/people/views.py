@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 
+from django.db.models import Q
 from django.http import FileResponse, Http404
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -163,13 +164,22 @@ class GuardianViewSet(CampusViewSet):
         role = getattr(user, "role", None)
         qs = Guardian.objects.prefetch_related("links__student")
         if role in _ADMIN_ROLES:
-            return qs
-        if role in _INSTRUCTOR_ROLES:
+            pass
+        elif role in _INSTRUCTOR_ROLES:
             visible = Student.visible_queryset(user)
-            return qs.filter(links__student__in=visible).distinct()
-        if role == Role.PARENT:
-            return qs.filter(user=user)
-        return qs.none()
+            qs = qs.filter(links__student__in=visible)
+        elif role == Role.PARENT:
+            qs = qs.filter(user=user)
+        else:
+            return qs.none()
+        q = (self.request.query_params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(email__icontains=q)
+            )
+        return qs.distinct()
 
     @action(detail=True, methods=["post"], permission_classes=[AdminOnly, MFAVerified])
     def create_login(self, request, pk=None):

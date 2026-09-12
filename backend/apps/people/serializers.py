@@ -43,7 +43,8 @@ class StudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = [
             "id", "first_name", "last_name", "preferred_name", "display_name",
-            "date_of_birth", "pronouns", "student_number", "government_id",
+            "date_of_birth", "pronouns", "student_number",
+            "government_id_type", "government_id",
             "custody_notes", "status", "primary_group", "primary_group_name",
             "left_on", "legal_hold", "anonymized_at", "user",
             "photo", "photo_url", "guardian_count", "created_at", "updated_at",

@@ -29,9 +29,27 @@ STAFF_ROLES = frozenset(
 PORTAL_ROLES = frozenset({Role.PARENT, Role.STUDENT})
 
 
+class StaffStatus(models.TextChoices):
+    """A staff member's current availability — distinct from `is_active`
+    (which gates login entirely). A teacher on sick leave keeps their
+    account; the status just tells the roster/directory why they aren't
+    in class, the way `is_active=False` alone never could."""
+    ACTIVE = "ACTIVE", "Active"
+    SICK_LEAVE = "SICK_LEAVE", "Sick leave"
+    ON_LEAVE = "ON_LEAVE", "On leave"
+    SEDENTARY_DUTY = "SEDENTARY_DUTY", "Sedentary duty"
+    TRANSFERRED = "TRANSFERRED", "Transferred"
+    SUSPENDED = "SUSPENDED", "Suspended"
+    TERMINATED = "TERMINATED", "Terminated"
+
+
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     role = models.CharField(max_length=16, choices=Role.choices, default=Role.FRONT_DESK)
+    status = models.CharField(
+        max_length=16, choices=StaffStatus.choices, default=StaffStatus.ACTIVE,
+        help_text="Meaningful for staff roles; portal accounts stay ACTIVE.",
+    )
     must_use_mfa = models.BooleanField(
         default=True,
         help_text="Staff roles require TOTP. Portal users may opt in.",

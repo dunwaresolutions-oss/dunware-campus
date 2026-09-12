@@ -17,6 +17,8 @@ confirmed and the session is OTP-verified — enforced by
 """
 from __future__ import annotations
 
+import secrets
+
 from axes.handlers.proxy import AxesProxyHandler
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as django_login
@@ -25,6 +27,8 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.middleware.csrf import get_token
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django_otp import login as otp_login
@@ -48,7 +52,7 @@ from .mfa import (
     qr_data_uri,
     verify_login_token,
 )
-from .models import STAFF_ROLES, User
+from .models import PORTAL_ROLES, STAFF_ROLES, StaffStatus, User
 from .serializers import (
     InviteAcceptSerializer,
     LoginSerializer,
@@ -200,11 +204,63 @@ class UsersView(APIView):
                 "email": u.email,
                 "role": u.role,
                 "is_active": u.is_active,
+                "status": u.status,
                 "display_name": getattr(u, "display_name", "") or u.username,
             }
             for u in User.objects.filter(role__in=STAFF_ROLES).order_by("username")
         ]
         return Response(out)
+
+
+class UserStatusView(APIView):
+    """``PATCH /api/auth/users/<id>/status/`` — admin sets a staff member's
+    availability status (sick leave, transferred, sedentary duty, ...),
+    distinct from `is_active` (which would sign them out of everything
+    rather than just flag why they're off the roster). Portal accounts
+    (parent/student) aren't staff and never appear in the directory this
+    serves, so there's nothing to gate there."""
+
+    permission_classes = [IsAuthenticated, AdminOnly]
+
+    def patch(self, request, pk=None):
+        user = get_object_or_404(User.objects.filter(role__in=STAFF_ROLES), pk=pk)
+        value = request.data.get("status")
+        valid = {c[0] for c in StaffStatus.choices}
+        if value not in valid:
+            raise DRFValidationError({"status": f"must be one of {sorted(valid)}"})
+        user.status = value
+        user.save(update_fields=["status"])
+        record(AuditAction.UPDATE, user, summary=f"staff status set to {value}", actor=request.user)
+        return Response({"id": str(user.pk), "status": user.status})
+
+
+class PortalLoginView(APIView):
+    """``DELETE`` removes a guardian's or student's portal login entirely
+    (they keep their record — only the account that let them sign in is
+    gone); ``POST`` resets their password to a new one-time value the front
+    office reads out to them. Scoped to admin so a random staff member can't
+    lock a family out or hand themselves their password."""
+
+    permission_classes = [IsAuthenticated, AdminOnly]
+
+    def delete(self, request, pk=None):
+        user = get_object_or_404(User.objects.filter(role__in=PORTAL_ROLES), pk=pk)
+        record(AuditAction.DELETE, user, summary="portal login removed", actor=request.user)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def post(self, request, pk=None):
+        user = get_object_or_404(User.objects.filter(role__in=PORTAL_ROLES), pk=pk)
+        new_password = secrets.token_urlsafe(9)
+        try:
+            validate_password(new_password, user=user)
+        except DjangoValidationError:
+            new_password = secrets.token_urlsafe(12)
+        user.set_password(new_password)
+        user.last_password_change = timezone.now()
+        user.save(update_fields=["password", "last_password_change"])
+        record(AuditAction.UPDATE, user, summary="portal password reset", actor=request.user)
+        return Response({"username": user.username, "new_password": new_password})
 
 
 class StaffInviteView(APIView):

@@ -156,6 +156,85 @@ class RubricScore(BaseModel):
         return f"{self.criterion_id}: {self.level}"
 
 
+class GradingScheme(BaseModel):
+    """One institution's mapping from a raw mark to what actually prints on
+    a report card. Deliberately generic (a name + ordered percentage bands)
+    rather than one hardcoded system, because real schools vary enormously —
+    a raw percentage, a 4-level provincial scale, a 7-point NCS code, a
+    lettered band with no GPA at all, or a full 4.0/5.0 GPA — see
+    docs/DATA_MODEL.md and the seeded presets in
+    0005_grading_scheme_presets.py for real, sourced examples of each shape.
+    Exactly one scheme is ever `is_active` at a time — see `activate()`.
+    """
+
+    name = models.CharField(max_length=150)
+    description = models.CharField(max_length=255, blank=True)
+    uses_gpa = models.BooleanField(
+        default=False,
+        help_text="If on, a cumulative GPA is computed and printed on report cards.",
+    )
+    gpa_scale = models.DecimalField(
+        max_digits=3, decimal_places=2, null=True, blank=True,
+        help_text="e.g. 4.00 or 5.00 - documentation only, bands carry the real points.",
+    )
+    is_active = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "grades_grading_scheme"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+    @classmethod
+    def active(cls) -> GradingScheme | None:
+        return cls.objects.filter(is_active=True).prefetch_related("bands").first()
+
+    def activate(self) -> None:
+        """Exactly one scheme is active institution-wide - not enforced by a
+        DB constraint (a plain bool, like AcademicYear.is_current), so this
+        is the one path that should ever flip it."""
+        from django.db import transaction
+
+        with transaction.atomic():
+            GradingScheme.objects.exclude(pk=self.pk).update(is_active=False)
+            self.is_active = True
+            self.save(update_fields=["is_active", "updated_at"])
+
+    def band_for(self, percent) -> GradeBand | None:
+        if percent is None:
+            return None
+        return self.bands.filter(min_percent__lte=percent, max_percent__gte=percent).first()
+
+
+class GradeBand(BaseModel):
+    """One row of a GradingScheme: a percentage window mapped to whatever
+    the school actually prints - a letter, a level number, a word."""
+
+    scheme = models.ForeignKey(GradingScheme, on_delete=models.CASCADE, related_name="bands")
+    label = models.CharField(
+        max_length=30, help_text="What prints on the report card: A, Level 4, 7, Distinction…"
+    )
+    min_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    max_percent = models.DecimalField(max_digits=5, decimal_places=2)
+    gpa_points = models.DecimalField(
+        max_digits=3, decimal_places=2, null=True, blank=True,
+        help_text="Only meaningful when the scheme uses_gpa.",
+    )
+    description = models.CharField(max_length=150, blank=True)
+    order = models.PositiveIntegerField(default=1, help_text="Display order, highest band first.")
+
+    class Meta:
+        db_table = "grades_grade_band"
+        ordering = ["scheme", "order"]
+        constraints = [
+            models.UniqueConstraint(fields=["scheme", "label"], name="uniq_band_label_per_scheme"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scheme.name}: {self.label} ({self.min_percent}-{self.max_percent}%)"
+
+
 class ReportCard(SensitiveModel, SoftDeleteModel):
     PII_FIELDS = ("summary_narrative",)
 
@@ -172,6 +251,16 @@ class ReportCard(SensitiveModel, SoftDeleteModel):
     summary_narrative = EncryptedTextField(blank=True, default="")
     document = models.FileField(
         upload_to="report-cards/%Y/", storage=document_storage, blank=True
+    )
+    grading_scheme = models.ForeignKey(
+        GradingScheme, null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+        help_text="The scheme active when this card was generated - a historical snapshot, "
+                   "not a live pointer, so a later policy change doesn't rewrite old cards.",
+    )
+    cumulative_gpa = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        help_text="Computed at generation time from entries whose mark maps to a "
+                   "GPA-bearing band. Unweighted (Campus doesn't model credit-hours).",
     )
     generated_at = models.DateTimeField(null=True, blank=True)
     released_at = models.DateTimeField(null=True, blank=True)

@@ -137,6 +137,7 @@ export interface DirectoryUser {
   email: string;
   role: Role;
   is_active: boolean;
+  status: string;
   display_name: string;
 }
 

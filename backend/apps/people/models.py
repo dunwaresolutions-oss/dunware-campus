@@ -125,7 +125,18 @@ class Student(SensitiveSoftDeleteModel):
         blank=True, null=True,
     )
 
+    class GovernmentIdType(models.TextChoices):
+        NATIONAL_ID = "NATIONAL_ID", "National ID"
+        PASSPORT = "PASSPORT", "Passport"
+        BIRTH_CERTIFICATE = "BIRTH_CERTIFICATE", "Birth certificate number"
+        SOCIAL_INSURANCE = "SOCIAL_INSURANCE", "Social insurance / security number"
+        VOTER_ID = "VOTER_ID", "Voter ID"
+        OTHER = "OTHER", "Other"
+
     student_number = models.CharField(max_length=20, unique=True)
+    government_id_type = models.CharField(
+        max_length=20, choices=GovernmentIdType.choices, blank=True,
+    )
     government_id = EncryptedCharField(blank=True, default="")
     custody_notes = EncryptedTextField(blank=True, default="")
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -37,6 +38,14 @@ class IEPViewSet(CampusViewSet):
             qs = qs.filter(student_id=params["student"])
         if params.get("status"):
             qs = qs.filter(status=params["status"])
+        q = (params.get("q") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(student__first_name__icontains=q)
+                | Q(student__last_name__icontains=q)
+                | Q(student__preferred_name__icontains=q)
+                | Q(primary_concern__icontains=q)
+            )
         return qs
 
     def perform_create(self, serializer):

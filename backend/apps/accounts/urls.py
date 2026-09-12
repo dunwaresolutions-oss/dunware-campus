@@ -8,9 +8,11 @@ from .views import (
     MFAConfirmView,
     MFASetupView,
     MFAStatusView,
+    PortalLoginView,
     SetupAdminView,
     SetupStatusView,
     StaffInviteView,
+    UserStatusView,
     UsersView,
     WhoAmIView,
 )
@@ -28,6 +30,8 @@ urlpatterns = [
     path("mfa/confirm/", MFAConfirmView.as_view(), name="mfa-confirm"),
     path("mfa/status/", MFAStatusView.as_view(), name="mfa-status"),
     path("users/", UsersView.as_view(), name="users"),
+    path("users/<uuid:pk>/status/", UserStatusView.as_view(), name="user-status"),
+    path("portal-logins/<uuid:pk>/", PortalLoginView.as_view(), name="portal-login"),
     path("invite/", StaffInviteView.as_view(), name="invite-create"),
     path("invite/accept/", InviteAcceptView.as_view(), name="invite-accept"),
 ]
