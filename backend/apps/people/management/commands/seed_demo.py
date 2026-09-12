@@ -472,7 +472,7 @@ class Command(BaseCommand):
         # ══════════════════════════════════════════════════════════════
         track_names = list(TRACKS)
         track_weights = [TRACK_WEIGHTS[t] for t in track_names]
-        section_groups: list[tuple] = []   # (group, subject, roster, teacher) for the timetable
+        section_groups: list[tuple] = []   # (group, subject, roster, teacher, subj_idx)
         for g in (10, 11, 12):
             roster_by_track: dict[str, list[Student]] = {t: [] for t in track_names}
             for grp, _room, _lead in homerooms_by_grade[g]:
@@ -490,7 +490,7 @@ class Command(BaseCommand):
                 for chunk_i, size in enumerate(chunk_sizes, start=1):
                     chunk = students[offset:offset + size]
                     offset += size
-                    for subj in TRACKS[track]:
+                    for subj_idx, subj in enumerate(TRACKS[track]):
                         sec = Group.objects.create(
                             name=f"{subj} — Grade {g} {track} Sec {chunk_i}",
                             kind=Group.Kind.SECTION, stage_label=f"Grade {g}",
@@ -505,7 +505,13 @@ class Command(BaseCommand):
                                 student=p, group=sec, start_date=term1.start_date
                             )
                             student_subjects[p.id].append((subj, sec))
-                        section_groups.append((sec, subj, chunk, teacher))
+                        # subj_idx (0/1/2, a subject's fixed position within
+                        # its track) drives which of the 3 reserved weekdays
+                        # this section meets on - see the timetable pass
+                        # below, which guarantees this never collides with
+                        # this student's homeroom-delivered periods, or with
+                        # her *other* two track subjects either.
+                        section_groups.append((sec, subj, chunk, teacher, subj_idx))
                 # one readable record of the student's course of study, since
                 # no dedicated field for it exists on Student.
                 for p in students:
@@ -523,12 +529,25 @@ class Command(BaseCommand):
         # ── the timetable: a real period-by-period breakdown, not one
         #    all-day "school day" blob — every homeroom subject gets its own
         #    weekly slot(s), cycling through the grade's subject list to fill
-        #    the week, so the calendar shows what a student is actually in. ──
+        #    the week, so the calendar shows what a student is actually in.
+        #
+        #    A senior student (grade 10-12) is in two worlds at once: her
+        #    homeroom (compulsory subjects) AND her course-of-study sections
+        #    (track subjects) - both scheduling the SAME physical student, so
+        #    a naive independent assignment can and did double-book her (the
+        #    same period used by both a homeroom subject and a track
+        #    subject). Fixed by reserving the *last* daily period exclusively
+        #    for track sections in grades 10-12 - homeroom-delivered subjects
+        #    there never touch it - so no senior student can ever be double-
+        #    booked, regardless of which track she's in. Grades 7-9 have no
+        #    tracks at all, so they use every period freely. ──
         made["sessions"] = 0
         terms = [term1] if quick else [term1, term2]
         homerooms_flat = [hr for lst in homerooms_by_grade.values() for hr in lst]
         periods = PERIODS_PER_DAY[:2] if quick else PERIODS_PER_DAY
-        period_slots = [(wd, p) for wd in range(5) for p in range(len(periods))]
+        n_periods = len(periods)
+        track_period_idx = n_periods - 1  # reserved for course-of-study sections
+        homeroom_period_range = range(n_periods) if n_periods < 2 else range(n_periods - 1)
         for term in terms:
             to_date = None
             if quick:
@@ -537,11 +556,14 @@ class Command(BaseCommand):
                 homeroom_subjects = COMPULSORY_SUBJECTS + (
                     JUNIOR_SHARED_SUBJECTS if g <= 9 else [CAREER_GUIDANCE]
                 )
+                # senior grades keep the last period free of homeroom subjects
+                periods_here = list(homeroom_period_range) if g >= 10 else list(range(n_periods))
+                slots_here = [(wd, p) for wd in range(5) for p in periods_here]
                 subject_cycle = list(
-                    itertools.islice(itertools.cycle(homeroom_subjects), len(period_slots))
+                    itertools.islice(itertools.cycle(homeroom_subjects), len(slots_here))
                 )
                 for grp, room, lead in homerooms_by_grade[g]:
-                    for (weekday, p_idx), subj in zip(period_slots, subject_cycle, strict=True):
+                    for (weekday, p_idx), subj in zip(slots_here, subject_cycle, strict=True):
                         start, end = periods[p_idx]
                         teacher = subject_teacher.get(subj, lead)
                         tmpl = SessionTemplate.objects.create(
@@ -549,16 +571,20 @@ class Command(BaseCommand):
                             start_time=start, end_time=end, title=subj,
                         )
                         made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
-        # subject sections meet once a week, term 1 only, at a subject-specific
-        # period so they're not all stacked on top of each other.
+        # course-of-study sections: term 1 only, always in the reserved last
+        # period, on a weekday fixed by the subject's position (0/1/2) within
+        # its own track - so any one student's three track subjects always
+        # land on three different weekdays, never on top of each other, and
+        # never on top of any of her homeroom periods either.
         to_date = min(term1.start_date + dt.timedelta(days=13), term1.end_date) if quick else None
-        for i, (sec, subj, _chunk, teacher) in enumerate(section_groups):
-            weekday = i % 5
-            start_hour = 9 + (i % 5)
+        track_start, track_end = periods[track_period_idx if n_periods > 1 else 0]
+        track_weekdays = [0, 2, 4]  # Mon / Wed / Fri - always 3 apart or more
+        for sec, subj, _chunk, teacher, subj_idx in section_groups:
+            weekday = track_weekdays[subj_idx % len(track_weekdays)]
             room = special_rooms.get(SPECIAL_ROOMS.get(subj))
             tmpl = SessionTemplate.objects.create(
                 group=sec, term=term1, room=room, staff=teacher, weekday=weekday,
-                start_time=dt.time(start_hour, 0), end_time=dt.time(start_hour, 50),
+                start_time=track_start, end_time=track_end,
                 title=f"{subj} period",
             )
             made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
@@ -645,7 +671,7 @@ class Command(BaseCommand):
                 for subj in subjects:
                     teacher = subject_teacher.get(subj, lead)
                     delivery_units.append((grp, subj, pupils_by_class[grp.id], teacher))
-        for sec, subj, chunk, teacher in section_groups:
+        for sec, subj, chunk, teacher, _subj_idx in section_groups:
             delivery_units.append((sec, subj, chunk, teacher))
 
         made["curriculum_units"] = made["assessment_schemes"] = 0

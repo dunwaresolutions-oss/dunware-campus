@@ -77,14 +77,18 @@ export default function SchedulingPage() {
       {tab === "calendar" && (
         <>
           <p className="mb-3 text-sm text-[var(--campus-muted)]">
-            Every dated session, in a month / week / day view. Filter by group,
-            and click a session to see its roster or cancel that one meeting.
-            Amber days are closures (no school); sky-blue days are early
-            dismissals — school runs, just shorter — with a dashed line marking
-            the new end time and ⏰ on any session that runs past it.
+            The whole-school calendar of exceptions, not a lesson-by-lesson
+            timetable — with 1400 students across dozens of homerooms and
+            course-of-study sections, showing every class period here would
+            be unreadable, and it&apos;s not what this view is for. Amber days
+            are closures (no school); sky-blue days are early dismissals —
+            school runs, just shorter. A student&apos;s own class-by-class day
+            lives on their profile&apos;s Timetable tab; individual sessions
+            can still be found and managed on the Sessions tab.
           </p>
           <ScheduleCalendar
             groups={groups.data ?? []}
+            showSessions={false}
             onOpenSession={(s) => setOpenSession(s as unknown as SessionRow)}
           />
         </>

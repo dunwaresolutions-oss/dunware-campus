@@ -123,6 +123,7 @@ export function ScheduleCalendar({
   onOpenSession,
   fixedGroupId,
   fixedStudentId,
+  showSessions = true,
   initialView = "month",
 }: {
   groups: { id: string; name: string }[];
@@ -132,6 +133,11 @@ export function ScheduleCalendar({
   /** Lock to one student's whole schedule (every group she's enrolled in,
    * not just one) and hide the group/student pickers. */
   fixedStudentId?: string;
+  /** The whole-school Scheduling calendar shows closures/early-dismissals
+   * only, never individual class periods (that's what the Sessions tab and
+   * a student's own Timetable are for) - set false there. Also hides the
+   * now-pointless group/student pickers, since there's nothing to filter. */
+  showSessions?: boolean;
   initialView?: View;
 }) {
   const [view, setView] = useState<View>(initialView);
@@ -155,13 +161,14 @@ export function ScheduleCalendar({
 
   const byDay = useMemo(() => {
     const map = new Map<string, CalendarSession[]>();
+    if (!showSessions) return map;
     for (const s of q.data?.sessions ?? []) {
       const arr = map.get(s.date) ?? [];
       arr.push(s);
       map.set(s.date, arr);
     }
     return map;
-  }, [q.data]);
+  }, [q.data, showSessions]);
   const closures = q.data?.closures ?? [];
   const earlyDismissals = q.data?.early_dismissals ?? [];
 
@@ -225,7 +232,7 @@ export function ScheduleCalendar({
 
         <div className="text-sm font-semibold">{titleFor(view, anchor)}</div>
 
-        {!fixedGroupId && !fixedStudentId && (
+        {showSessions && !fixedGroupId && !fixedStudentId && (
           <span className="ml-auto flex items-center gap-2">
             <span className="w-48">
               <SearchSelect

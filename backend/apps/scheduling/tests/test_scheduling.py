@@ -151,6 +151,29 @@ def test_calendar_group_filter_takes_the_uuid_pk(auth_client, admin_user):
     assert data["sessions"] and {str(s["group"]) for s in data["sessions"]} == {str(g1.pk)}
 
 
+def test_calendar_student_filter_shows_only_her_own_groups(auth_client, admin_user):
+    """Regression test: a student's Timetable tab (fixedStudentId) must show
+    only the groups she's actually enrolled in - homeroom AND every
+    course-of-study section - never every group in the school. Confirms
+    both that a real student= filter narrows the result, and that a
+    student enrolled in two groups sees sessions from both."""
+    term = _term()
+    homeroom, section, unrelated = make_group(), make_group(), make_group()
+    kid = make_student()
+    enrol(kid, homeroom)
+    enrol(kid, section)
+    generate_occurrences(_template(homeroom, term, weekday=0))
+    generate_occurrences(_template(section, term, weekday=1))
+    generate_occurrences(_template(unrelated, term, weekday=2))
+
+    data = auth_client(admin_user).get(
+        CAL, {"from": "2026-09-01", "to": "2026-09-30", "student": str(kid.pk)}
+    ).json()
+    seen_groups = {str(s["group"]) for s in data["sessions"]}
+    assert seen_groups == {str(homeroom.pk), str(section.pk)}
+    assert str(unrelated.pk) not in seen_groups
+
+
 def test_calendar_is_instructor_scoped(auth_client, staff):
     term = _term()
     mine, theirs = make_group(), make_group()
