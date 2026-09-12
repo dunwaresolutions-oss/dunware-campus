@@ -571,23 +571,44 @@ class Command(BaseCommand):
                             start_time=start, end_time=end, title=subj,
                         )
                         made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
-        # course-of-study sections: term 1 only, always in the reserved last
+        # course-of-study sections: every term, always in the reserved last
         # period, on a weekday fixed by the subject's position (0/1/2) within
         # its own track - so any one student's three track subjects always
         # land on three different weekdays, never on top of each other, and
-        # never on top of any of her homeroom periods either.
-        to_date = min(term1.start_date + dt.timedelta(days=13), term1.end_date) if quick else None
+        # never on top of any of her homeroom periods either. The demo fixes
+        # those three weekdays by subject position purely for reproducible
+        # demo data - a real deployment would let the school say which days
+        # its own course-of-study periods fall on, not have this hardcoded.
+        #
+        # That leaves the *other* two weekdays of this same reserved period
+        # (Tue/Thu) unused by any track subject - rather than a silent gap,
+        # every senior homeroom gets an explicit, supervised "Free Period"
+        # there, so a student's day is always fully accounted for.
         track_start, track_end = periods[track_period_idx if n_periods > 1 else 0]
         track_weekdays = [0, 2, 4]  # Mon / Wed / Fri - always 3 apart or more
-        for sec, subj, _chunk, teacher, subj_idx in section_groups:
-            weekday = track_weekdays[subj_idx % len(track_weekdays)]
-            room = special_rooms.get(SPECIAL_ROOMS.get(subj))
-            tmpl = SessionTemplate.objects.create(
-                group=sec, term=term1, room=room, staff=teacher, weekday=weekday,
-                start_time=track_start, end_time=track_end,
-                title=f"{subj} period",
-            )
-            made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
+        free_period_weekdays = [1, 3]  # Tue / Thu - the reserved period's off days
+        for term in terms:
+            to_date = None
+            if quick:
+                to_date = min(term.start_date + dt.timedelta(days=13), term.end_date)
+            for sec, subj, _chunk, teacher, subj_idx in section_groups:
+                weekday = track_weekdays[subj_idx % len(track_weekdays)]
+                room = special_rooms.get(SPECIAL_ROOMS.get(subj))
+                tmpl = SessionTemplate.objects.create(
+                    group=sec, term=term, room=room, staff=teacher, weekday=weekday,
+                    start_time=track_start, end_time=track_end,
+                    title=f"{subj} period",
+                )
+                made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
+            for g in (10, 11, 12):
+                for grp, room, lead in homerooms_by_grade[g]:
+                    for weekday in free_period_weekdays:
+                        tmpl = SessionTemplate.objects.create(
+                            group=grp, term=term, room=room, staff=lead, weekday=weekday,
+                            start_time=track_start, end_time=track_end,
+                            title="Free Period",
+                        )
+                        made["sessions"] += generate_occurrences(tmpl, to_date=to_date)["created"]
 
         # ── attendance: a real history for every homeroom ─────────────
         today = timezone.localdate()
