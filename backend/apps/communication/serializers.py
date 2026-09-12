@@ -25,10 +25,16 @@ class AnnouncementSerializer(serializers.ModelSerializer):
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = serializers.PrimaryKeyRelatedField(read_only=True)
+    sender_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
-        fields = ["id", "thread", "sender", "body", "created_at"]
+        fields = ["id", "thread", "sender", "sender_name", "body", "created_at"]
+
+    def get_sender_name(self, obj) -> str:
+        if not obj.sender_id:
+            return ""
+        return obj.sender.get_full_name() or obj.sender.username
 
 
 class MessageThreadSerializer(serializers.ModelSerializer):

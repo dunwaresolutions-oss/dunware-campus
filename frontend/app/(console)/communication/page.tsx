@@ -743,7 +743,7 @@ function Threads() {
 function ThreadMessages({ threadId }: { threadId: string }) {
   const qc = useQueryClient();
   const [body, setBody] = useState("");
-  const msgs = useList<{ id: string; body: string; created_at: string }>(
+  const msgs = useList<{ id: string; body: string; sender_name?: string; created_at: string }>(
     "messages",
     { thread: threadId },
   );
@@ -752,7 +752,8 @@ function ThreadMessages({ threadId }: { threadId: string }) {
       {(msgs.data?.results ?? []).map((m) => (
         <div key={m.id} className="text-sm">
           <span className="text-[var(--campus-muted)]">
-            {datetime(m.created_at)} —{" "}
+            {datetime(m.created_at)}
+            {m.sender_name ? ` — ${m.sender_name}` : ""} —{" "}
           </span>
           {m.body}
         </div>
