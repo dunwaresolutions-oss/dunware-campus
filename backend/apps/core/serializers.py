@@ -29,11 +29,13 @@ class SchoolProfileSerializer(serializers.ModelSerializer):
         }
 
     def get_logo_url(self, obj) -> str | None:
+        # NOT obj.logo.url: that's a bare /media/... path, and nothing serves
+        # /media/ directly in production (see SchoolLogoView's docstring).
         if not obj.logo:
             return None
         request = self.context.get("request")
-        url = obj.logo.url
-        return request.build_absolute_uri(url) if request else url
+        path = "/api/school-profile/logo/"
+        return request.build_absolute_uri(path) if request else path
 
     def get_principal_user_name(self, obj) -> str:
         u = obj.principal_user

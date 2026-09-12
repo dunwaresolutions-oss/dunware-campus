@@ -89,7 +89,7 @@ export default function PeoplePage() {
     <div>
       <PageHeader
         title="Students"
-        subtitle="The child record â€” profile, guardians, emergency contacts, authorized pickups, observations, health, and documents."
+        subtitle="The child record — profile, guardians, emergency contacts, authorized pickups, observations, health, and documents."
       />
       <Tabs
         active={tab}
@@ -116,7 +116,7 @@ export default function PeoplePage() {
               cell: (s) =>
                 s.primary_group_name ||
                 groups.data?.find((g) => g.id === s.primary_group)?.name ||
-                "â€”",
+                "—",
             },
             { header: "Guardians", cell: (s) => s.guardian_count ?? 0 },
             {
@@ -136,8 +136,8 @@ export default function PeoplePage() {
           columns={[
             { header: "Name", cell: (g) => g.name as string },
             { header: "Kind", cell: (g) => label(g.kind as string) },
-            { header: "Stage", cell: (g) => (g.stage_label as string) || "â€”" },
-            { header: "Capacity", cell: (g) => (g.capacity as number) ?? "â€”" },
+            { header: "Stage", cell: (g) => (g.stage_label as string) || "—" },
+            { header: "Capacity", cell: (g) => (g.capacity as number) ?? "—" },
             {
               header: "Enrolled",
               cell: (g) => (g.active_enrolment_count as number) ?? 0,
@@ -158,12 +158,12 @@ export default function PeoplePage() {
             { name: "capacity", label: "Capacity", type: "number" },
             { name: "active", label: "Active", type: "checkbox" },
           ]}
-          detailTitle={(g) => `Group â€” ${g.name as string}`}
+          detailTitle={(g) => `Group — ${g.name as string}`}
           detailFields={[
             { label: "Name", value: (g) => g.name as string },
             { label: "Kind", value: (g) => label(g.kind as string) },
-            { label: "Stage label", value: (g) => (g.stage_label as string) || "â€”" },
-            { label: "Capacity", value: (g) => (g.capacity as number) ?? "â€”" },
+            { label: "Stage label", value: (g) => (g.stage_label as string) || "—" },
+            { label: "Capacity", value: (g) => (g.capacity as number) ?? "—" },
             {
               label: "Enrolled now",
               value: (g) => (g.active_enrolment_count as number) ?? 0,
@@ -189,7 +189,7 @@ export default function PeoplePage() {
                   | { id: string; name: string; relationship: string }[]
                   | undefined) ?? [];
                 if (kids.length === 0)
-                  return <span className="text-[var(--campus-muted)]">â€”</span>;
+                  return <span className="text-[var(--campus-muted)]">—</span>;
                 return (
                   <span className="flex flex-wrap gap-1">
                     {kids.map((k) => (
@@ -204,12 +204,12 @@ export default function PeoplePage() {
                 );
               },
             },
-            { header: "Email", cell: (g) => (g.email as string) || "â€”" },
-            { header: "Phone", cell: (g) => (g.phone as string) || "â€”" },
+            { header: "Email", cell: (g) => (g.email as string) || "—" },
+            { header: "Phone", cell: (g) => (g.phone as string) || "—" },
             {
               header: "Portal",
               cell: (g) =>
-                g.user ? <Badge tone="green">has login</Badge> : "â€”",
+                g.user ? <Badge tone="green">has login</Badge> : "—",
             },
           ]}
           fields={[
@@ -219,17 +219,17 @@ export default function PeoplePage() {
             { name: "phone", label: "Phone (encrypted)" },
             { name: "address", label: "Address (encrypted)", type: "textarea" },
           ]}
-          detailTitle={(g) => `Guardian â€” ${g.first_name} ${g.last_name}`}
+          detailTitle={(g) => `Guardian — ${g.first_name} ${g.last_name}`}
           detailFields={[
             {
               label: "Name",
               value: (g) => `${g.first_name} ${g.last_name}`.trim(),
             },
-            { label: "Email", value: (g) => (g.email as string) || "â€”" },
-            { label: "Phone", value: (g) => (g.phone as string) || "â€”" },
+            { label: "Email", value: (g) => (g.email as string) || "—" },
+            { label: "Phone", value: (g) => (g.phone as string) || "—" },
             {
               label: "Portal login",
-              value: (g) => (g.user ? "Yes" : "No â€” use Create portal login"),
+              value: (g) => (g.user ? "Yes" : "No — use Create portal login"),
             },
             {
               label: "Children",
@@ -243,10 +243,10 @@ export default function PeoplePage() {
                   ? kids
                       .map((k) => `${k.name} (${label(k.relationship)})`)
                       .join("\n")
-                  : "â€”";
+                  : "—";
               },
             },
-            { label: "Address", value: (g) => (g.address as string) || "â€”", long: true },
+            { label: "Address", value: (g) => (g.address as string) || "—", long: true },
           ]}
           extraRowActions={(row, reload) =>
             row.user ? null : (
@@ -336,11 +336,11 @@ function ChangeRequests({
           columns={[
             { header: "Guardian", cell: (r) => guardianName(r.guardian) },
             { header: "Field", cell: (r) => label(r.field) },
-            { header: "Current", cell: (r) => r.current_value || "â€”" },
+            { header: "Current", cell: (r) => r.current_value || "—" },
             { header: "Proposed", cell: (r) => r.proposed_value },
             {
               header: "Reason",
-              cell: (r) => r.reason || "â€”",
+              cell: (r) => r.reason || "—",
               className: "max-w-xs truncate",
             },
             {
@@ -398,27 +398,27 @@ function ChangeRequests({
               {
                 label: "Reviewed",
                 value: () =>
-                  detail.reviewed_at ? datetime(detail.reviewed_at) : "â€”",
+                  detail.reviewed_at ? datetime(detail.reviewed_at) : "—",
               },
               {
                 label: "Current value",
                 long: true,
-                value: () => detail.current_value || "â€”",
+                value: () => detail.current_value || "—",
               },
               {
                 label: "Proposed value",
                 long: true,
-                value: () => detail.proposed_value || "â€”",
+                value: () => detail.proposed_value || "—",
               },
               {
                 label: "Reason given",
                 long: true,
-                value: () => detail.reason || "â€”",
+                value: () => detail.reason || "—",
               },
               {
                 label: "Review note",
                 long: true,
-                value: () => detail.review_note || "â€”",
+                value: () => detail.review_note || "—",
               },
             ]}
             row={detail as unknown as Record<string, unknown>}

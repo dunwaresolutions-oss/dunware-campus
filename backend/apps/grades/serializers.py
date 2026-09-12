@@ -76,8 +76,11 @@ class ReportCardSerializer(serializers.ModelSerializer):
         read_only_fields = ["status", "generated_at", "released_at"]
 
     def get_document_url(self, obj) -> str | None:
+        # NOT obj.document.url: that's a bare /media/... path — nothing serves
+        # /media/ directly in production, and the file is encrypted at rest
+        # besides, so it must come back out through ReportCardViewSet.document.
         if not obj.document:
             return None
         request = self.context.get("request")
-        url = obj.document.url
-        return request.build_absolute_uri(url) if request else url
+        path = f"/api/report-cards/{obj.pk}/document/"
+        return request.build_absolute_uri(path) if request else path

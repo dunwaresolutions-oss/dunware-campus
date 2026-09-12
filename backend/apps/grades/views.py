@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -209,6 +210,21 @@ class ReportCardViewSet(CampusViewSet):
 
         card = self.get_object()
         return Response({"html": render_report_card_html(card)})
+
+    @action(detail=True, methods=["get"])
+    def document(self, request, pk=None):
+        """Streams the generated report card (``document_url`` points here,
+        not at ``card.document.url`` — that's a bare ``/media/...`` path that
+        nothing serves in production, and the file itself is stored encrypted
+        at rest (``document_storage``), so it has to be opened through the
+        storage layer to come back out as a readable PDF/HTML in the first
+        place — see ``EncryptedFileSystemStorage``)."""
+        card = self.get_object()
+        if not card.document:
+            raise Http404
+        fh = card.document.open("rb")
+        content_type = "application/pdf" if card.document.name.endswith(".pdf") else "text/html"
+        return FileResponse(fh, content_type=content_type)
 
     @action(detail=True, methods=["post"])
     def generate(self, request, pk=None):

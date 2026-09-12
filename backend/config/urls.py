@@ -13,6 +13,7 @@ from django.urls import include, path
 from apps.core.search import SearchView
 from apps.core.views import (
     RemoteAccessStatusView,
+    SchoolLogoView,
     SchoolProfileView,
     SchoolSignatureView,
     SiteConfigView,
@@ -28,6 +29,7 @@ api_patterns = [
     path("search/", SearchView.as_view(), name="search"),
     path("config/", SiteConfigView.as_view(), name="site-config"),
     path("school-profile/", SchoolProfileView.as_view(), name="school-profile"),
+    path("school-profile/logo/", SchoolLogoView.as_view(), name="school-logo"),
     path(
         "school-profile/signature/", SchoolSignatureView.as_view(), name="school-signature"
     ),

@@ -93,7 +93,7 @@ npm run dev                       # http://localhost:3000, proxies /api to :8001
 Load a synthetic school to explore the whole app:
 
 ```powershell
-.venv\Scripts\python manage.py seed_demo --force        # grades 1-6, 2 classes each, 300 pupils
+.venv\Scripts\python manage.py seed_demo --force        # a high school, grades 7-12, 1400 students
 ```
 
 ## Portfolio note

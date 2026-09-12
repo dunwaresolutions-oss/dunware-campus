@@ -125,6 +125,28 @@ def test_report_card_renders_html_and_degrades_without_weasyprint():
     card.document.delete(save=False)
 
 
+def test_document_url_streams_the_actual_file_not_a_bare_media_path(auth_client, admin_user):
+    """Regression test: document_url used to be card.document.url - a bare
+    /media/... path nothing serves in production, pointing at a file that's
+    encrypted at rest besides. It must stream through ReportCardViewSet.document."""
+    kid = make_student()
+    card = ReportCard.objects.create(student=kid, term=_term())
+    client = auth_client(admin_user)
+
+    assert client.get(f"/api/report-cards/{card.pk}/").data["document_url"] is None
+
+    client.post(f"/api/report-cards/{card.pk}/generate/")
+    resp = client.get(f"/api/report-cards/{card.pk}/")
+    doc_url = resp.data["document_url"]
+    assert doc_url == f"http://testserver/api/report-cards/{card.pk}/document/"
+
+    stream = client.get(doc_url)
+    assert stream.status_code == 200
+    assert stream["Content-Type"] in ("application/pdf", "text/html")
+    card.refresh_from_db()
+    card.document.delete(save=False)
+
+
 def test_parent_only_sees_released_report_cards(auth_client, admin_user, make_user):
     kid = make_student()
     parent = make_user(username="rp", role="PARENT")

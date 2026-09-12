@@ -156,6 +156,26 @@ class SchoolSignatureView(APIView):
         return Response(status=204)
 
 
+class SchoolLogoView(APIView):
+    """``GET`` streams the school logo. Unlike the signature, the logo lives on
+    plain (unencrypted) storage — it's public branding, not PII — but it still
+    needs a real view: ``logo.url`` resolves to a bare ``/media/...`` path, and
+    nothing serves that in production (``DEBUG=False`` means Django's own
+    ``static()`` media helper never runs, and Caddy reverse-proxies ``/media/*``
+    to Django rather than serving files itself — see ``docs/DEPLOYMENT.md``).
+    Clearing the logo is already handled by ``DELETE /api/school-profile/``.
+    """
+
+    permission_classes = [IsAuthenticated, StaffOnly, MFAVerified]
+
+    def get(self, request):
+        profile = SchoolProfile.load()
+        if not profile.logo:
+            raise Http404
+        fh = profile.logo.open("rb")
+        return FileResponse(fh, content_type="image/*")
+
+
 def _currency_locked() -> bool:
     from apps.billing.models import Invoice
 

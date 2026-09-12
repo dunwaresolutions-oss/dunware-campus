@@ -13,6 +13,8 @@ EXPECT_NONEMPTY = [
     "core.SchoolProfile", "core.SiteConfiguration",
     "scheduling.AcademicYear", "scheduling.Term", "scheduling.Room",
     "scheduling.Closure", "scheduling.SessionTemplate", "scheduling.SessionOccurrence",
+    "scheduling.EarlyDismissal",
+    "staffchat.StaffMessage", "staffchat.StaffChatCursor",
     "people.Group", "people.GroupStaff", "people.Student", "people.Guardian",
     "people.GuardianLink", "people.EmergencyContact", "people.AuthorizedPickup",
     "people.Observation", "people.Document", "people.ContactChangeRequest",

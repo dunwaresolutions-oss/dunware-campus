@@ -132,6 +132,31 @@ def test_only_the_designated_principal_may_upload_a_signature(
     ).status_code == 200
 
 
+LOGO_URL = "/api/school-profile/logo/"
+
+
+def test_logo_url_streams_the_actual_bytes_not_a_bare_media_path(auth_client, admin_user, staff):
+    """Regression test: logo_url used to be obj.logo.url (a bare /media/...
+    path that nothing serves in production - see SchoolLogoView's docstring).
+    It must now point at a real view that streams the file."""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    resp = auth_client(admin_user).patch(
+        URL,
+        {"logo": SimpleUploadedFile("logo.png", _png_bytes(), content_type="image/png")},
+        format="multipart",
+    )
+    assert resp.data["logo_url"] == "http://testserver" + LOGO_URL
+
+    stream = auth_client(staff).get(LOGO_URL)
+    assert stream.status_code == 200
+    assert b"".join(stream.streaming_content).startswith(b"\x89PNG")
+
+
+def test_logo_url_404s_once_cleared(auth_client, admin_user):
+    assert auth_client(admin_user).get(LOGO_URL).status_code == 404
+
+
 def test_signature_streams_and_only_the_principal_or_superadmin_clears_it(
     auth_client, staff, superadmin, make_user
 ):
