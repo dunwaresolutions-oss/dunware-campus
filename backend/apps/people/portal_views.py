@@ -42,6 +42,36 @@ class PortalDashboardView(APIView):
         return Response(build_dashboard(request.user))
 
 
+class PortalCalendarView(APIView):
+    """``GET /api/portal/calendar/?student=ID&from=YYYY-MM-DD&to=YYYY-MM-DD``
+
+    The same shape as the staff `/api/sessions/calendar/`, but scoped to one
+    student the requesting guardian/student is actually allowed to see —
+    never the staff-only, whole-school view. This is what backs the
+    portal's own embedded weekly/monthly calendar, not a relaxation of the
+    staff endpoint's permissions.
+    """
+
+    permission_classes = [IsAuthenticated, PortalUser]
+
+    def get(self, request):
+        from apps.scheduling.views import _parse_calendar_range, calendar_payload
+
+        student_id = request.query_params.get("student")
+        if not student_id:
+            return Response(
+                {"detail": "student is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+        student = get_object_or_404(Student, pk=student_id)
+        if not student.is_visible_to(request.user):
+            raise PermissionDenied("Not your child.")
+
+        start, end, err = _parse_calendar_range(request)
+        if err:
+            return err
+        return Response(calendar_payload(start, end, student_id=student_id))
+
+
 class ContactChangeRequestViewSet(AuditReadMixin, viewsets.ModelViewSet):
     serializer_class = ContactChangeRequestSerializer
     audit_reads = True

@@ -121,13 +121,21 @@ function withLanes(items: CalendarSession[]) {
 export function ScheduleCalendar({
   groups,
   onOpenSession,
+  onOpenClosure,
+  onOpenEarlyDismissal,
   fixedGroupId,
   fixedStudentId,
   showSessions = true,
+  calendarEndpoint,
   initialView = "month",
 }: {
   groups: { id: string; name: string }[];
   onOpenSession: (s: CalendarSession) => void;
+  /** Closures and early dismissals are shown either way (they're not gated
+   * by showSessions) - without a handler they're just static, unclickable
+   * labels, which is fine for a read-only embed like the portal. */
+  onOpenClosure?: (c: CalendarClosure) => void;
+  onOpenEarlyDismissal?: (e: CalendarEarlyDismissal) => void;
   /** Lock to one group and hide the filter — e.g. a student's own timetable. */
   fixedGroupId?: string;
   /** Lock to one student's whole schedule (every group she's enrolled in,
@@ -138,6 +146,10 @@ export function ScheduleCalendar({
    * a student's own Timetable are for) - set false there. Also hides the
    * now-pointless group/student pickers, since there's nothing to filter. */
   showSessions?: boolean;
+  /** Staff pages use the staff-only /sessions/calendar/ (the default); the
+   * portal passes /portal/calendar/, which is scoped server-side to the
+   * requesting guardian/student's own child. */
+  calendarEndpoint?: string;
   initialView?: View;
 }) {
   const [view, setView] = useState<View>(initialView);
@@ -155,8 +167,12 @@ export function ScheduleCalendar({
   const q = useQuery({
     queryKey: [
       "calendar", view === "month" ? "m" : view, iso(from), iso(to), groupId, studentId,
+      calendarEndpoint ?? "",
     ],
-    queryFn: () => fetchCalendar(iso(from), iso(to), groupId, studentId),
+    queryFn: () =>
+      calendarEndpoint
+        ? fetchCalendar(iso(from), iso(to), groupId, studentId, calendarEndpoint)
+        : fetchCalendar(iso(from), iso(to), groupId, studentId),
   });
 
   const byDay = useMemo(() => {
@@ -272,6 +288,8 @@ export function ScheduleCalendar({
           closures={closures}
           earlyDismissals={earlyDismissals}
           onOpenSession={onOpenSession}
+          onOpenClosure={onOpenClosure}
+          onOpenEarlyDismissal={onOpenEarlyDismissal}
           onPickDay={(d) => {
             setAnchor(d);
             setView("day");
@@ -288,6 +306,8 @@ export function ScheduleCalendar({
           closures={closures}
           earlyDismissals={earlyDismissals}
           onOpenSession={onOpenSession}
+          onOpenClosure={onOpenClosure}
+          onOpenEarlyDismissal={onOpenEarlyDismissal}
         />
       )}
     </div>
@@ -303,6 +323,8 @@ function MonthGrid({
   closures,
   earlyDismissals,
   onOpenSession,
+  onOpenClosure,
+  onOpenEarlyDismissal,
   onPickDay,
 }: {
   from: Date;
@@ -311,6 +333,8 @@ function MonthGrid({
   closures: CalendarClosure[];
   earlyDismissals: CalendarEarlyDismissal[];
   onOpenSession: (s: CalendarSession) => void;
+  onOpenClosure?: (c: CalendarClosure) => void;
+  onOpenEarlyDismissal?: (e: CalendarEarlyDismissal) => void;
   onPickDay: (d: Date) => void;
 }) {
   const today = new Date();
@@ -357,14 +381,22 @@ function MonthGrid({
                   {d.getDate()}
                 </span>
                 {cl && (
-                  <span className="truncate text-[10px] text-amber-700 dark:text-amber-400">
+                  <button
+                    onClick={() => onOpenClosure?.(cl)}
+                    disabled={!onOpenClosure}
+                    className="truncate text-[10px] text-amber-700 hover:underline disabled:hover:no-underline dark:text-amber-400"
+                  >
                     {cl.reason}
-                  </span>
+                  </button>
                 )}
                 {!cl && ed && (
-                  <span className="truncate text-[10px] text-sky-700 dark:text-sky-400">
+                  <button
+                    onClick={() => onOpenEarlyDismissal?.(ed)}
+                    disabled={!onOpenEarlyDismissal}
+                    className="truncate text-[10px] text-sky-700 hover:underline disabled:hover:no-underline dark:text-sky-400"
+                  >
                     Ends {time(ed.dismissal_time)}
-                  </span>
+                  </button>
                 )}
               </div>
               <div className="mt-1 space-y-0.5">
@@ -421,12 +453,16 @@ function TimeGrid({
   closures,
   earlyDismissals,
   onOpenSession,
+  onOpenClosure,
+  onOpenEarlyDismissal,
 }: {
   days: Date[];
   byDay: Map<string, CalendarSession[]>;
   closures: CalendarClosure[];
   earlyDismissals: CalendarEarlyDismissal[];
   onOpenSession: (s: CalendarSession) => void;
+  onOpenClosure?: (c: CalendarClosure) => void;
+  onOpenEarlyDismissal?: (e: CalendarEarlyDismissal) => void;
 }) {
   const today = new Date();
   const hours = Array.from(
@@ -498,18 +534,24 @@ function TimeGrid({
                 />
               ))}
               {cl && (
-                <div className="absolute inset-x-1 top-1 truncate rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                <button
+                  onClick={() => onOpenClosure?.(cl)}
+                  disabled={!onOpenClosure}
+                  className="absolute inset-x-1 top-1 truncate rounded bg-amber-100 px-1 py-0.5 text-left text-[10px] text-amber-800 hover:brightness-95 disabled:hover:brightness-100 dark:bg-amber-900/40 dark:text-amber-300"
+                >
                   {cl.reason}
-                </div>
+                </button>
               )}
               {!cl && ed && edTop !== null && (
                 <>
-                  <div
-                    className="absolute inset-x-1 truncate rounded bg-sky-100 px-1 py-0.5 text-[10px] text-sky-800 dark:bg-sky-900/40 dark:text-sky-300"
+                  <button
+                    onClick={() => onOpenEarlyDismissal?.(ed)}
+                    disabled={!onOpenEarlyDismissal}
+                    className="absolute inset-x-1 truncate rounded bg-sky-100 px-1 py-0.5 text-left text-[10px] text-sky-800 hover:brightness-95 disabled:hover:brightness-100 dark:bg-sky-900/40 dark:text-sky-300"
                     style={{ top: 1 }}
                   >
                     Early dismissal {time(ed.dismissal_time)} — {ed.reason}
-                  </div>
+                  </button>
                   <div
                     className="absolute inset-x-0 border-t-2 border-dashed border-sky-400/70"
                     style={{ top: edTop }}
@@ -542,21 +584,21 @@ function TimeGrid({
                           : `${c.border} ${c.bg} ${c.text}`
                     }`}
                   >
-                    <div className="font-medium">
+                    <div className="truncate font-medium">
                       {label}
                       {early && !cancelled && " ⏰"}
                     </div>
-                    <div className="tabular-nums opacity-80">
+                    {/* time + room (+ early-dismissal note) share one line -
+                     * a real period is ~50min, which at this scale is only
+                     * tall enough for two lines of text; a third line (room
+                     * on its own row) was getting clipped by the card's
+                     * overflow-hidden. Full detail is still one click away
+                     * via onOpenSession. */}
+                    <div className="truncate tabular-nums opacity-80">
                       {time(s.start_time)}–{time(s.end_time)}
+                      {early && !cancelled && ` · ends ${time(s.early_dismissal_time!)}`}
+                      {s.room_name && ` · ${s.room_name}`}
                     </div>
-                    {early && !cancelled && (
-                      <div className="opacity-80">
-                        ends {time(s.early_dismissal_time!)}
-                      </div>
-                    )}
-                    {s.room_name && (
-                      <div className="truncate opacity-70">{s.room_name}</div>
-                    )}
                   </button>
                 );
               })}

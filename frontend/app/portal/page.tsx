@@ -15,10 +15,12 @@ import {
 import { Card, Spinner, Badge, Button } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
+import { ScheduleCalendar } from "@/components/ScheduleCalendar";
 import { useToast } from "@/components/Toast";
 import { api } from "@/lib/api";
 import { list, create } from "@/lib/resource";
-import { date, datetime, money, label, apiMessage } from "@/lib/format";
+import { date, datetime, time, money, label, apiMessage } from "@/lib/format";
+import type { CalendarSession } from "@/lib/calendar";
 
 /* ------------------------------------------------------------------ icons */
 /* A small hand-drawn set (no icon-library dependency) — 22x22, stroke-only,
@@ -122,17 +124,6 @@ function greetingWord(): string {
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
-}
-
-function friendlyDay(iso: string): string {
-  const d = new Date(`${iso}T00:00:00`);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Tomorrow";
-  if (diff === -1) return "Yesterday";
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
 function initials(name: string): string {
@@ -439,6 +430,7 @@ function ChildDashboard({
   const [consenting, setConsenting] = useState<string | null>(null);
   const [rcPreview, setRcPreview] = useState<{ id: string; html: string } | null>(null);
   const [rcLoading, setRcLoading] = useState<string | null>(null);
+  const [openSession, setOpenSession] = useState<CalendarSession | null>(null);
 
   async function openReportCard(id: string) {
     setRcLoading(id);
@@ -459,6 +451,21 @@ function ChildDashboard({
 
   return (
     <div className="space-y-4">
+      {/* Always-visible context: which child's data is on screen. The
+       * chip-based switcher above only appears with >1 child and only
+       * shows *active* state via a ring — neither says so in words, and
+       * with exactly one child there's no switcher at all. */}
+      <div className="flex items-center gap-2.5 text-sm text-[var(--campus-muted)]">
+        <span
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-[10px] font-semibold text-white"
+          style={{ background: avatarBg(child.id) }}
+        >
+          {initials(child.display_name)}
+        </span>
+        Viewing <span className="font-semibold text-[var(--campus-fg)]">{child.display_name}</span>
+        <span className="text-xs">· {child.student_number}</span>
+      </div>
+
       {child.pending_consents.length > 0 && (
         <SectionCard icon={<ShieldIcon />} title="Consents needed" tone="amber">
           <div className="flex flex-wrap gap-2">
@@ -512,24 +519,17 @@ function ChildDashboard({
         </SectionCard>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <SectionCard icon={<CalendarIcon />} title="Upcoming schedule">
-          {child.upcoming_sessions.length === 0 ? (
-            <Empty>Nothing scheduled.</Empty>
-          ) : (
-            <ul className="space-y-2.5">
-              {child.upcoming_sessions.slice(0, 5).map((s) => (
-                <li key={s.id} className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="min-w-0 truncate">{s.title}</span>
-                  <span className="shrink-0 text-xs text-[var(--campus-muted)]">
-                    {friendlyDay(s.date)} · {s.start_time?.slice(0, 5)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </SectionCard>
+      <SectionCard icon={<CalendarIcon />} title="Upcoming schedule">
+        <ScheduleCalendar
+          groups={[]}
+          fixedStudentId={child.id}
+          calendarEndpoint="/portal/calendar/"
+          initialView="week"
+          onOpenSession={setOpenSession}
+        />
+      </SectionCard>
 
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <SectionCard
           icon={<CheckCircleIcon />}
           title="Attendance"
@@ -705,6 +705,28 @@ function ChildDashboard({
             srcDoc={rcPreview.html}
             className="h-[70vh] w-full rounded-lg border border-[var(--campus-line)] bg-white"
           />
+        )}
+      </Modal>
+
+      <Modal
+        open={!!openSession}
+        onClose={() => setOpenSession(null)}
+        title={openSession?.title || "Session"}
+      >
+        {openSession && (
+          <div className="space-y-1 text-sm">
+            <div>
+              {date(openSession.date)} · {time(openSession.start_time)}–{time(openSession.end_time)}
+            </div>
+            {openSession.room_name && (
+              <div className="text-[var(--campus-muted)]">{openSession.room_name}</div>
+            )}
+            {openSession.status === "CANCELLED" && (
+              <div className="text-red-600">
+                Cancelled{openSession.cancelled_reason ? `: ${openSession.cancelled_reason}` : ""}
+              </div>
+            )}
+          </div>
         )}
       </Modal>
     </div>

@@ -150,3 +150,68 @@ def test_portal_consent_rejected_for_another_childs_record(auth_client, make_use
         "student": str(other.pk), "kind": "PHOTO", "granted": True,
     }, format="json")
     assert r.status_code == 403
+
+
+# ------------------------------------------------------------ portal calendar
+
+
+def _term_and_sessions(group, weekday=0):
+    from apps.scheduling.models import AcademicYear, Term
+    from apps.scheduling.services import generate_occurrences
+
+    year = AcademicYear.objects.create(
+        name="2026-2027", start_date=dt.date(2026, 9, 1), end_date=dt.date(2026, 9, 30)
+    )
+    term = Term.objects.create(
+        academic_year=year, name="Fall",
+        start_date=dt.date(2026, 9, 1), end_date=dt.date(2026, 9, 30),
+    )
+    from apps.scheduling.models import SessionTemplate
+
+    tmpl = SessionTemplate.objects.create(
+        group=group, term=term, weekday=weekday,
+        start_time=dt.time(9, 0), end_time=dt.time(10, 0), title="Circle time",
+    )
+    generate_occurrences(tmpl)
+
+
+def test_portal_calendar_requires_a_student(auth_client, make_user):
+    parent, _kid, _g = _parent_with_child(make_user)
+    resp = auth_client(parent).get(
+        "/api/portal/calendar/", {"from": "2026-09-01", "to": "2026-09-30"}
+    )
+    assert resp.status_code == 400
+
+
+def test_portal_calendar_shows_only_the_callers_own_child(auth_client, make_user):
+    parent, kid, _g = _parent_with_child(make_user)
+    group = make_group()
+    enrol(kid, group)
+    _term_and_sessions(group)
+
+    resp = auth_client(parent).get(
+        "/api/portal/calendar/",
+        {"from": "2026-09-01", "to": "2026-09-30", "student": str(kid.pk)},
+    )
+    assert resp.status_code == 200
+    assert len(resp.data["sessions"]) == 4
+    assert {str(s["group"]) for s in resp.data["sessions"]} == {str(group.pk)}
+
+
+def test_portal_calendar_refuses_someone_elses_child(auth_client, make_user):
+    parent, _kid, _g = _parent_with_child(make_user)
+    other = make_student()
+    resp = auth_client(parent).get(
+        "/api/portal/calendar/",
+        {"from": "2026-09-01", "to": "2026-09-30", "student": str(other.pk)},
+    )
+    assert resp.status_code == 403
+
+
+def test_staff_cannot_use_the_portal_calendar(auth_client, staff):
+    kid = make_student()
+    resp = auth_client(staff).get(
+        "/api/portal/calendar/",
+        {"from": "2026-09-01", "to": "2026-09-30", "student": str(kid.pk)},
+    )
+    assert resp.status_code == 403

@@ -47,13 +47,17 @@ export const fetchCalendar = (
   to: string,
   groupId?: string,
   studentId?: string,
+  /** The staff calendar (`/sessions/calendar/`) is staff-only; the portal
+   * uses its own scoped `/portal/calendar/` endpoint instead, which only
+   * ever returns the requesting guardian/student's own child's sessions. */
+  endpoint = "/sessions/calendar/",
 ): Promise<CalendarPayload> => {
   const q = new URLSearchParams({ from, to });
   // a student filter means "her whole timetable" - every group she's
   // enrolled in - so it takes precedence over a single group pick.
   if (studentId) q.set("student", studentId);
   else if (groupId) q.set("group", groupId);
-  return api<CalendarPayload>(`/sessions/calendar/?${q.toString()}`);
+  return api<CalendarPayload>(`${endpoint}?${q.toString()}`);
 };
 
 /* ---- date helpers (local time, no external dep) ---------------------- */

@@ -6,8 +6,9 @@ import { useAll, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
 import { ScheduleCalendar } from "@/components/ScheduleCalendar";
+import type { CalendarClosure, CalendarEarlyDismissal } from "@/lib/calendar";
 import { Modal } from "@/components/Modal";
-import { PageHeader, Tabs, Badge, Spinner } from "@/components/ui";
+import { PageHeader, Tabs, Badge, Spinner, Button } from "@/components/ui";
 import { date, time, weekday, label, apiMessage, yn, WEEKDAYS } from "@/lib/format";
 import { act } from "@/lib/resource";
 import { api } from "@/lib/api";
@@ -43,6 +44,8 @@ const weekdayOptions = WEEKDAYS.map((w, i) => ({ value: i, label: w }));
 export default function SchedulingPage() {
   const [tab, setTab] = useState("calendar");
   const [openSession, setOpenSession] = useState<SessionRow | null>(null);
+  const [openClosure, setOpenClosure] = useState<CalendarClosure | null>(null);
+  const [openDismissal, setOpenDismissal] = useState<CalendarEarlyDismissal | null>(null);
   const groups = useAll<Group>("groups");
   const terms = useAll<Term>("terms");
   const rooms = useAll<Room>("rooms");
@@ -90,6 +93,8 @@ export default function SchedulingPage() {
             groups={groups.data ?? []}
             showSessions={false}
             onOpenSession={(s) => setOpenSession(s as unknown as SessionRow)}
+            onOpenClosure={setOpenClosure}
+            onOpenEarlyDismissal={setOpenDismissal}
           />
         </>
       )}
@@ -492,6 +497,66 @@ export default function SchedulingPage() {
         session={openSession}
         onClose={() => setOpenSession(null)}
       />
+
+      <Modal open={!!openClosure} onClose={() => setOpenClosure(null)} title="Closure">
+        {openClosure && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge tone="amber">No school</Badge>
+              <span>
+                {date(openClosure.start_date)}
+                {openClosure.start_date !== openClosure.end_date && ` – ${date(openClosure.end_date)}`}
+              </span>
+              <span className="text-[var(--campus-muted)]">
+                {openClosure.group_name ?? "Site-wide"}
+              </span>
+            </div>
+            {openClosure.reason && <p>{openClosure.reason}</p>}
+            <div className="flex justify-end border-t border-[var(--campus-line)] pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setOpenClosure(null);
+                  setTab("closures");
+                }}
+              >
+                Edit in Closures
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!openDismissal} onClose={() => setOpenDismissal(null)} title="Early dismissal">
+        {openDismissal && (
+          <div className="space-y-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge tone="sky">School runs, just shorter</Badge>
+              <span>{date(openDismissal.date)}</span>
+              <span className="text-[var(--campus-muted)]">
+                Dismisses at {time(openDismissal.dismissal_time)}
+              </span>
+              <span className="text-[var(--campus-muted)]">
+                {openDismissal.group_name ?? "Site-wide"}
+              </span>
+            </div>
+            {openDismissal.reason && <p>{openDismissal.reason}</p>}
+            <div className="flex justify-end border-t border-[var(--campus-line)] pt-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setOpenDismissal(null);
+                  setTab("early-dismissals");
+                }}
+              >
+                Edit in Early dismissals
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

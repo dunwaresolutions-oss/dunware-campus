@@ -105,6 +105,102 @@ def _instructor_group_ids(user):
     return GroupStaff.objects.filter(user=user, active=True).values_list("group_id", flat=True)
 
 
+def _parse_calendar_range(request):
+    """Shared by the staff and portal calendar endpoints: parse+clamp
+    ``from``/``to``, returning ``(start, end, None)`` or ``(None, None,
+    error_response)``."""
+    try:
+        start = dt.date.fromisoformat(request.query_params["from"])
+        end = dt.date.fromisoformat(request.query_params["to"])
+    except (KeyError, ValueError):
+        return None, None, Response(
+            {"detail": "from and to (YYYY-MM-DD) are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if end < start:
+        start, end = end, start
+    if (end - start).days > 62:
+        end = start + dt.timedelta(days=62)
+    return start, end, None
+
+
+def calendar_payload(
+    start: dt.date, end: dt.date, *,
+    group_id=None, student_id=None, scope_group_ids=None,
+) -> dict:
+    """Sessions + closures + early dismissals in ``[start, end]``, shaped for
+    the calendar views. ``scope_group_ids``, when given, additionally
+    restricts everything to that set of groups (instructor scoping on the
+    staff side; the portal instead scopes by resolving ``student_id`` to a
+    single guardian-verified student before ever calling this)."""
+    qs = SessionOccurrence.objects.select_related("group", "room", "staff").filter(
+        date__gte=start, date__lte=end
+    )
+    if group_id:
+        qs = qs.filter(group_id=group_id)
+    if student_id:
+        qs = qs.filter(group_id__in=_student_group_ids(student_id))
+    if scope_group_ids is not None:
+        qs = qs.filter(group_id__in=scope_group_ids)
+
+    closures = Closure.objects.select_related("group").filter(
+        start_date__lte=end, end_date__gte=start
+    )
+    if scope_group_ids is not None:
+        closures = closures.filter(
+            models.Q(group__isnull=True) | models.Q(group_id__in=scope_group_ids)
+        )
+
+    dismissals = EarlyDismissal.objects.select_related("group").filter(
+        date__gte=start, date__lte=end
+    )
+    if scope_group_ids is not None:
+        dismissals = dismissals.filter(
+            models.Q(group__isnull=True) | models.Q(group_id__in=scope_group_ids)
+        )
+    dismissals = list(dismissals)
+    by_date: dict[dt.date, list[EarlyDismissal]] = {}
+    for ed in dismissals:
+        by_date.setdefault(ed.date, []).append(ed)
+
+    occurrences = list(qs.order_by("date", "start_time"))
+    sessions_data = SessionOccurrenceSerializer(occurrences, many=True).data
+    for row, occ in zip(sessions_data, occurrences, strict=True):
+        match = next(
+            (ed for ed in by_date.get(occ.date, ()) if ed.applies_to(occ.date, occ.group_id)),
+            None,
+        )
+        row["early_dismissal_time"] = match.dismissal_time.strftime("%H:%M") if match else None
+
+    return {
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "sessions": sessions_data,
+        "closures": [
+            {
+                "id": str(c.id),
+                "start_date": c.start_date.isoformat(),
+                "end_date": c.end_date.isoformat(),
+                "reason": c.reason,
+                "group": c.group_id,
+                "group_name": c.group.name if c.group_id else None,
+            }
+            for c in closures
+        ],
+        "early_dismissals": [
+            {
+                "id": str(ed.id),
+                "date": ed.date.isoformat(),
+                "dismissal_time": ed.dismissal_time.strftime("%H:%M"),
+                "reason": ed.reason,
+                "group": ed.group_id,
+                "group_name": ed.group.name if ed.group_id else None,
+            }
+            for ed in dismissals
+        ],
+    }
+
+
 class SessionTemplateViewSet(_RefViewSet):
     serializer_class = SessionTemplateSerializer
 
@@ -163,90 +259,20 @@ class SessionOccurrenceViewSet(CampusViewSet):
         overlap it, so the grid can shade non-teaching days. The span is
         capped at 62 days.
         """
-        try:
-            start = dt.date.fromisoformat(request.query_params["from"])
-            end = dt.date.fromisoformat(request.query_params["to"])
-        except (KeyError, ValueError):
-            return Response(
-                {"detail": "from and to (YYYY-MM-DD) are required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if end < start:
-            start, end = end, start
-        if (end - start).days > 62:
-            end = start + dt.timedelta(days=62)
+        start, end, err = _parse_calendar_range(request)
+        if err:
+            return err
 
-        qs = SessionOccurrence.objects.select_related("group", "room", "staff").filter(
-            date__gte=start, date__lte=end
-        )
-        if request.query_params.get("group"):
-            qs = qs.filter(group_id=request.query_params["group"])
-        if request.query_params.get("student"):
-            qs = qs.filter(group_id__in=_student_group_ids(request.query_params["student"]))
         role = getattr(request.user, "role", None)
-        group_ids = None
-        if role not in _ADMIN_ROLES:
-            group_ids = list(_instructor_group_ids(request.user))
-            qs = qs.filter(group_id__in=group_ids)
+        scope_group_ids = None if role in _ADMIN_ROLES else list(_instructor_group_ids(request.user))
 
-        closures = Closure.objects.select_related("group").filter(
-            start_date__lte=end, end_date__gte=start
+        payload = calendar_payload(
+            start, end,
+            group_id=request.query_params.get("group"),
+            student_id=request.query_params.get("student"),
+            scope_group_ids=scope_group_ids,
         )
-        if group_ids is not None:
-            closures = closures.filter(
-                models.Q(group__isnull=True) | models.Q(group_id__in=group_ids)
-            )
-
-        dismissals = EarlyDismissal.objects.select_related("group").filter(
-            date__gte=start, date__lte=end
-        )
-        if group_ids is not None:
-            dismissals = dismissals.filter(
-                models.Q(group__isnull=True) | models.Q(group_id__in=group_ids)
-            )
-        dismissals = list(dismissals)
-        by_date: dict[dt.date, list[EarlyDismissal]] = {}
-        for ed in dismissals:
-            by_date.setdefault(ed.date, []).append(ed)
-
-        occurrences = list(qs.order_by("date", "start_time"))
-        sessions_data = SessionOccurrenceSerializer(occurrences, many=True).data
-        for row, occ in zip(sessions_data, occurrences, strict=True):
-            match = next(
-                (ed for ed in by_date.get(occ.date, ()) if ed.applies_to(occ.date, occ.group_id)),
-                None,
-            )
-            row["early_dismissal_time"] = match.dismissal_time.strftime("%H:%M") if match else None
-
-        return Response(
-            {
-                "from": start.isoformat(),
-                "to": end.isoformat(),
-                "sessions": sessions_data,
-                "closures": [
-                    {
-                        "id": str(c.id),
-                        "start_date": c.start_date.isoformat(),
-                        "end_date": c.end_date.isoformat(),
-                        "reason": c.reason,
-                        "group": c.group_id,
-                        "group_name": c.group.name if c.group_id else None,
-                    }
-                    for c in closures
-                ],
-                "early_dismissals": [
-                    {
-                        "id": str(ed.id),
-                        "date": ed.date.isoformat(),
-                        "dismissal_time": ed.dismissal_time.strftime("%H:%M"),
-                        "reason": ed.reason,
-                        "group": ed.group_id,
-                        "group_name": ed.group.name if ed.group_id else None,
-                    }
-                    for ed in dismissals
-                ],
-            }
-        )
+        return Response(payload)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
