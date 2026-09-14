@@ -58,10 +58,46 @@ reasoned about. `install.ps1` was rewritten into real first-run logic
 (secrets + a verified-real ACL lock, Caddyfile templating, graceful
 degradation when third-party binaries aren't staged) and drilled against a
 scratch install root. `Campus-Setup.exe` (Inno Setup) compiled successfully
-and bundles all of the above; it was not run/installed this session (that
-registers real Windows services on whatever machine runs it — an operator
-action, not a build-verification one). Full account: `docs/PACKAGING.md`;
-what an operator stages before a real install: `docs/DEPLOYMENT.md`.
+and bundles all of the above. Full account: `docs/PACKAGING.md`; what an
+operator stages before a real install: `docs/DEPLOYMENT.md`.
+
+**Phase 10 (a real installed deployment's first console-UX + data-quality
+pass) is complete** — this is the first phase driven by feedback against an
+actual running install rather than a build-verification pass, and it
+surfaced real bugs a clean-room review hadn't: a genuine seed-data
+double-booking (a senior student's homeroom and course-of-study periods
+could land on the same slot — fixed by reserving a period exclusively for
+course-of-study sections, verified empirically against a full 1400-student
+reseed, zero overlaps), a gap in the same data where two weekdays a term
+were silently unscheduled rather than showing an explicit free period, and
+an `AddField(unique=True)` migration (`Invoice.invoice_number`) that failed
+outright against a populated table — rewritten as add-nullable →
+backfill → tighten, the safe shape for a schema change against live data.
+It also surfaced a process gap, not a code bug: a hotfix folder silently
+wiped by a fresh reinstall made several already-fixed, already-tested
+backend changes invisible on the live box, because the installer that
+shipped predated the fix. The fix is now a hard rule (`docs/DEPLOYMENT.md`
+"Field support"): a hotfix is a same-day stopgap only, never the sole home
+of a fix an installer is handed off with.
+
+Feature work this phase: search added across students, guardians, staff,
+billing, incidents, IEPs, bookings, consents, and enrolments; a government-ID
+**type** field (`Student.government_id_type`) alongside the existing
+encrypted ID value; guardian portal-login management (reset / delete) from
+the student record; a staff `status` field (`StaffStatus`) beyond bare
+active/inactive; a configurable report-card **grading-scheme** system
+(`grades.GradingScheme` / `GradeBand`, four real presets, frozen onto each
+`ReportCard` at generation time so a later policy change never rewrites a
+released card); a full visual/UX redesign of the parent/student portal,
+including its own scoped `/api/portal/calendar/` endpoint (guardian/student
+access verified via the same `Student.is_visible_to()` every other portal
+read uses — not a relaxation of the staff-only session endpoints); and a
+hard separation between three calendar surfaces that had been conflated
+(the whole-school Scheduling calendar is exceptions-only; a student's own
+Timetable, and the portal's own calendar, show her real class-by-class day).
+315 backend tests (up from 143 at the end of Phase 8) — `ruff` / `bandit` /
+`pip-audit` and a full rebuild-and-byte-verify of the frozen backend +
+frontend against an installer before it was called ready, all clean.
 
 ## 1. Data protection
 
