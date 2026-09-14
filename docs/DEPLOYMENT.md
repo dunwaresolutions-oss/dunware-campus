@@ -169,6 +169,11 @@ It shadows the frozen copy. Active hotfixes are logged at startup, flagged by
 page — so a patched box is never invisible. Fold the fix into a real release
 and clear the folder once it ships. Cannot add a dependency or change a model
 (those need a patched build via `repair-campus.ps1 -RefreshAppFrom`).
+**A fresh install/reinstall does not carry the hotfix folder over** — it's
+gone on the new box, so a fix that only ever lived there quietly regresses.
+Treat the hotfix overlay as a same-day stopgap only; the very next installer
+build must already contain the real fix, verified against the source it was
+built from, before anyone is told a fresh install is ready.
 
 ## Day 2
 

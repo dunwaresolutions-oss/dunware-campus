@@ -22,7 +22,12 @@ place where every **PII field** is listed with its **purpose** and **retention**
 
 ## accounts  *(Phase 0/1)*
 
-- `User(AbstractUser)` — `role`, `must_use_mfa`, `last_password_change`.
+- `User(AbstractUser)` — `role`, `must_use_mfa`, `last_password_change`,
+  `status` (`StaffStatus`: active / sick leave / on leave / sedentary duty /
+  transferred / suspended / terminated — distinct from `is_active`, which
+  gates login entirely; `status` instead tells the roster/directory *why* a
+  staff member isn't in class without disabling their account. Meaningful
+  for staff roles only; portal accounts stay `ACTIVE`).
 - `StaffInvite` — single-use, expiring, no password.
 
 | PII field | purpose | retention |
@@ -59,6 +64,7 @@ place where every **PII field** is listed with its **purpose** and **retention**
 | `Student.first_name/last_name/preferred_name` | identification on rosters, report cards | while enrolled + `RETENTION_PAST_STUDENT_DAYS` after `left_on`, then anonymized |
 | `Student.date_of_birth` | age-band placement, ratio compliance | same |
 | `Student.government_id` *(encrypted)* | government reporting where legally required | same; blanked on erase |
+| `Student.government_id_type` *(plain — national ID / passport / birth cert / social insurance / voter ID / other)* | labels what kind of ID `government_id` holds; not itself an identifying value, so not encrypted | with the student |
 | `Student.custody_notes` *(encrypted)* | custody / access affecting pickup | same |
 | `Guardian.email` | announcements, incident reports, invoices | while linked to a current student + 1 yr |
 | `Guardian.phone` *(encrypted)*, `Guardian.address` *(encrypted)* | urgent contact / correspondence | same |
@@ -101,6 +107,25 @@ place where every **PII field** is listed with its **purpose** and **retention**
   on `(template, date)`. `SessionOccurrence.roster()` reads active
   `registration.Enrolment` rows as of the date — never a duplicate list.
 - Not PII. Instructors are scoped to the groups they staff (`GroupStaff`).
+- **Three different calendars read the same `SessionOccurrence` data, but
+  are not the same view**: the Scheduling page's own calendar is a
+  whole-school *exceptions* view (closures / early dismissals only — at
+  hundreds of students, listing every class period there is unreadable and
+  isn't its job); a student's Timetable tab and the parent/student portal's
+  "Upcoming schedule" each show *her* actual class-by-class day
+  (`ScheduleCalendar`'s `fixedStudentId`, filtered server-side to every
+  group she's actively enrolled in — homeroom **and** every course-of-study
+  section). `frontend/components/ScheduleCalendar.tsx`'s `showSessions`
+  prop toggles between the two.
+
+  A senior student (grade 10+) sits in two worlds at once — her homeroom
+  (compulsory subjects) and her course-of-study section(s). The synthetic
+  demo data (`seed_demo.py`) models this by reserving one period a day
+  exclusively for course-of-study sections in those grades, so a homeroom
+  subject can never double-book a track subject for the same student.
+  That's a seed-data construction detail, not a schema rule — a real
+  deployment's own scheduling policy (which subjects meet which day) comes
+  from the school, not a hardcoded assumption.
 
 ## attendance  *(Phase 3 — done)*
 
@@ -142,11 +167,26 @@ place where every **PII field** is listed with its **purpose** and **retention**
 - `ReportCard(SensitiveModel, SoftDeleteModel)` — `DRAFT → FINALIZED →
   RELEASED`; `summary_narrative` encrypted; `document` written through the
   encrypted storage. `ReportCardEntry` (`comment` encrypted) per subject.
+  Also carries `grading_scheme` (FK, `SET_NULL`) and `cumulative_gpa`
+  (nullable) — both **frozen at generation time**, so activating a different
+  scheme later never rewrites an already-generated card.
+- `GradingScheme` — a school's report-card grading policy: `name`,
+  `uses_gpa`, `gpa_scale`, `is_active` (`.activate()` deactivates every other
+  scheme transactionally; exactly zero or one active at a time). `GradeBand`
+  (scheme FK, `label`, `min_percent`/`max_percent`, `gpa_points` nullable,
+  `order`; unique per `(scheme, label)`) — the letter/level bands a mark
+  falls into. Four real presets ship via a data migration (not a fixture):
+  Bahamas 4.0 GPA, Ontario elementary 4-level, South Africa NCS 7-point,
+  Botswana letter bands — none activated by default. Not PII; front office
+  manages schemes/bands, everyone else reads.
 - `apps/grades/services.py`: `render_report_card_html()` always;
   `html_to_pdf()` uses WeasyPrint when present (bundled in the installer,
   Phase 9) and raises `PdfEngineUnavailable` otherwise; `generate_report_card()`
-  stores a `.pdf` or falls back to `.html`. `release_report_card()` emails the
-  guardians.
+  stores a `.pdf` or falls back to `.html`, and freezes the active scheme +
+  `compute_cumulative_gpa(entries)` (unweighted mean of the term's
+  GPA-bearing grade-band points — no credit-hour model to weight by) onto
+  the card. `grade_for_mark(mark, scheme=...)` resolves a `GradeBand`.
+  `release_report_card()` emails the guardians.
 ## booking  *(Phase 5 — done)*
 
 - `Offering` — a bookable service (tutoring / music / sport / club). `provider`,
@@ -173,7 +213,9 @@ for PCI scope to attach to. Amounts are integer cents throughout.
 - `Invoice(SensitiveModel)` — `DRAFT → ISSUED → PARTIALLY_PAID → PAID` (or
   `VOID`); `total_cents` / `paid_cents` / `balance_cents` computed via
   `.aggregate()` (never a stale prefetch cache) over `InvoiceLine` /
-  `Payment`. Reads audited.
+  `Payment`. `invoice_number` (`INV-000001`-style, unique, assigned on
+  creation) is what staff and guardians actually see on statements and
+  payment records — never the raw internal id. Reads audited.
 - `InvoiceLine` — fee-schedule-linked or ad hoc; `amount_cents` = quantity ×
   unit.
 - `Payment` — **manual only**: cash / cheque / e-transfer + a reference,
@@ -203,6 +245,14 @@ same `Student.visible_queryset` / `is_visible_to` the staff API uses.
   (`billing.services.portal_summary` — status/total/balance/due date, never a
   card field); plus visible announcements, the caller's message threads, and
   their contact-change requests.
+- `GET /api/portal/calendar/?student=ID&from=&to=` — the same
+  sessions/closures/early-dismissals shape as the staff
+  `/api/sessions/calendar/` (both built from the one shared
+  `scheduling.views.calendar_payload()`), but scoped to a single student the
+  caller already passes `Student.is_visible_to()` for — a 403 otherwise, a
+  guardian never gets another family's schedule. Backs the portal's own
+  embedded weekly/monthly calendar; not a relaxation of the staff-only
+  session endpoints.
 - `POST /api/portal/contact-change-requests/` — submit a change; front office
   `approve` / `reject`. `POST /api/portal/consents/` — record a consent
   decision as a new versioned `registration.Consent` row (never an update).
