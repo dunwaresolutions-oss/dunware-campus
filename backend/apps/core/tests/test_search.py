@@ -36,6 +36,43 @@ def test_finds_students_guardians_and_groups(auth_client, admin_user):
     assert any(h["id"] == str(grp.pk) for h in _hits(r2, "Groups"))
 
 
+def test_finds_a_student_by_full_first_and_last_name(auth_client, admin_user):
+    """Damien, 2026-09-16: an issued invoice existed for "Uriah Oliver" but
+    searching that exact name found nothing. Root cause: first_name and
+    last_name are separate fields, so a single icontains("Uriah Oliver")
+    check against either one alone can never match - the query has to be
+    split into words and each word matched against SOME field."""
+    make_student(first_name="Uriah", last_name="Oliver")
+    make_student(first_name="Someone", last_name="Else")
+
+    client = auth_client(admin_user)
+    r = client.get("/api/search/?q=Uriah+Oliver")
+    assert r.status_code == 200
+    hits = _hits(r, "Students")
+    assert any(h["label"] == "Uriah Oliver" for h in hits)
+    assert len(hits) == 1
+
+    # order/case shouldn't matter, and it still works as a bare single word
+    r2 = client.get("/api/search/?q=oliver uriah")
+    assert any(h["label"] == "Uriah Oliver" for h in _hits(r2, "Students"))
+    r3 = client.get("/api/search/?q=uriah")
+    assert any(h["label"] == "Uriah Oliver" for h in _hits(r3, "Students"))
+
+
+def test_full_name_search_does_not_cross_match_unrelated_people(auth_client, admin_user):
+    """"Uriah Oliver" must not match a student named "Uriah Adderley" and a
+    guardian named "Oliver Bain" just because each word matches someone -
+    the AND is per-person (per queryset row), not just "both words appear
+    somewhere in the table.\""""
+    make_student(first_name="Uriah", last_name="Adderley")
+    make_student(first_name="Marcus", last_name="Oliver")
+
+    client = auth_client(admin_user)
+    r = client.get("/api/search/?q=Uriah+Oliver")
+    assert r.status_code == 200
+    assert _hits(r, "Students") == []
+
+
 def test_short_query_returns_nothing(auth_client, admin_user):
     make_student(first_name="Ada", last_name="Ng")
     r = auth_client(admin_user).get("/api/search/?q=a")
