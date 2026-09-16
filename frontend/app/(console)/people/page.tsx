@@ -119,6 +119,8 @@ export default function PeoplePage() {
         <CrudPanel<Student>
           resource="students"
           singular="student"
+          searchable
+          searchPlaceholder="Search students by name or student number…"
           fields={studentFields}
           onRowOpen={(s) => router.push(`/people/student?id=${s.id}`)}
           columns={[

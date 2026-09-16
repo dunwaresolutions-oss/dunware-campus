@@ -31,6 +31,20 @@ def test_front_desk_can_create_and_list_students(auth_client, front_desk):
     assert AuditEntry.objects.filter(action=AuditAction.READ, summary__startswith="listed").exists()
 
 
+def test_students_search_matches_a_full_first_and_last_name(auth_client, front_desk):
+    """The Students tab search box (added 2026-09-16 - it didn't exist
+    before) hits this same ?q= endpoint - a full "First Last" query has to
+    actually find the student, not just a single-word one."""
+    kid = make_student(first_name="Uriah", last_name="Oliver")
+    make_student(first_name="Someone", last_name="Else")
+
+    client = auth_client(front_desk)
+    resp = client.get("/api/students/?q=Uriah+Oliver")
+    assert resp.status_code == 200
+    ids = {str(row["id"]) for row in resp.data["results"]}
+    assert ids == {str(kid.pk)}
+
+
 def test_parent_sees_only_their_child(auth_client, make_user):
     kid_a, kid_b = make_student(), make_student()
     parent = make_user(username="mum", role="PARENT")
