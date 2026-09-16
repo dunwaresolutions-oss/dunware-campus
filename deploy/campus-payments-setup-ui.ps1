@@ -176,8 +176,27 @@ function Invoke-Manage([string[]]$ManageArgs) {
   # Every write here goes through the SAME `manage` command an elevated
   # PowerShell would run directly (decision 9) - this window is a front
   # end, not a different mechanism.
-  $out = & $appExe manage @ManageArgs 2>&1
-  return @{ Output = ($out -join "`r`n"); Code = $LASTEXITCODE }
+  #
+  # Deliberately NOT `& $appExe manage @ManageArgs 2>&1` - on Windows
+  # PowerShell 5.1, merging a native exe's stderr that way wraps every
+  # stderr line (including Django's routine startup INFO log, not an
+  # error) in an ErrorRecord, which - combined with this script's
+  # `$ErrorActionPreference = 'Stop'` - throws on the FIRST such line and
+  # aborts before the command's real result is ever seen. Start-Process
+  # with separate redirected-to-file streams sidesteps that entirely.
+  $stdoutFile = [System.IO.Path]::GetTempFileName()
+  $stderrFile = [System.IO.Path]::GetTempFileName()
+  try {
+    $p = Start-Process -FilePath $appExe -ArgumentList (@('manage') + $ManageArgs) `
+      -RedirectStandardOutput $stdoutFile -RedirectStandardError $stderrFile `
+      -NoNewWindow -PassThru -Wait
+    $stdout = Get-Content $stdoutFile -Raw -ErrorAction SilentlyContinue
+    $stderr = Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue
+    $combined = (@($stdout, $stderr) | Where-Object { $_ }) -join "`r`n"
+    return @{ Output = $combined.Trim(); Code = $p.ExitCode }
+  } finally {
+    Remove-Item $stdoutFile, $stderrFile -ErrorAction SilentlyContinue
+  }
 }
 
 function Update-StatusLabel {
@@ -188,11 +207,25 @@ c = GatewayConfig.load()
 masked = (c.secret_key[:7] + "...") if c.secret_key else "(none)"
 print(f"gateway={c.gateway} mode={c.mode} public_key={c.public_key or '(none)'} secret_key={masked}")
 '@
+  $stdinFile = [System.IO.Path]::GetTempFileName()
+  $stdoutFile = [System.IO.Path]::GetTempFileName()
+  $stderrFile = [System.IO.Path]::GetTempFileName()
   try {
-    $result = $py | & $appExe manage shell 2>&1
-    $lblStatus.Text = ($result -join "`r`n").Trim()
+    Set-Content -Path $stdinFile -Value $py -Encoding utf8 -NoNewline
+    $p = Start-Process -FilePath $appExe -ArgumentList @('manage', 'shell') `
+      -RedirectStandardInput $stdinFile -RedirectStandardOutput $stdoutFile `
+      -RedirectStandardError $stderrFile -NoNewWindow -PassThru -Wait
+    $stdout = (Get-Content $stdoutFile -Raw -ErrorAction SilentlyContinue)
+    if ($p.ExitCode -eq 0 -and $stdout) {
+      $lblStatus.Text = $stdout.Trim()
+    } else {
+      $stderr = (Get-Content $stderrFile -Raw -ErrorAction SilentlyContinue)
+      $lblStatus.Text = "status unavailable (exit $($p.ExitCode)): $($stderr.Trim())"
+    }
   } catch {
     $lblStatus.Text = "status unavailable: $($_.Exception.Message)"
+  } finally {
+    Remove-Item $stdinFile, $stdoutFile, $stderrFile -ErrorAction SilentlyContinue
   }
 }
 
