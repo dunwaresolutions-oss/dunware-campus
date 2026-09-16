@@ -6,10 +6,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { isStaff, logout, whoami } from "@/lib/auth";
 import {
   portalDashboard,
+  payInvoices,
   requestContactChange,
   submitConsent,
   type ContactChangeRequest,
   type PortalChild,
+  type PortalInvoice,
   type PortalThreadSummary,
 } from "@/lib/portal";
 import { Card, Spinner, Badge, Button } from "@/components/ui";
@@ -95,6 +97,12 @@ const InboxIcon = ({ className = iconBase }: IconProps) => (
     <path d="M5.2 5.5h13.6a1 1 0 0 1 1 .82L21 12v6a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-6l1.2-5.68a1 1 0 0 1 1-.82Z" />
   </svg>
 );
+const CreditCardIcon = ({ className = iconBase }: IconProps) => (
+  <svg className={className} {...svgProps}>
+    <rect x="2.5" y="5.5" width="19" height="13" rx="2" />
+    <path d="M2.5 9.5h19M6 14.5h4" />
+  </svg>
+);
 const ShieldIcon = ({ className = iconBase }: IconProps) => (
   <svg className={className} {...svgProps}>
     <path d="M12 2.7 4.5 5.5v6c0 5 3.2 8.4 7.5 10 4.3-1.6 7.5-5 7.5-10v-6Z" />
@@ -154,6 +162,7 @@ export default function PortalPage() {
   });
   const [contactFor, setContactFor] = useState(false);
   const [activeChild, setActiveChild] = useState<string | null>(null);
+  const [payFor, setPayFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!meLoading && !me) router.replace("/login/");
@@ -215,6 +224,7 @@ export default function PortalPage() {
               child={child}
               collectsFees={dash.data?.collects_fees ?? true}
               onConsent={() => dash.refetch()}
+              onPay={() => setPayFor(child.id)}
             />
           )}
 
@@ -265,6 +275,14 @@ export default function PortalPage() {
           onCancel={() => setContactFor(false)}
         />
       </Modal>
+
+      <PayInvoicesModal
+        open={!!payFor}
+        onClose={() => setPayFor(null)}
+        childrenList={children}
+        currency={dash.data?.currency ?? "CAD"}
+        preselectChildId={payFor}
+      />
     </div>
   );
 }
@@ -421,10 +439,12 @@ function ChildDashboard({
   child,
   collectsFees,
   onConsent,
+  onPay,
 }: {
   child: PortalChild;
   collectsFees: boolean;
   onConsent: () => void;
+  onPay: () => void;
 }) {
   const toast = useToast();
   const [consenting, setConsenting] = useState<string | null>(null);
@@ -592,7 +612,20 @@ function ChildDashboard({
         </SectionCard>
 
         {collectsFees && (
-          <SectionCard icon={<DollarIcon />} title="Billing">
+          <SectionCard
+            icon={<DollarIcon />}
+            title="Billing"
+            action={
+              child.invoices.some(
+                (i) => i.status !== "VOID" && i.status !== "PAID" && i.balance_cents > 0,
+              ) && (
+                <Button size="sm" onClick={onPay}>
+                  <CreditCardIcon className="h-[14px] w-[14px]" />
+                  Pay
+                </Button>
+              )
+            }
+          >
             {child.invoices.length === 0 ? (
               <Empty>Nothing on file.</Empty>
             ) : (
@@ -730,6 +763,190 @@ function ChildDashboard({
         )}
       </Modal>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------- pay invoices */
+
+interface PayableRow {
+  invoice: PortalInvoice;
+  childId: string;
+  childName: string;
+}
+
+function payableRows(childrenList: PortalChild[]): PayableRow[] {
+  const rows: PayableRow[] = [];
+  for (const c of childrenList) {
+    for (const inv of c.invoices) {
+      if (inv.status !== "VOID" && inv.status !== "PAID" && inv.balance_cents > 0) {
+        rows.push({ invoice: inv, childId: c.id, childName: c.display_name });
+      }
+    }
+  }
+  return rows;
+}
+
+function PayInvoicesModal({
+  open,
+  onClose,
+  childrenList,
+  currency,
+  preselectChildId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  childrenList: PortalChild[];
+  currency: string;
+  preselectChildId: string | null;
+}) {
+  const toast = useToast();
+  const rows = payableRows(childrenList);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [amount, setAmount] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Pre-check the invoices for whichever child's "Pay" button was clicked —
+  // every other outstanding invoice (siblings included) stays visible and
+  // unchecked, so the parent decides whether to combine them (2026-09-16
+  // decision: "the parent should decide which invoices to combine at
+  // checkout").
+  useEffect(() => {
+    if (!open) return;
+    const initial = new Set<string>();
+    for (const c of childrenList) {
+      if (preselectChildId && c.id !== preselectChildId) continue;
+      for (const inv of c.invoices) {
+        if (inv.status !== "VOID" && inv.status !== "PAID" && inv.balance_cents > 0) {
+          initial.add(inv.id);
+        }
+      }
+    }
+    setSelected(initial);
+  }, [open, preselectChildId, childrenList]);
+
+  const selectedRows = rows.filter((r) => selected.has(r.invoice.id));
+  const selectedTotalCents = selectedRows.reduce((s, r) => s + r.invoice.balance_cents, 0);
+
+  // Reset the amount to the new full total whenever the selection changes -
+  // but typing in the field doesn't itself change selectedTotalCents, so
+  // this doesn't fight the parent while they're editing it down.
+  useEffect(() => {
+    setAmount(selectedTotalCents > 0 ? (selectedTotalCents / 100).toFixed(2) : "");
+  }, [selectedTotalCents]);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const amountCents = Math.round((parseFloat(amount) || 0) * 100);
+  const amountValid = amountCents > 0 && amountCents <= selectedTotalCents;
+
+  async function pay() {
+    if (!amountValid || selected.size === 0) return;
+    setSubmitting(true);
+    try {
+      const attempt = await payInvoices({
+        invoice_ids: [...selected],
+        amount_cents: amountCents,
+        return_url: `${window.location.origin}/portal/pay/return/`,
+      });
+      if (!attempt.checkout_url) throw new Error("No checkout link came back.");
+      try {
+        // The return page reads this first; Paystack/Flutterwave also echo
+        // our reference back as a callback query param, so this is a
+        // fallback for Stripe (session_id only) and for storage that
+        // doesn't survive the round trip, not the only path.
+        sessionStorage.setItem("campus_pending_payment_ref", attempt.reference);
+      } catch {
+        // Private browsing / storage disabled - fine, see above.
+      }
+      window.location.href = attempt.checkout_url;
+    } catch (e) {
+      toast("error", apiMessage(e));
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Pay invoices">
+      {rows.length === 0 ? (
+        <Empty>Nothing outstanding.</Empty>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--campus-muted)]">
+            Select one or more invoices to pay together in a single charge — useful if
+            you&apos;re paying for more than one child at once.
+          </p>
+          <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+            {rows.map((r) => (
+              <li key={r.invoice.id}>
+                <label className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-[var(--campus-line)] px-3 py-2 text-sm hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+                  <span className="flex items-center gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.invoice.id)}
+                      onChange={() => toggle(r.invoice.id)}
+                      className="h-4 w-4 rounded border-[var(--campus-line)]"
+                    />
+                    <span>
+                      <span className="block font-medium">{r.childName}</span>
+                      <span className="text-xs text-[var(--campus-muted)]">
+                        {r.invoice.due_date ? `due ${date(r.invoice.due_date)}` : "no due date"}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="font-medium">{money(r.invoice.balance_cents, currency)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex items-center justify-between border-t border-[var(--campus-line)] pt-3 text-sm">
+            <span className="text-[var(--campus-muted)]">Selected balance</span>
+            <span className="font-semibold">{money(selectedTotalCents, currency)}</span>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
+              Amount to pay now
+            </label>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              disabled={selected.size === 0}
+              className="w-full rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-sm text-[var(--campus-fg)] focus:border-[var(--campus-accent)] focus:outline-none disabled:opacity-50"
+            />
+            {amount !== "" && !amountValid && (
+              <p className="mt-1 text-xs text-red-600">
+                Enter an amount greater than zero and no more than the selected balance.
+              </p>
+            )}
+            <p className="mt-1 text-xs text-[var(--campus-muted)]">
+              Paying less than the full balance is allowed — the rest stays owing.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button disabled={!amountValid || selected.size === 0 || submitting} onClick={pay}>
+              {submitting
+                ? "Starting checkout…"
+                : `Pay ${amount ? money(amountCents, currency) : ""}`}
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 

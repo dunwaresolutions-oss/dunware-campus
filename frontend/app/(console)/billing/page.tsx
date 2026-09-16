@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAll, useList, useQueryParam, options } from "@/lib/hooks";
 import { CrudPanel } from "@/components/CrudPanel";
 import { ActionButton } from "@/components/ActionButton";
-import { create, act, retrieve } from "@/lib/resource";
+import { create, act, actList, retrieve } from "@/lib/resource";
 import { PageHeader, Tabs, Badge, Button, Card, Spinner } from "@/components/ui";
 import { Modal } from "@/components/Modal";
 import { RecordForm } from "@/components/RecordForm";
@@ -356,6 +356,7 @@ function Invoices({
                           onRun={(v) => act("invoices", inv.id, "void", v)}
                           onDone={reload}
                         />
+                        <PayLinkButton invoiceId={inv.id} />
                       </>
                     )}
                   </span>
@@ -423,6 +424,89 @@ function Invoices({
         onChanged={reload}
       />
     </Card>
+  );
+}
+
+interface PaymentAttemptLink {
+  reference: string;
+  checkout_url: string;
+  amount_cents: number;
+  status: string;
+}
+
+/**
+ * Front office / admin / superadmin can hand a family a payment link
+ * without the parent needing portal access (Damien, 2026-09-16: "generate
+ * payment link from the front office/superadmin/admin"). One invoice's full
+ * balance, full stop — combining several children's invoices into one
+ * charge is the parent's own call to make at checkout (portal Pay), not
+ * something staff decide on their behalf here.
+ */
+function PayLinkButton({ invoiceId }: { invoiceId: number }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const [attempt, setAttempt] = useState<PaymentAttemptLink | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    setBusy(true);
+    try {
+      const a = await actList<PaymentAttemptLink>("invoices", "pay", {
+        invoice_ids: [invoiceId],
+        return_url:
+          typeof window !== "undefined"
+            ? `${window.location.origin}/portal/pay/return/`
+            : undefined,
+      });
+      setAttempt(a);
+      setCopied(false);
+    } catch (e) {
+      toast("error", apiMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    if (!attempt) return;
+    try {
+      await navigator.clipboard.writeText(attempt.checkout_url);
+      setCopied(true);
+    } catch {
+      toast("error", "Couldn't copy — select and copy the link by hand.");
+    }
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="ghost" disabled={busy} onClick={generate}>
+        {busy ? "Generating…" : "Payment link"}
+      </Button>
+      <Modal open={!!attempt} onClose={() => setAttempt(null)} title="Payment link">
+        {attempt && (
+          <div className="space-y-3 text-sm">
+            <p className="text-[var(--campus-muted)]">
+              Share this link with the family — {money(attempt.amount_cents)} due. The
+              payment provider emails their own receipt once it&apos;s paid.
+            </p>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={attempt.checkout_url}
+                onFocus={(e) => e.currentTarget.select()}
+                className="flex-1 rounded-lg border border-[var(--campus-line)] bg-[var(--campus-input-bg)] px-3 py-2 text-xs text-[var(--campus-fg)]"
+              />
+              <Button size="sm" onClick={copy}>
+                {copied ? "Copied ✓" : "Copy"}
+              </Button>
+            </div>
+            <p className="text-xs text-[var(--campus-muted)]">
+              Reference {attempt.reference}
+            </p>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 

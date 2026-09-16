@@ -1,4 +1,5 @@
 import { api, ensureCsrf } from "./api";
+import { actList } from "./resource";
 
 /** The consolidated parent / student "my world" payload. */
 export interface PortalDashboard {
@@ -112,4 +113,48 @@ export async function submitConsent(input: {
 }): Promise<{ id: string; kind: string; granted: boolean; version: string }> {
   await ensureCsrf();
   return api("/portal/consents/", { method: "POST", body: JSON.stringify(input) });
+}
+
+/** One invoice's slice of a checkout — a combined family payment has one
+ * of these per child; a single-invoice payment still has exactly one. */
+export interface PaymentAllocation {
+  invoice: string;
+  invoice_number: string;
+  student_name: string;
+  allocated_cents: number;
+}
+
+export interface PaymentAttempt {
+  id: string;
+  allocations: PaymentAllocation[];
+  gateway: string;
+  reference: string;
+  amount_cents: number;
+  currency: string;
+  status: "INITIALIZED" | "PENDING" | "SUCCESS" | "FAILED" | "ABANDONED" | "MISMATCH";
+  checkout_url: string;
+  channel: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Start a hosted checkout for one or several invoices at once — a family
+ * combining two or more children's invoices into a single real charge.
+ * `amount_cents` lets the payer enter a total smaller than the combined
+ * balance (partial payment); omitted, the full combined balance is charged.
+ * The gateway itself sends the receipt email — Campus never does. */
+export async function payInvoices(input: {
+  invoice_ids: string[];
+  amount_cents?: number;
+  return_url?: string;
+}): Promise<PaymentAttempt> {
+  await ensureCsrf();
+  return actList<PaymentAttempt>("invoices", "pay", input);
+}
+
+/** Live-resolves against the gateway on the backend (P3's on-demand
+ * confirmation path) — polling this is how the return page knows when a
+ * checkout has actually settled. */
+export function getPaymentAttempt(reference: string): Promise<PaymentAttempt> {
+  return api<PaymentAttempt>(`/payment-attempts/${encodeURIComponent(reference)}/`);
 }
