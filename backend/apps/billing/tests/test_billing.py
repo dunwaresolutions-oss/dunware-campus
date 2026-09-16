@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from apps.billing.gateways import (
+    FlutterwaveGateway,
     GatewayError,
     GatewayNotConfigured,
     ManualGateway,
@@ -61,21 +62,25 @@ class _FakeHttpxClient:
     def __exit__(self, *exc):
         return False
 
-    def post(self, path, json=None):
+    def post(self, path, json=None, data=None):
         return self._responses["post"]
 
     def get(self, path, params=None):
         return self._responses["get"]
 
 
-def _configure_paystack(secret="sk_test_abc", public="pk_test_abc"):
+def _configure_gateway(gateway, secret="sk_test_abc", public="pk_test_abc"):
     cfg = GatewayConfig.load()
-    cfg.gateway = Gateway.PAYSTACK
+    cfg.gateway = gateway
     cfg.mode = GatewayConfig.Mode.TEST
     cfg.secret_key = secret
     cfg.public_key = public
     cfg.save()
     return cfg
+
+
+def _configure_paystack(secret="sk_test_abc", public="pk_test_abc"):
+    return _configure_gateway(Gateway.PAYSTACK, secret, public)
 
 
 def _paid_invoice_setup(total_cents=5_000):
@@ -118,8 +123,9 @@ def test_paystack_initialize_success(monkeypatch):
         invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_x",
         amount_cents=inv.balance_cents, currency=inv.currency,
     )
-    url = gw.initialize(invoice=inv, attempt=attempt)
+    url, session_id = gw.initialize(invoice=inv, attempt=attempt)
     assert url == "https://checkout.paystack.com/xyz"
+    assert session_id == ""  # Paystack verifies by our own reference - no gateway id needed
 
 
 def test_paystack_initialize_without_guardian_email_raises():
@@ -151,10 +157,19 @@ def test_paystack_initialize_rejects_a_paystack_error(monkeypatch):
         gw.initialize(invoice=inv, attempt=attempt)
 
 
+def _bare_attempt(gateway, reference="some-reference", **extra) -> PaymentAttempt:
+    """A `PaymentAttempt` not saved to the DB - `verify()` only reads
+    attributes off it (reference / gateway_session_id), doesn't need a real
+    row for these gateway-level unit tests."""
+    return PaymentAttempt(
+        gateway=gateway, reference=reference, amount_cents=1, currency="USD", **extra
+    )
+
+
 def test_paystack_verify_success():
     cfg = _configure_paystack()
     gw = PaystackGateway(cfg)
-    result = _mock_verify(gw, status=200, data={
+    result = _mock_verify(gw, _bare_attempt(Gateway.PAYSTACK), status=200, data={
         "status": "success", "amount": 5000, "currency": "ZAR", "channel": "card",
     })
     assert result.status == "success"
@@ -164,25 +179,164 @@ def test_paystack_verify_success():
 def test_paystack_verify_pending():
     cfg = _configure_paystack()
     gw = PaystackGateway(cfg)
-    result = _mock_verify(gw, status=200, data={"status": "pay_offline"})
+    result = _mock_verify(
+        gw, _bare_attempt(Gateway.PAYSTACK), status=200, data={"status": "pay_offline"}
+    )
     assert result.status == "pending"
 
 
 def test_paystack_verify_failed():
     cfg = _configure_paystack()
     gw = PaystackGateway(cfg)
-    result = _mock_verify(gw, status=200, data={"status": "abandoned"})
+    result = _mock_verify(
+        gw, _bare_attempt(Gateway.PAYSTACK), status=200, data={"status": "abandoned"}
+    )
     assert result.status == "failed"
 
 
-def _mock_verify(gw, *, status, data) -> VerifiedResult:
+def _mock_verify(
+    gw, attempt, *, status, data, envelope_status=True, get_or_post="get"
+) -> VerifiedResult:
+    """`envelope_status` is the gateway's own top-level "did this call
+    succeed" field - Paystack's is a bool (`True`), Flutterwave's is the
+    string `"success"`. A real difference between the two APIs, not
+    something to paper over with one hardcoded shape."""
     mp = pytest.MonkeyPatch()
     try:
-        fake = _FakeHttpxClient(get=_FakeResponse(status, {"status": True, "data": data}))
+        body = {"status": envelope_status, "data": data}
+        fake = _FakeHttpxClient(**{get_or_post: _FakeResponse(status, body)})
         mp.setattr(gw, "_client", lambda: fake)
-        return gw.verify("some-reference")
+        return gw.verify(attempt)
     finally:
         mp.undo()
+
+
+# ---- P5: Flutterwave + real Stripe -----------------------------------------
+
+def test_get_gateway_returns_flutterwave_when_configured():
+    _configure_gateway(Gateway.FLUTTERWAVE)
+    assert isinstance(get_gateway(), FlutterwaveGateway)
+
+
+def test_get_gateway_returns_real_stripe_when_configured():
+    _configure_gateway(Gateway.STRIPE)
+    gw = get_gateway()
+    assert isinstance(gw, StripeGateway)
+    assert gw.config is not None  # distinct from the legacy settings-fallback StripeGateway()
+
+
+def test_flutterwave_initialize_converts_cents_to_major_units(monkeypatch):
+    cfg = _configure_gateway(Gateway.FLUTTERWAVE)
+    inv = _paid_invoice_setup(total_cents=5_000)  # $50.00
+    gw = FlutterwaveGateway(cfg)
+    captured = {}
+
+    class _CapturingClient(_FakeHttpxClient):
+        def post(self, path, json=None):
+            captured["payload"] = json
+            return self._responses["post"]
+
+    fake = _CapturingClient(post=_FakeResponse(200, {
+        "status": "success", "data": {"link": "https://checkout.flutterwave.com/xyz"},
+    }))
+    monkeypatch.setattr(gw, "_client", lambda: fake)
+    attempt = PaymentAttempt.objects.create(
+        invoice=inv, gateway=Gateway.FLUTTERWAVE, reference="campus_fw",
+        amount_cents=5_000, currency=inv.currency,
+    )
+    url, session_id = gw.initialize(invoice=inv, attempt=attempt)
+    assert url == "https://checkout.flutterwave.com/xyz"
+    assert session_id == ""
+    assert captured["payload"]["amount"] == 50.0  # 5000 cents -> 50.00 major units
+
+
+def test_flutterwave_verify_converts_major_units_back_to_cents():
+    cfg = _configure_gateway(Gateway.FLUTTERWAVE)
+    gw = FlutterwaveGateway(cfg)
+    result = _mock_verify(gw, _bare_attempt(Gateway.FLUTTERWAVE), status=200, data={
+        "status": "successful", "amount": 50.0, "currency": "NGN", "payment_type": "card",
+    }, envelope_status="success")
+    assert result.status == "success"
+    assert result.amount_cents == 5_000  # 50.00 major units -> 5000 cents
+
+
+def test_flutterwave_verify_failed_and_pending():
+    cfg = _configure_gateway(Gateway.FLUTTERWAVE)
+    gw = FlutterwaveGateway(cfg)
+    failed = _mock_verify(gw, _bare_attempt(Gateway.FLUTTERWAVE), status=200,
+                          data={"status": "cancelled"}, envelope_status="success")
+    assert failed.status == "failed"
+    pending = _mock_verify(gw, _bare_attempt(Gateway.FLUTTERWAVE), status=200,
+                           data={"status": "pending"}, envelope_status="success")
+    assert pending.status == "pending"
+
+
+def test_stripe_initialize_requires_a_return_url():
+    cfg = _configure_gateway(Gateway.STRIPE)
+    inv = _paid_invoice_setup()
+    gw = StripeGateway(cfg)
+    attempt = PaymentAttempt.objects.create(
+        invoice=inv, gateway=Gateway.STRIPE, reference="campus_stripe_no_url",
+        amount_cents=inv.balance_cents, currency=inv.currency,
+    )
+    with pytest.raises(GatewayError):
+        gw.initialize(invoice=inv, attempt=attempt)  # no return_url
+
+
+def test_stripe_initialize_success_returns_session_id(monkeypatch):
+    cfg = _configure_gateway(Gateway.STRIPE)
+    inv = _paid_invoice_setup(total_cents=2_500)
+    gw = StripeGateway(cfg)
+    fake = _FakeHttpxClient(post=_FakeResponse(200, {
+        "id": "cs_test_abc123", "url": "https://checkout.stripe.com/c/pay/cs_test_abc123",
+    }))
+    monkeypatch.setattr(gw, "_client", lambda: fake)
+    attempt = PaymentAttempt.objects.create(
+        invoice=inv, gateway=Gateway.STRIPE, reference="campus_stripe_ok",
+        amount_cents=2_500, currency=inv.currency,
+    )
+    url, session_id = gw.initialize(invoice=inv, attempt=attempt, return_url="https://school.example/return")
+    assert url == "https://checkout.stripe.com/c/pay/cs_test_abc123"
+    assert session_id == "cs_test_abc123"
+
+
+def test_stripe_verify_with_no_session_id_yet_is_pending():
+    cfg = _configure_gateway(Gateway.STRIPE)
+    gw = StripeGateway(cfg)
+    attempt = _bare_attempt(Gateway.STRIPE, gateway_session_id="")
+    result = gw.verify(attempt)
+    assert result.status == "pending"
+
+
+def test_stripe_verify_paid_session_is_success(monkeypatch):
+    # Stripe's response is the session object itself, NOT wrapped in
+    # {"status": ..., "data": ...} the way Paystack/Flutterwave are - a real
+    # difference between the three, not an oversight, so this doesn't reuse
+    # `_mock_verify`.
+    cfg = _configure_gateway(Gateway.STRIPE)
+    gw = StripeGateway(cfg)
+    attempt = _bare_attempt(Gateway.STRIPE, gateway_session_id="cs_test_abc123")
+    fake = _FakeHttpxClient(get=_FakeResponse(200, {
+        "payment_status": "paid", "status": "complete",
+        "amount_total": 2_500, "currency": "cad",
+    }))
+    monkeypatch.setattr(gw, "_client", lambda: fake)
+    result = gw.verify(attempt)
+    assert result.status == "success"
+    assert result.amount_cents == 2_500
+    assert result.currency == "CAD"
+
+
+def test_stripe_verify_expired_session_is_failed(monkeypatch):
+    cfg = _configure_gateway(Gateway.STRIPE)
+    gw = StripeGateway(cfg)
+    attempt = _bare_attempt(Gateway.STRIPE, gateway_session_id="cs_test_expired")
+    fake = _FakeHttpxClient(get=_FakeResponse(200, {
+        "payment_status": "unpaid", "status": "expired",
+    }))
+    monkeypatch.setattr(gw, "_client", lambda: fake)
+    result = gw.verify(attempt)
+    assert result.status == "failed"
 
 
 # ---- services: initiate_online_payment / resolve_payment_attempt ----------
@@ -198,7 +352,7 @@ def test_initiate_online_payment_creates_a_pending_attempt(monkeypatch):
     inv = _paid_invoice_setup(total_cents=3_000)
     monkeypatch.setattr(
         PaystackGateway, "initialize",
-        lambda self, *, invoice, attempt, return_url="": "https://checkout.paystack.com/abc",
+        lambda self, *, invoice, attempt, return_url="": ("https://checkout.paystack.com/abc", ""),
     )
     attempt = initiate_online_payment(inv)
     assert attempt.status == PaymentAttempt.Status.PENDING
@@ -224,7 +378,7 @@ def test_resolve_payment_attempt_success_creates_a_gateway_payment(monkeypatch):
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
-        lambda self, reference: VerifiedResult(
+        lambda self, attempt: VerifiedResult(
             status="success", amount_cents=4_000, currency=inv.currency,
             channel="card", raw={"ok": True},
         ),
@@ -247,7 +401,7 @@ def test_resolve_payment_attempt_mismatch_does_not_create_a_payment(monkeypatch)
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
-        lambda self, reference: VerifiedResult(
+        lambda self, attempt: VerifiedResult(
             status="success", amount_cents=1, currency=inv.currency, channel="card", raw={}
         ),
     )
@@ -267,7 +421,7 @@ def test_resolve_payment_attempt_failed(monkeypatch):
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
-        lambda self, reference: VerifiedResult(
+        lambda self, attempt: VerifiedResult(
             status="failed", amount_cents=None, currency=None, channel="", raw={},
         ),
     )
@@ -283,7 +437,7 @@ def test_resolve_payment_attempt_terminal_status_never_calls_the_gateway(monkeyp
         amount_cents=inv.balance_cents, currency=inv.currency, status=PaymentAttempt.Status.SUCCESS,
     )
 
-    def _boom(self, reference):
+    def _boom(self, attempt):
         raise AssertionError("verify() should never be called for a resolved attempt")
 
     monkeypatch.setattr(PaystackGateway, "verify", _boom)
@@ -304,7 +458,7 @@ def test_api_parent_can_start_a_checkout(auth_client, make_user, monkeypatch):
 
     monkeypatch.setattr(
         PaystackGateway, "initialize",
-        lambda self, *, invoice, attempt, return_url="": "https://checkout.paystack.com/xyz",
+        lambda self, *, invoice, attempt, return_url="": ("https://checkout.paystack.com/xyz", ""),
     )
     client = auth_client(parent_user)
     resp = client.post(f"/api/invoices/{inv.pk}/pay/")
@@ -336,7 +490,7 @@ def test_api_payment_attempt_lookup_resolves_live(auth_client, admin_user, monke
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
-        lambda self, reference: VerifiedResult(
+        lambda self, attempt: VerifiedResult(
             status="success", amount_cents=2_500, currency=inv.currency, channel="card", raw={}
         ),
     )

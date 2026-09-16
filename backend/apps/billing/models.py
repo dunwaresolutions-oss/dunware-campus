@@ -315,6 +315,13 @@ class PaymentAttempt(SensitiveModel):
     currency = models.CharField(max_length=3)
     status = models.CharField(max_length=11, choices=Status.choices, default=Status.INITIALIZED)
     checkout_url = models.CharField(max_length=500, blank=True, default="")
+    gateway_session_id = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="The gateway's OWN id for this checkout, when it has one distinct "
+                   "from `reference` (e.g. Stripe's Checkout Session id - Stripe has no "
+                   "verify-by-your-own-reference endpoint, only by its own id). Blank for "
+                   "a gateway that verifies by `reference` directly (Paystack, Flutterwave).",
+    )
     channel = models.CharField(max_length=30, blank=True, default="")
     raw_response = EncryptedTextField(blank=True, default="")
     initialized_by = models.ForeignKey(

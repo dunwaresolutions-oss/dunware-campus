@@ -9,12 +9,23 @@ only option where no online gateway serves the school's country.
 
 `OnlineGateway` is the P2 contract (Campus_Payments_Action_Plan.html
 §flow) for a hosted-checkout gateway: `initialize()` starts a checkout and
-returns a redirect URL, `verify()` asks the gateway (by reference) what
-actually happened. `PaystackGateway` (P3) is the first real implementation,
-proven against Paystack's own sandbox. `StripeGateway` stays a **stub** —
-its real build is P5, out of scope for this pass — every method still
-raises `NotImplementedError` so a misconfiguration can never silently
-attempt a real charge.
+returns `(checkout_url, gateway_session_id)`, `verify()` asks the gateway
+what actually happened for one `PaymentAttempt`. `PaystackGateway` (P3) and,
+as of this pass, `FlutterwaveGateway` + a real `StripeGateway` (P5) are all
+real implementations — Kanoo stays out (Damien, 2026-09-16: leave it out
+until CaribPay responds to the API access request).
+
+Two contract details worth being explicit about, since they came from
+actually implementing three different gateways rather than the plan's
+original pseudocode alone:
+  - `initialize()` returns a 2-tuple, not just a URL. Paystack/Flutterwave
+    verify by the same reference *we* generate (`attempt.reference`), but
+    Stripe's Checkout Sessions API has no "look up by your own reference"
+    endpoint - only by Stripe's own session id. The second tuple element is
+    that id where a gateway needs one, else "".
+  - `verify()` takes the whole `PaymentAttempt`, not a bare reference
+    string - for the same reason: Stripe's verify needs
+    `attempt.gateway_session_id`, not `attempt.reference`.
 
 `get_gateway()` first checks this install's `GatewayConfig` (P2's DB-driven
 config, set by `manage set_gateway_config`); if none is configured it falls
@@ -43,20 +54,50 @@ class GatewayError(Exception):
 
 class GatewayNotConfigured(Exception):
     """No online gateway is configured for this install, or the configured
-    one has no real implementation yet (e.g. Flutterwave/Kanoo before P5)."""
+    one has no real implementation yet (Kanoo - P5 left it out, per Damien,
+    until CaribPay responds)."""
 
 
 @dataclasses.dataclass
 class VerifiedResult:
     """What `OnlineGateway.verify()` reports back — matches
     Campus_Payments_Action_Plan.html's `{status, amount_cents, currency,
-    channel, raw}` pseudocode exactly."""
+    channel, raw}` pseudocode."""
 
     status: str  # "success" | "failed" | "pending"
     amount_cents: int | None
     currency: str | None
     channel: str
     raw: dict[str, Any]
+
+
+def _guardian_email(invoice: Invoice) -> str:
+    """Every gateway here needs a payer email (Paystack/Flutterwave
+    `customer.email`, Stripe `customer_email`) - shared lookup so the
+    "which guardian, and what if none has an email on file" logic exists
+    exactly once."""
+    guardian = invoice.guardian
+    if guardian is None:
+        from apps.people.models import GuardianLink
+
+        link = (
+            GuardianLink.objects.filter(student=invoice.student, is_primary_contact=True)
+            .select_related("guardian").first()
+        )
+        guardian = link.guardian if link else None
+    email = getattr(guardian, "email", "") or ""
+    if not email:
+        raise GatewayError(
+            "This invoice's guardian has no email on file - required to start a hosted checkout."
+        )
+    return email
+
+
+def _safe_json(resp) -> dict:
+    try:
+        return resp.json()
+    except ValueError:
+        return {}
 
 
 class PaymentGateway(abc.ABC):
@@ -103,25 +144,40 @@ class OnlineGateway(PaymentGateway):
     manual-recording shape) don't apply here — an online payment is always
     initialize-then-verify, worked through `services.initiate_online_payment`
     / `resolve_payment_attempt`, so both raise pointing there rather than
-    silently doing nothing."""
+    silently doing nothing.
 
-    def __init__(self, config: GatewayConfig):
+    `config` defaults to `None` so `get_gateway()`'s legacy
+    `settings.FEATURE_PAYMENTS_GATEWAY` fallback path (pre-P2, still used
+    when no `GatewayConfig` row exists at all) can still construct one
+    without a config to type-check against — `charge()`/`refund()` raise
+    either way, and a real `initialize()`/`verify()` call raises
+    `GatewayNotConfigured` cleanly rather than an `AttributeError` on
+    `self.config`."""
+
+    def __init__(self, config: GatewayConfig | None = None):
         self.config = config
+
+    def _require_config(self) -> GatewayConfig:
+        if self.config is None:
+            raise GatewayNotConfigured(f"{type(self).__name__} has no GatewayConfig set.")
+        return self.config
 
     @abc.abstractmethod
     def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
-                   return_url: str = "") -> str:
-        """Start a hosted checkout for `attempt`. Returns the checkout URL."""
+                   return_url: str = "") -> tuple[str, str]:
+        """Start a hosted checkout for `attempt`. Returns
+        `(checkout_url, gateway_session_id)` - the second element is ""
+        for a gateway that verifies by `attempt.reference` directly."""
 
     @abc.abstractmethod
-    def verify(self, reference: str) -> VerifiedResult:
-        """Ask the gateway what actually happened for `reference`."""
+    def verify(self, attempt: PaymentAttempt) -> VerifiedResult:
+        """Ask the gateway what actually happened for `attempt`."""
 
     def test_connection(self) -> tuple[bool, str]:
         """Ping the gateway's auth endpoint with the configured keys — the
         companion Payments tab's "Test connection" button (P2), and
-        `manage payments_test`. No default implementation: a gateway with no
-        real build yet (Flutterwave/Kanoo before P5) has nothing to ping."""
+        `manage payments_test`. No default implementation: Kanoo (left out
+        of this pass) has nothing to ping yet."""
         raise NotImplementedError(f"{type(self).__name__} has no connection test yet.")
 
     def charge(self, invoice: Invoice, amount_cents: int, **kwargs) -> Payment:
@@ -140,7 +196,9 @@ class OnlineGateway(PaymentGateway):
 
 class PaystackGateway(OnlineGateway):
     """Real (P3): raw REST via `httpx`, proven against Paystack's sandbox.
-    Docs: https://paystack.com/docs/api/transaction/."""
+    Docs: https://paystack.com/docs/api/transaction/. Amounts are the
+    currency's smallest subunit (kobo/cents) throughout - matches Campus's
+    own `*_cents` convention exactly, no conversion needed."""
 
     BASE_URL = "https://api.paystack.co"
     TIMEOUT = 15.0
@@ -148,29 +206,17 @@ class PaystackGateway(OnlineGateway):
     def _client(self):
         import httpx
 
+        cfg = self._require_config()
         return httpx.Client(
             base_url=self.BASE_URL, timeout=self.TIMEOUT,
-            headers={"Authorization": f"Bearer {self.config.secret_key}"},
+            headers={"Authorization": f"Bearer {cfg.secret_key}"},
         )
 
     def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
-                   return_url: str = "") -> str:
+                   return_url: str = "") -> tuple[str, str]:
         import httpx
 
-        guardian = invoice.guardian
-        if guardian is None:
-            from apps.people.models import GuardianLink
-
-            link = (
-                GuardianLink.objects.filter(student=invoice.student, is_primary_contact=True)
-                .select_related("guardian").first()
-            )
-            guardian = link.guardian if link else None
-        email = getattr(guardian, "email", "") or ""
-        if not email:
-            raise GatewayError(
-                "Paystack requires a payer email and this invoice's guardian has none on file."
-            )
+        email = _guardian_email(invoice)
         payload = {
             "email": email,
             "amount": attempt.amount_cents,
@@ -188,14 +234,14 @@ class PaystackGateway(OnlineGateway):
         if resp.status_code >= 400 or not body.get("status"):
             msg = body.get("message", resp.text)[:300]
             raise GatewayError(f"Paystack initialize refused: {msg}")
-        return body["data"]["authorization_url"]
+        return body["data"]["authorization_url"], ""
 
-    def verify(self, reference: str) -> VerifiedResult:
+    def verify(self, attempt: PaymentAttempt) -> VerifiedResult:
         import httpx
 
         try:
             with self._client() as client:
-                resp = client.get(f"/transaction/verify/{reference}")
+                resp = client.get(f"/transaction/verify/{attempt.reference}")
         except httpx.HTTPError as e:
             raise GatewayError(f"Paystack verify failed: {e}") from e
         body = _safe_json(resp)
@@ -207,13 +253,9 @@ class PaystackGateway(OnlineGateway):
             "failed" if raw_status in ("failed", "abandoned", "reversed") else "pending"
         )
         return VerifiedResult(
-            status=status,
-            amount_cents=data.get("amount"),
-            currency=data.get("currency"),
-            channel=data.get("channel", ""),
-            raw=body,
+            status=status, amount_cents=data.get("amount"), currency=data.get("currency"),
+            channel=data.get("channel", ""), raw=body,
         )
-
 
     def test_connection(self) -> tuple[bool, str]:
         import httpx
@@ -231,37 +273,213 @@ class PaystackGateway(OnlineGateway):
         return True, "Paystack authenticated successfully."
 
 
-def _safe_json(resp) -> dict:
-    try:
-        return resp.json()
-    except ValueError:
-        return {}
+class FlutterwaveGateway(OnlineGateway):
+    """Real (P5): raw REST via `httpx`. Docs:
+    https://developer.flutterwave.com/docs/making-payments/standard.
 
+    **Amounts are in the currency's MAJOR unit here (e.g. naira, not kobo)
+    - unlike Paystack, which matches Campus's own cents convention
+    directly.** Converted at the boundary in both directions so nothing
+    above this class ever has to think about it; getting this wrong would
+    silently produce a false MISMATCH on every real transaction (100x off),
+    so it's called out explicitly rather than left as an implicit detail."""
 
-class StripeGateway(PaymentGateway):
-    """PLACEHOLDER — real build is P5 (Campus_Payments_Action_Plan.html
-    phased plan), out of scope for this P2/P3 pass. Not wired to any
-    credentials; both methods refuse to run so a misconfiguration can never
-    silently attempt a real charge."""
+    BASE_URL = "https://api.flutterwave.com/v3"
+    TIMEOUT = 15.0
 
-    def charge(self, invoice: Invoice, amount_cents: int, **kwargs) -> Payment:  # TODO P5
-        raise NotImplementedError(
-            "StripeGateway is a placeholder for P5 — card processing is not built."
+    def _client(self):
+        import httpx
+
+        cfg = self._require_config()
+        return httpx.Client(
+            base_url=self.BASE_URL, timeout=self.TIMEOUT,
+            headers={"Authorization": f"Bearer {cfg.secret_key}"},
         )
 
-    def refund(self, payment: Payment, amount_cents: int, **kwargs) -> None:  # TODO P5
-        raise NotImplementedError(
-            "StripeGateway is a placeholder for P5 — card processing is not built."
+    def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
+                   return_url: str = "") -> tuple[str, str]:
+        import httpx
+
+        email = _guardian_email(invoice)
+        payload = {
+            "tx_ref": attempt.reference,
+            "amount": attempt.amount_cents / 100,  # major units - see class docstring
+            "currency": attempt.currency,
+            "redirect_url": return_url,
+            "customer": {"email": email},
+        }
+        try:
+            with self._client() as client:
+                resp = client.post("/payments", json=payload)
+        except httpx.HTTPError as e:
+            raise GatewayError(f"Flutterwave initialize failed: {e}") from e
+        body = _safe_json(resp)
+        if resp.status_code >= 400 or body.get("status") != "success":
+            msg = body.get("message", resp.text)[:300]
+            raise GatewayError(f"Flutterwave initialize refused: {msg}")
+        return body["data"]["link"], ""
+
+    def verify(self, attempt: PaymentAttempt) -> VerifiedResult:
+        import httpx
+
+        try:
+            with self._client() as client:
+                resp = client.get(
+                    "/transactions/verify_by_reference", params={"tx_ref": attempt.reference}
+                )
+        except httpx.HTTPError as e:
+            raise GatewayError(f"Flutterwave verify failed: {e}") from e
+        body = _safe_json(resp)
+        if resp.status_code >= 400 or body.get("status") != "success":
+            msg = body.get("message", resp.text)[:300]
+            raise GatewayError(f"Flutterwave verify refused: {msg}")
+        data = body.get("data") or {}
+        # "successful" | "failed" | "cancelled" | ...
+        raw_status = (data.get("status") or "").lower()
+        status = "success" if raw_status == "successful" else (
+            "failed" if raw_status in ("failed", "cancelled") else "pending"
+        )
+        amount = data.get("amount")
+        amount_cents = round(amount * 100) if amount is not None else None  # major -> cents
+        return VerifiedResult(
+            status=status, amount_cents=amount_cents,
+            currency=data.get("currency"), channel=data.get("payment_type", ""), raw=body,
         )
 
+    def test_connection(self) -> tuple[bool, str]:
+        import httpx
 
-# Gateways with a real OnlineGateway implementation as of this pass. Flutterwave
-# and Kanoo stay MANUAL-equivalent (get_gateway() falls through to ManualGateway
-# below) until P5 actually builds them - GatewayConfig can still be *set* to
-# either now (the companion's eventual Payments tab, or set_gateway_config,
-# don't need to wait on the code), it just won't do anything online yet.
+        try:
+            with self._client() as client:
+                resp = client.get("/transactions", params={"page": 1})
+        except httpx.HTTPError as e:
+            return False, f"could not reach Flutterwave: {e}"
+        body = _safe_json(resp)
+        if resp.status_code in (401, 403):
+            return False, "Flutterwave rejected the secret key (unauthorized)."
+        if resp.status_code >= 400:
+            return False, f"Flutterwave returned an error: {body.get('message', resp.text)[:200]}"
+        return True, "Flutterwave authenticated successfully."
+
+
+class StripeGateway(OnlineGateway):
+    """Real (P5): Stripe Checkout Sessions via raw REST. Docs:
+    https://stripe.com/docs/api/checkout/sessions.
+
+    Two things that make Stripe genuinely different from Paystack/
+    Flutterwave, not just a different base URL:
+      - The API takes `application/x-www-form-urlencoded` (bracket notation
+        for nested fields), not JSON.
+      - Auth is HTTP Basic with the secret key as the username and an empty
+        password - not a Bearer header.
+      - There's no "verify by your own reference" endpoint - only by
+        Stripe's own session id, which is why `initialize()` returns it as
+        the second tuple element and `verify()` needs the whole `attempt`
+        (see the module docstring)."""
+
+    BASE_URL = "https://api.stripe.com/v1"
+    TIMEOUT = 15.0
+
+    def _client(self):
+        import httpx
+
+        cfg = self._require_config()
+        return httpx.Client(base_url=self.BASE_URL, timeout=self.TIMEOUT, auth=(cfg.secret_key, ""))
+
+    def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
+                   return_url: str = "") -> tuple[str, str]:
+        import httpx
+
+        if not return_url:
+            raise GatewayError(
+                "Stripe Checkout requires a return_url (success/cancel destination)."
+            )
+        email = _guardian_email(invoice)
+        sep = "&" if "?" in return_url else "?"
+        success_url = f"{return_url}{sep}session_id={{CHECKOUT_SESSION_ID}}"
+        form = {
+            "mode": "payment",
+            "success_url": success_url,
+            "cancel_url": return_url,
+            "customer_email": email,
+            "client_reference_id": attempt.reference,
+            "line_items[0][price_data][currency]": attempt.currency.lower(),
+            "line_items[0][price_data][unit_amount]": str(attempt.amount_cents),
+            "line_items[0][price_data][product_data][name]": f"Invoice {invoice.invoice_number}",
+            "line_items[0][quantity]": "1",
+        }
+        try:
+            with self._client() as client:
+                resp = client.post("/checkout/sessions", data=form)
+        except httpx.HTTPError as e:
+            raise GatewayError(f"Stripe initialize failed: {e}") from e
+        body = _safe_json(resp)
+        if resp.status_code >= 400:
+            msg = (body.get("error") or {}).get("message", resp.text)[:300]
+            raise GatewayError(f"Stripe initialize refused: {msg}")
+        return body["url"], body["id"]
+
+    def verify(self, attempt: PaymentAttempt) -> VerifiedResult:
+        import httpx
+
+        if not attempt.gateway_session_id:
+            # initialize() never completed far enough to get a session id -
+            # nothing to check yet, not a failure.
+            return VerifiedResult(
+                status="pending", amount_cents=None, currency=None, channel="", raw={},
+            )
+        try:
+            with self._client() as client:
+                resp = client.get(f"/checkout/sessions/{attempt.gateway_session_id}")
+        except httpx.HTTPError as e:
+            raise GatewayError(f"Stripe verify failed: {e}") from e
+        body = _safe_json(resp)
+        if resp.status_code >= 400:
+            msg = (body.get("error") or {}).get("message", resp.text)[:300]
+            raise GatewayError(f"Stripe verify refused: {msg}")
+        # "paid" | "unpaid" | "no_payment_required"
+        payment_status = (body.get("payment_status") or "").lower()
+        # "open" | "complete" | "expired"
+        session_status = (body.get("status") or "").lower()
+        if payment_status == "paid":
+            status = "success"
+        elif session_status == "expired":
+            status = "failed"
+        else:
+            status = "pending"
+        currency = body.get("currency")
+        return VerifiedResult(
+            status=status, amount_cents=body.get("amount_total"),
+            currency=currency.upper() if currency else None, channel="card", raw=body,
+        )
+
+    def test_connection(self) -> tuple[bool, str]:
+        import httpx
+
+        try:
+            with self._client() as client:
+                resp = client.get("/checkout/sessions", params={"limit": 1})
+        except httpx.HTTPError as e:
+            return False, f"could not reach Stripe: {e}"
+        body = _safe_json(resp)
+        if resp.status_code == 401:
+            return False, "Stripe rejected the secret key (401 unauthorized)."
+        if resp.status_code >= 400:
+            msg = (body.get("error") or {}).get("message", resp.text)[:200]
+            return False, f"Stripe returned an error: {msg}"
+        return True, "Stripe authenticated successfully."
+
+
+# Gateways with a real OnlineGateway implementation. Kanoo stays out per
+# Damien (2026-09-16): "leave Kanoo out until we get word from CaribPay,
+# then we can add it to the system." GatewayConfig can still be *set* to
+# KANOO (the companion's eventual Payments tab, or set_gateway_config, don't
+# need to wait on the code) - get_gateway() just falls through to
+# ManualGateway below, nothing silently pretends to charge a card.
 _ONLINE_IMPLEMENTATIONS = {
     Gateway.PAYSTACK: PaystackGateway,
+    Gateway.FLUTTERWAVE: FlutterwaveGateway,
+    Gateway.STRIPE: StripeGateway,
 }
 
 
@@ -271,10 +489,8 @@ def get_gateway() -> PaymentGateway:
         impl = _ONLINE_IMPLEMENTATIONS.get(cfg.gateway)
         if impl is not None:
             return impl(cfg)
-        if cfg.gateway == Gateway.STRIPE:
-            return StripeGateway()
-        # Flutterwave / Kanoo: configured but not yet built (P5) - manual
-        # recording still works, nothing silently pretends to charge a card.
+        # Kanoo (or any future gateway not yet built): configured but has no
+        # real implementation - manual recording still works.
         return ManualGateway()
     name = getattr(settings, "FEATURE_PAYMENTS_GATEWAY", "manual")
     if name == "manual":

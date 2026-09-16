@@ -81,14 +81,17 @@ def initiate_online_payment(
         initialized_by=initialized_by if getattr(initialized_by, "pk", None) else None,
     )
     try:
-        checkout_url = gateway.initialize(invoice=invoice, attempt=attempt, return_url=return_url)
+        checkout_url, gateway_session_id = gateway.initialize(
+            invoice=invoice, attempt=attempt, return_url=return_url
+        )
     except GatewayError:
         attempt.status = PaymentAttempt.Status.FAILED
         attempt.save(update_fields=["status", "updated_at"])
         raise
     attempt.checkout_url = checkout_url
+    attempt.gateway_session_id = gateway_session_id
     attempt.status = PaymentAttempt.Status.PENDING
-    attempt.save(update_fields=["checkout_url", "status", "updated_at"])
+    attempt.save(update_fields=["checkout_url", "gateway_session_id", "status", "updated_at"])
     record(AuditAction.CREATE, attempt,
            summary=f"online checkout started ({attempt.gateway}, ${amount_cents / 100:.2f})",
            actor=initialized_by)
@@ -123,14 +126,18 @@ def resolve_payment_attempt(attempt: PaymentAttempt) -> PaymentAttempt:
             return attempt
 
     gateway = get_gateway()
-    if not isinstance(gateway, OnlineGateway) or gateway.config.gateway != attempt.gateway:
-        # The install's configured gateway changed since this attempt was
-        # created - can't re-verify against a different gateway's API. Leave
-        # it exactly as it is rather than guess.
+    if (
+        not isinstance(gateway, OnlineGateway)
+        or gateway.config is None
+        or gateway.config.gateway != attempt.gateway
+    ):
+        # No configured online gateway, or the install's configured gateway
+        # changed since this attempt was created - can't re-verify against a
+        # different gateway's API. Leave it exactly as it is rather than guess.
         return attempt
 
     try:
-        result = gateway.verify(attempt.reference)
+        result = gateway.verify(attempt)
     except GatewayError as e:
         logger.warning("payment attempt %s: verify failed: %s", attempt.reference, e)
         attempt.last_checked_at = timezone.now()
