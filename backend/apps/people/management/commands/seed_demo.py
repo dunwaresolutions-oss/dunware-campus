@@ -116,6 +116,25 @@ FIRST = [
     "Orlando", "Prisha", "Quincy", "Renata", "Silas", "Talia", "Uriah",
     "Vanessa", "Wesley", "Xiomara", "Yolanda", "Zavier",
 ]
+# Guardians are adults, drawn from their own pools (never FIRST, the pupil
+# pool) so a guardian can never end up sharing a full name with an unrelated
+# student - and so MOTHER/FATHER always get a first name that actually
+# matches, rather than the pre-fix behaviour of picking from FIRST with no
+# regard for the relationship being assigned (found 2026-09-16: a guardian
+# named "Hosea" - and coincidentally sharing a full name with an actual
+# pupil - recorded as a "Mother").
+FEMALE_FIRST = [
+    "Patrice", "Shantelle", "Andrea", "Monique", "Verona", "Delores",
+    "Althea", "Carmen", "Yvette", "Patricia", "Sharon", "Cheryl", "Donna",
+    "Ingrid", "Marva", "Sonia", "Beverly", "Charmaine", "Denise", "Portia",
+    "Simone", "Lavern", "Cassandra", "Petra",
+]
+MALE_FIRST = [
+    "Anthony", "Kendal", "Wellington", "Godfrey", "Cyril", "Rupert",
+    "Vernon", "Leroy", "Winston", "Clement", "Percy", "Aldrick", "Basil",
+    "Edison", "Franklyn", "Garnet", "Herman", "Ivor", "Julian", "Kelvin",
+    "Lennox", "Maxwell", "Neville", "Osric",
+]
 LAST = [
     "Adderley", "Bain", "Bethel", "Bowe", "Cartwright", "Cash", "Charlton",
     "Clarke", "Curry", "Darville", "Deveaux", "Dorsett", "Farrington", "Ferguson",
@@ -1519,10 +1538,16 @@ class Command(BaseCommand):
         # 1-2 guardians
         n_g = rng.choice([1, 2, 2])
         for j in range(n_g):
-            gfn = rng.choice(FIRST)
             rel = (GuardianLink.Relationship.MOTHER if j == 0
                    else rng.choice([GuardianLink.Relationship.FATHER,
                                     GuardianLink.Relationship.GRANDPARENT]))
+            if rel == GuardianLink.Relationship.MOTHER:
+                gfn = rng.choice(FEMALE_FIRST)
+            elif rel == GuardianLink.Relationship.FATHER:
+                gfn = rng.choice(MALE_FIRST)
+            else:
+                # GRANDPARENT isn't gendered in the choices list - either pool fits.
+                gfn = rng.choice(FEMALE_FIRST + MALE_FIRST)
             g = Guardian.objects.create(
                 first_name=gfn, last_name=ln,
                 email=f"{gfn.lower()}.{ln.lower()}.{number}{j}@example.test",

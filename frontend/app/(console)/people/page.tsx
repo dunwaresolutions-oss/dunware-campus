@@ -40,6 +40,16 @@ interface Student {
   pronouns?: string;
 }
 
+interface GuardianChild {
+  id: string;
+  name: string;
+  relationship: string;
+}
+
+function guardianChildren(g: Record<string, unknown>): GuardianChild[] {
+  return (g.children as GuardianChild[] | undefined) ?? [];
+}
+
 const STATUS = ["PROSPECTIVE", "ENROLLED", "WITHDRAWN", "GRADUATED"];
 const statusTone = (s: string) =>
   s === "ENROLLED" ? "green" : s === "WITHDRAWN" ? "red" : "neutral";
@@ -184,15 +194,9 @@ export default function PeoplePage() {
           searchPlaceholder="Search guardians by name or email…"
           columns={[
             {
-              header: "Name",
-              cell: (g) => `${g.first_name} ${g.last_name}`,
-            },
-            {
-              header: "Children",
+              header: "Child(ren)",
               cell: (g) => {
-                const kids = (g.children as
-                  | { id: string; name: string; relationship: string }[]
-                  | undefined) ?? [];
+                const kids = guardianChildren(g);
                 if (kids.length === 0)
                   return <span className="text-[var(--campus-muted)]">—</span>;
                 return (
@@ -200,9 +204,31 @@ export default function PeoplePage() {
                     {kids.map((k) => (
                       <Badge key={k.id} tone="neutral">
                         {k.name}
-                        <span className="ml-1 opacity-60">
-                          {label(k.relationship)}
-                        </span>
+                      </Badge>
+                    ))}
+                  </span>
+                );
+              },
+            },
+            {
+              header: "Guardian name",
+              cell: (g) => `${g.first_name} ${g.last_name}`,
+            },
+            {
+              header: "Type",
+              cell: (g) => {
+                const kids = guardianChildren(g);
+                if (kids.length === 0)
+                  return <span className="text-[var(--campus-muted)]">—</span>;
+                // Aligned by position with the Child(ren) column above — one
+                // relationship per linked child, in the same order, so a
+                // guardian with several children (possibly different
+                // relationships to each) still reads unambiguously.
+                return (
+                  <span className="flex flex-wrap gap-1">
+                    {kids.map((k) => (
+                      <Badge key={k.id} tone="sky">
+                        {label(k.relationship)}
                       </Badge>
                     ))}
                   </span>
@@ -211,6 +237,7 @@ export default function PeoplePage() {
             },
             { header: "Email", cell: (g) => (g.email as string) || "—" },
             { header: "Phone", cell: (g) => (g.phone as string) || "—" },
+            { header: "Address", cell: (g) => (g.address as string) || "—" },
             {
               header: "Portal",
               cell: (g) =>
@@ -240,10 +267,7 @@ export default function PeoplePage() {
               label: "Children",
               long: true,
               value: (g) => {
-                const kids =
-                  (g.children as
-                    | { id: string; name: string; relationship: string }[]
-                    | undefined) ?? [];
+                const kids = guardianChildren(g);
                 return kids.length
                   ? kids
                       .map((k) => `${k.name} (${label(k.relationship)})`)
