@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 
-from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import status
@@ -13,6 +12,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Role
 from apps.core.api import CampusViewSet
 from apps.core.permissions import FrontOffice, IsObjectOwnerOrStaff, MFAVerified, StaffOnly
+from apps.core.text_search import multi_word_icontains
 from apps.people.models import Student
 
 from .models import AvailabilityWindow, Booking, Offering, Slot
@@ -26,15 +26,6 @@ from .services import BookingError, book, bookings_to_ics, cancel_booking, gener
 
 _ADMIN_ROLES = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
 _INSTRUCTOR_ROLES = {Role.TEACHER, Role.TUTOR}
-
-
-def _student_search_q(term: str, prefix: str = "student__") -> Q:
-    return (
-        Q(**{f"{prefix}first_name__icontains": term})
-        | Q(**{f"{prefix}last_name__icontains": term})
-        | Q(**{f"{prefix}preferred_name__icontains": term})
-        | Q(**{f"{prefix}student_number__icontains": term})
-    )
 
 
 class CataloguePermission(BasePermission):
@@ -59,7 +50,7 @@ class OfferingViewSet(CampusViewSet):
         qs = super().get_queryset()
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(Q(title__icontains=q) | Q(description__icontains=q))
+            qs = qs.filter(multi_word_icontains(q, ["title", "description"]))
         return qs
 
     def _can_manage(self, offering=None) -> bool:
@@ -167,7 +158,11 @@ class BookingViewSet(CampusViewSet):
             qs = qs.filter(student_id=sid)
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(_student_search_q(q) | Q(slot__offering__title__icontains=q))
+            qs = qs.filter(multi_word_icontains(q, [
+                "student__first_name", "student__last_name",
+                "student__preferred_name", "student__student_number",
+                "slot__offering__title",
+            ]))
         return qs
 
     def create(self, request, *args, **kwargs):

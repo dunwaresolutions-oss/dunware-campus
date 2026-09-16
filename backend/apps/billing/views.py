@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import SAFE_METHODS, BasePermission
@@ -14,6 +13,7 @@ from apps.core.permissions import (
     IsObjectOwnerOrStaff,
     MFAVerified,
 )
+from apps.core.text_search import multi_word_icontains
 from apps.people.models import Student
 
 from .gateways import GatewayError, GatewayNotConfigured
@@ -76,7 +76,7 @@ class FeeScheduleViewSet(CampusViewSet):
         qs = FeeSchedule.objects.select_related("group")
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(description__icontains=q))
+            qs = qs.filter(multi_word_icontains(q, ["name", "description"]))
         return qs
 
 
@@ -123,12 +123,10 @@ class InvoiceViewSet(CampusViewSet):
             qs = qs.filter(status=params["status"])
         q = (params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(invoice_number__icontains=q)
-                | Q(student__first_name__icontains=q)
-                | Q(student__last_name__icontains=q)
-                | Q(student__preferred_name__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "invoice_number", "student__first_name",
+                "student__last_name", "student__preferred_name",
+            ]))
         return qs
 
     def perform_create(self, serializer):
@@ -252,12 +250,10 @@ class PaymentViewSet(CampusViewSet):
             return qs.none()
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(invoice__invoice_number__icontains=q)
-                | Q(invoice__student__first_name__icontains=q)
-                | Q(invoice__student__last_name__icontains=q)
-                | Q(reference__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "invoice__invoice_number", "invoice__student__first_name",
+                "invoice__student__last_name", "reference",
+            ]))
         return qs
 
 
@@ -306,11 +302,9 @@ class CreditViewSet(CampusViewSet):
         qs = Credit.objects.select_related("student", "applied_to_invoice")
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(student__first_name__icontains=q)
-                | Q(student__last_name__icontains=q)
-                | Q(reason__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "student__first_name", "student__last_name", "reason",
+            ]))
         return qs
 
     def perform_create(self, serializer):

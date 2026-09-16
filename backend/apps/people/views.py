@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import secrets
 
-from django.db.models import Q
 from django.http import FileResponse, Http404
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -20,6 +19,7 @@ from apps.core.permissions import (
     StaffOnly,
     StaffWriteAuthenticatedRead,
 )
+from apps.core.text_search import multi_word_icontains
 
 from .models import (
     AuthorizedPickup,
@@ -93,12 +93,9 @@ class StudentViewSet(CampusViewSet):
         qs = Student.visible_queryset(self.request.user).select_related("primary_group")
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            from django.db.models import Q
-
-            qs = qs.filter(
-                Q(first_name__icontains=q) | Q(last_name__icontains=q)
-                | Q(preferred_name__icontains=q) | Q(student_number__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "first_name", "last_name", "preferred_name", "student_number",
+            ]))
         return qs
 
     def perform_create(self, serializer):
@@ -174,11 +171,7 @@ class GuardianViewSet(CampusViewSet):
             return qs.none()
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(first_name__icontains=q)
-                | Q(last_name__icontains=q)
-                | Q(email__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, ["first_name", "last_name", "email"]))
         return qs.distinct()
 
     @action(detail=True, methods=["post"], permission_classes=[AdminOnly, MFAVerified])

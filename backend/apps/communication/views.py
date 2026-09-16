@@ -19,6 +19,7 @@ from apps.core.permissions import (
     StaffOnly,
     StaffWriteAuthenticatedRead,
 )
+from apps.core.text_search import multi_word_icontains
 from apps.people.models import Guardian, Student
 
 from .models import (
@@ -170,13 +171,10 @@ class IncidentReportViewSet(CampusViewSet):
         if q:
             # description/action_taken are encrypted at rest - not filterable
             # by plaintext content at the DB level, by design (docs/PII_SECURITY.md).
-            qs = qs.filter(
-                Q(student__first_name__icontains=q)
-                | Q(student__last_name__icontains=q)
-                | Q(student__preferred_name__icontains=q)
-                | Q(location__icontains=q)
-                | Q(category__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "student__first_name", "student__last_name",
+                "student__preferred_name", "location", "category",
+            ]))
         return qs
 
     def perform_create(self, serializer):

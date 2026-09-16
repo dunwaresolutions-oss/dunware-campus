@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework import serializers, viewsets
@@ -21,6 +20,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.core.permissions import AdminOnly, MFAVerified
+from apps.core.text_search import multi_word_icontains
 
 from .models import AuditEntry
 
@@ -67,11 +67,9 @@ class AuditEntryViewSet(viewsets.ReadOnlyModelViewSet):
 
         term = (p.get("q") or "").strip()
         if term:
-            qs = qs.filter(
-                Q(summary__icontains=term)
-                | Q(actor_label__icontains=term)
-                | Q(object_type__icontains=term)
-            )
+            qs = qs.filter(multi_word_icontains(term, [
+                "summary", "actor_label", "object_type",
+            ]))
 
         since = p.get("since")
         if since:

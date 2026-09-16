@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from django.db.models import Q
 from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import status
@@ -16,6 +15,7 @@ from apps.core.permissions import (
     MFAVerified,
     StaffOnly,
 )
+from apps.core.text_search import multi_word_icontains
 from apps.people.models import GroupStaff, Student
 
 from .models import (
@@ -193,17 +193,14 @@ class AssessmentResultViewSet(_InstructorScopedViewSet):
             qs = qs.filter(student_id=params["student"])
         q = (params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(student__first_name__icontains=q)
-                | Q(student__last_name__icontains=q)
-                | Q(student__preferred_name__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "student__first_name", "student__last_name", "student__preferred_name",
+            ]))
         subject = (params.get("subject") or "").strip()
         if subject:
-            qs = qs.filter(
-                Q(assessment__scheme__name__icontains=subject)
-                | Q(assessment__title__icontains=subject)
-            )
+            qs = qs.filter(multi_word_icontains(subject, [
+                "assessment__scheme__name", "assessment__title",
+            ]))
         return qs
 
     def get_permissions(self):
@@ -267,11 +264,9 @@ class ReportCardViewSet(CampusViewSet):
             qs = qs.filter(student_id=sid)
         q = (params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(student__first_name__icontains=q)
-                | Q(student__last_name__icontains=q)
-                | Q(student__preferred_name__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "student__first_name", "student__last_name", "student__preferred_name",
+            ]))
         subject = (params.get("subject") or "").strip()
         if subject:
             qs = qs.filter(entries__subject__icontains=subject).distinct()

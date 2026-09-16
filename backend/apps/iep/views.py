@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from django.db.models import Q
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.accounts.models import Role
 from apps.core.api import CampusViewSet
+from apps.core.text_search import multi_word_icontains
 from apps.people.models import Student
 
 from .models import IEP, IEPAccommodation, IEPGoal, IEPReview, IEPService
@@ -40,12 +40,10 @@ class IEPViewSet(CampusViewSet):
             qs = qs.filter(status=params["status"])
         q = (params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(student__first_name__icontains=q)
-                | Q(student__last_name__icontains=q)
-                | Q(student__preferred_name__icontains=q)
-                | Q(primary_concern__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "student__first_name", "student__last_name",
+                "student__preferred_name", "primary_concern",
+            ]))
         return qs
 
     def perform_create(self, serializer):

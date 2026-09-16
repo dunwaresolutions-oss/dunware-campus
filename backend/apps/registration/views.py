@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import action
@@ -10,6 +9,7 @@ from rest_framework.response import Response
 from apps.accounts.models import Role
 from apps.core.api import CampusViewSet
 from apps.core.permissions import FrontOffice, MFAVerified, StaffOnly
+from apps.core.text_search import multi_word_icontains
 from apps.people.models import Group, Student
 
 from .models import Application, ApplicationDocument, Consent, Enrolment, Offer, WaitlistEntry
@@ -24,16 +24,8 @@ from .serializers import (
 from .services import convert_application, make_offer, respond_to_offer
 
 _FRONT_OFFICE = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
-
-
-def _student_search_q(term: str, prefix: str = "student__") -> Q:
-    """``?q=`` on any view scoped to a student FK — name/preferred-name/number."""
-    return (
-        Q(**{f"{prefix}first_name__icontains": term})
-        | Q(**{f"{prefix}last_name__icontains": term})
-        | Q(**{f"{prefix}preferred_name__icontains": term})
-        | Q(**{f"{prefix}student_number__icontains": term})
-    )
+_STUDENT_FIELDS = ["student__first_name", "student__last_name",
+                    "student__preferred_name", "student__student_number"]
 
 
 class _FrontOfficeViewSet(CampusViewSet):
@@ -123,11 +115,9 @@ class OfferViewSet(_FrontOfficeViewSet):
         qs = super().get_queryset()
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(
-                Q(application__child_first_name__icontains=q)
-                | Q(application__child_last_name__icontains=q)
-                | Q(group__name__icontains=q)
-            )
+            qs = qs.filter(multi_word_icontains(q, [
+                "application__child_first_name", "application__child_last_name", "group__name",
+            ]))
         return qs
 
     @action(detail=True, methods=["post"])
@@ -167,7 +157,7 @@ class EnrolmentViewSet(CampusViewSet):
             qs = qs.filter(student_id=sid)
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(_student_search_q(q) | Q(group__name__icontains=q))
+            qs = qs.filter(multi_word_icontains(q, [*_STUDENT_FIELDS, "group__name"]))
         return qs
 
     @action(detail=True, methods=["post"])
@@ -210,7 +200,7 @@ class ConsentViewSet(CampusViewSet):
             qs = qs.filter(student_id=student)
         q = (self.request.query_params.get("q") or "").strip()
         if q:
-            qs = qs.filter(_student_search_q(q))
+            qs = qs.filter(multi_word_icontains(q, _STUDENT_FIELDS))
         return qs
 
     def perform_create(self, serializer):

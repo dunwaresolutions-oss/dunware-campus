@@ -961,3 +961,22 @@ def test_invoice_is_not_visible_to_a_guardian_linked_but_not_billed(auth_client,
 def test_fee_schedule_display_string_uses_dollars():
     fs = FeeSchedule.objects.create(name="Registration", amount_cents=12_345)
     assert "$123.45" in str(fs)
+
+
+def test_api_invoice_search_matches_a_full_first_and_last_name(auth_client, admin_user):
+    """Damien, 2026-09-16: an issued invoice existed for "Uriah Oliver" but
+    the console couldn't find it by searching that name - first_name and
+    last_name are separate columns, so a single icontains(whole query)
+    check against either one alone never matched a two-word name."""
+    kid = make_student(first_name="Uriah", last_name="Oliver")
+    mine = Invoice.objects.create(student=kid)
+    InvoiceLine.objects.create(invoice=mine, description="fee", unit_amount_cents=1_000)
+    issue_invoice(mine)
+    other = _invoice(total_cents=5_000)  # an unrelated student/invoice - not a match
+    issue_invoice(other)
+
+    client = auth_client(admin_user)
+    resp = client.get("/api/invoices/?q=Uriah+Oliver")
+    assert resp.status_code == 200
+    ids = {str(row["id"]) for row in resp.data["results"]}
+    assert ids == {str(mine.pk)}

@@ -14,13 +14,13 @@ can navigate to:
 """
 from __future__ import annotations
 
-from django.db.models import Q
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import STAFF_ROLES, Role, User
 from apps.core.permissions import MFAVerified
+from apps.core.text_search import multi_word_icontains
 from apps.grades.models import ReportCard
 from apps.people.models import Group, GroupStaff, Guardian, Student
 from apps.registration.models import Application
@@ -38,25 +38,6 @@ def _join(*parts):
     return " · ".join(p for p in parts if p)
 
 
-def _name_q(words: list[str], fields: list[str]) -> Q:
-    """AND across `words`, OR across `fields` per word - the shape a real
-    "first last" search needs. A bare `Q(first_name__icontains=q)` (the
-    pre-fix version) only ever matched a *single* field against the *whole*
-    query string, so searching "Uriah Oliver" never matched a student whose
-    first_name is "Uriah" and last_name is "Oliver" - neither field
-    contains that whole two-word string. Splitting the query into words and
-    requiring each one to land somewhere (first name OR last name OR ...)
-    is what makes a real full name actually findable, while a single-word
-    query still behaves exactly as it did before (one ANDed term)."""
-    combined = Q()
-    for w in words:
-        word_q = Q()
-        for f in fields:
-            word_q |= Q(**{f"{f}__icontains": w})
-        combined &= word_q
-    return combined
-
-
 class SearchView(APIView):
     permission_classes = [IsAuthenticated, MFAVerified]
 
@@ -65,7 +46,6 @@ class SearchView(APIView):
         role = getattr(request.user, "role", None)
         if role not in STAFF_ROLES or len(q) < _MIN:
             return Response({"query": q, "groups": []})
-        words = q.split()
 
         is_admin = role in _ADMIN_ROLES
         students = Student.visible_queryset(request.user)
@@ -73,9 +53,9 @@ class SearchView(APIView):
 
         # ── students ──────────────────────────────────────────────
         s_hits = (
-            students.filter(
-                _name_q(words, ["first_name", "last_name", "preferred_name", "student_number"])
-            )
+            students.filter(multi_word_icontains(
+                q, ["first_name", "last_name", "preferred_name", "student_number"]
+            ))
             .select_related("primary_group")[:_PER_TYPE]
         )
         groups.append(_grp("Students", (
@@ -93,7 +73,9 @@ class SearchView(APIView):
         )))
 
         # ── guardians ─────────────────────────────────────────────
-        g_qs = Guardian.objects.filter(_name_q(words, ["first_name", "last_name", "email"]))
+        g_qs = Guardian.objects.filter(
+            multi_word_icontains(q, ["first_name", "last_name", "email"])
+        )
         if not is_admin:
             g_qs = g_qs.filter(links__student__in=students).distinct()
         g_hits = g_qs.prefetch_related("links__student")[:_PER_TYPE]
@@ -115,7 +97,7 @@ class SearchView(APIView):
             u_hits = User.objects.filter(
                 role__in=[r.value for r in STAFF_ROLES]
             ).filter(
-                _name_q(words, ["username", "first_name", "last_name", "email"])
+                multi_word_icontains(q, ["username", "first_name", "last_name", "email"])
             )[:_PER_TYPE]
             groups.append(_grp("Staff", (
                 {
@@ -128,7 +110,7 @@ class SearchView(APIView):
             )))
 
         # ── groups (rooms / classes / sections) ───────────────────
-        grp_qs = Group.objects.filter(_name_q(words, ["name", "stage_label"]))
+        grp_qs = Group.objects.filter(multi_word_icontains(q, ["name", "stage_label"]))
         if not is_admin:
             grp_qs = grp_qs.filter(
                 id__in=GroupStaff.objects.filter(
@@ -150,7 +132,7 @@ class SearchView(APIView):
             ReportCard.objects.alive()
             .select_related("student", "term")
             .filter(student__in=students)
-            .filter(_name_q(words, [
+            .filter(multi_word_icontains(q, [
                 "student__first_name", "student__last_name", "student__student_number",
             ]))
             .order_by("-created_at")[:_PER_TYPE]
@@ -167,7 +149,7 @@ class SearchView(APIView):
 
         # ── applications (admin tier only) ────────────────────────
         if is_admin:
-            a_hits = Application.objects.alive().filter(_name_q(words, [
+            a_hits = Application.objects.alive().filter(multi_word_icontains(q, [
                 "child_first_name", "child_last_name", "applicant_name", "applicant_email",
             ]))[:_PER_TYPE]
             groups.append(_grp("Applications", (
