@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 
 from apps.billing.gateways import (
     FlutterwaveGateway,
@@ -498,6 +500,61 @@ def test_api_payment_attempt_lookup_resolves_live(auth_client, admin_user, monke
     resp = client.get(f"/api/payment-attempts/{attempt.reference}/")
     assert resp.status_code == 200
     assert resp.data["status"] == "SUCCESS"
+
+
+# ---- management commands: set_gateway_config, payments_test --------------
+
+def test_set_gateway_config_command():
+    call_command(
+        "set_gateway_config", gateway="paystack", mode="test",
+        public_key="pk_test_x", secret_key="sk_test_x",
+    )
+    cfg = GatewayConfig.load()
+    assert cfg.gateway == Gateway.PAYSTACK and cfg.mode == GatewayConfig.Mode.TEST
+    assert cfg.secret_key == "sk_test_x"
+
+
+def test_set_gateway_config_requires_keys_for_a_real_gateway():
+    with pytest.raises(CommandError):
+        call_command("set_gateway_config", gateway="paystack")
+
+
+def test_payments_test_command_uses_saved_config_by_default(monkeypatch):
+    _configure_paystack()
+    monkeypatch.setattr(PaystackGateway, "test_connection", lambda self: (True, "ok"))
+    call_command("payments_test")  # raises on failure - not raising is the assertion
+
+
+def test_payments_test_command_fails_when_nothing_configured():
+    with pytest.raises(CommandError, match="manual only"):
+        call_command("payments_test")
+
+
+def test_payments_test_command_tests_unsaved_override_values(monkeypatch):
+    # GatewayConfig stays MANUAL the whole time - the override args are
+    # tested WITHOUT ever being saved. This is exactly what the GUI's Test
+    # Connection button relies on (test before Apply).
+    captured_config = {}
+
+    def _fake_test_connection(self):
+        captured_config["gateway"] = self.config.gateway
+        return True, "ok"
+
+    monkeypatch.setattr(PaystackGateway, "test_connection", _fake_test_connection)
+    call_command(
+        "payments_test", gateway="paystack", mode="test",
+        public_key="pk_test_x", secret_key="sk_test_x",
+    )
+    assert captured_config["gateway"] == Gateway.PAYSTACK
+    # `GatewayConfig(...)` gets a UUID pk at construction (UUIDField default),
+    # not at .save() - so "never saved" has to be checked against the table,
+    # not the instance's own .pk.
+    assert GatewayConfig.objects.count() == 0  # the tested config was never written
+
+
+def test_payments_test_command_override_requires_keys():
+    with pytest.raises(CommandError):
+        call_command("payments_test", gateway="paystack")
 
 
 def test_api_payment_attempt_hides_no_raw_response_field(auth_client, admin_user):

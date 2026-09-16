@@ -483,6 +483,15 @@ _ONLINE_IMPLEMENTATIONS = {
 }
 
 
+def online_gateway_class(gateway_code: str) -> type[OnlineGateway] | None:
+    """The real `OnlineGateway` subclass for `gateway_code`, if one is built
+    yet - `None` for MANUAL or an unbuilt gateway (Kanoo). Used by
+    `manage payments_test --gateway ...` to test not-yet-saved values
+    (the companion GUI's Test Connection button) without going through
+    `get_gateway()`, which only ever looks at the persisted `GatewayConfig`."""
+    return _ONLINE_IMPLEMENTATIONS.get(gateway_code)
+
+
 def get_gateway() -> PaymentGateway:
     cfg = GatewayConfig.objects.first()
     if cfg and cfg.is_online:

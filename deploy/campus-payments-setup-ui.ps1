@@ -246,25 +246,38 @@ function Invoke-Guarded([scriptblock]$Action) {
 }
 
 # ── wiring ──────────────────────────────────────────────────────────────
+function Get-FormSelection {
+  # Shared by Apply and Test - both act on exactly what's currently in the
+  # form, never a mix of "current form" and "last saved". $null means the
+  # required fields aren't filled in (caller already showed why).
+  $key = ($gwRadios.Values | Where-Object { $_.Checked } | Select-Object -First 1).Tag
+  if (-not $key) {
+    [System.Windows.Forms.MessageBox]::Show('Pick a gateway first.', 'Campus', 'OK', 'Information') | Out-Null
+    return $null
+  }
+  if ($key -ne 'manual' -and (-not $txtPublic.Text.Trim() -or -not $txtSecret.Text.Trim())) {
+    [System.Windows.Forms.MessageBox]::Show(
+      'Public key and secret key are required for a real gateway.', 'Campus', 'OK', 'Warning'
+    ) | Out-Null
+    return $null
+  }
+  return @{
+    Gateway = $key
+    Mode = if ($rLive.Checked) { 'live' } else { 'test' }
+    Public = $txtPublic.Text.Trim()
+    Secret = $txtSecret.Text.Trim()
+  }
+}
+
 $btnApply.Add_Click({
-    $key = ($gwRadios.Values | Where-Object { $_.Checked } | Select-Object -First 1).Tag
-    if (-not $key) {
-      [System.Windows.Forms.MessageBox]::Show('Pick a gateway first.', 'Campus', 'OK', 'Information') | Out-Null
-      return
-    }
-    if ($key -ne 'manual' -and (-not $txtPublic.Text.Trim() -or -not $txtSecret.Text.Trim())) {
-      [System.Windows.Forms.MessageBox]::Show(
-        'Public key and secret key are required for a real gateway.', 'Campus', 'OK', 'Warning'
-      ) | Out-Null
-      return
-    }
+    $sel = Get-FormSelection
+    if (-not $sel) { return }
     Invoke-Guarded {
-      $mode = if ($rLive.Checked) { 'live' } else { 'test' }
-      $manageArgs = @('set_gateway_config', '--gateway', $key, '--mode', $mode)
-      if ($key -ne 'manual') {
-        $manageArgs += @('--public-key', $txtPublic.Text.Trim(), '--secret-key', $txtSecret.Text.Trim())
+      $manageArgs = @('set_gateway_config', '--gateway', $sel.Gateway, '--mode', $sel.Mode)
+      if ($sel.Gateway -ne 'manual') {
+        $manageArgs += @('--public-key', $sel.Public, '--secret-key', $sel.Secret)
       }
-      Write-Log "applying: gateway=$key mode=$mode ..." 'step'
+      Write-Log "applying: gateway=$($sel.Gateway) mode=$($sel.Mode) ..." 'step'
       $r = Invoke-Manage $manageArgs
       Write-Log $r.Output
       if ($r.Code -ne 0) { Write-Log "Apply failed (exit $($r.Code))." 'err' }
@@ -273,9 +286,23 @@ $btnApply.Add_Click({
   })
 
 $btnTest.Add_Click({
+    # Tests exactly what's in the form right now - does NOT require Apply
+    # first, and does not save anything (payments_test --gateway ... never
+    # writes to GatewayConfig, see the command's own docstring).
+    $sel = Get-FormSelection
+    if (-not $sel) { return }
+    if ($sel.Gateway -eq 'manual') {
+      [System.Windows.Forms.MessageBox]::Show(
+        'Manual has no online connection to test.', 'Campus', 'OK', 'Information'
+      ) | Out-Null
+      return
+    }
     Invoke-Guarded {
-      Write-Log 'testing connection...' 'step'
-      $r = Invoke-Manage @('payments_test')
+      Write-Log "testing connection: gateway=$($sel.Gateway) mode=$($sel.Mode) (not saved) ..." 'step'
+      $r = Invoke-Manage @(
+        'payments_test', '--gateway', $sel.Gateway, '--mode', $sel.Mode,
+        '--public-key', $sel.Public, '--secret-key', $sel.Secret
+      )
       Write-Log $r.Output
       if ($r.Code -ne 0) { Write-Log 'Connection test failed.' 'err' }
       else { Write-Log 'OK.' 'step' }
