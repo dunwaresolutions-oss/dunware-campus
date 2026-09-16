@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { whoami } from "@/lib/auth";
+import { loginRedirectUrl, whoami } from "@/lib/auth";
 
 export default function PortalLayout({
   children,
@@ -14,7 +14,7 @@ export default function PortalLayout({
   const { data: me, isLoading } = useQuery({ queryKey: ["me"], queryFn: whoami });
 
   useEffect(() => {
-    if (!isLoading && !me) router.replace("/login/");
+    if (!isLoading && !me) router.replace(loginRedirectUrl());
   }, [isLoading, me, router]);
 
   if (isLoading || !me) return null;

@@ -2,8 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { mfaConfirm, mfaSetup, mfaStatus, type MfaSetup } from "@/lib/auth";
+import { isPortalPath, mfaConfirm, mfaSetup, mfaStatus, safeNextPath, type MfaSetup } from "@/lib/auth";
 import { Button, Card, ErrorNote } from "@/components/ui";
+
+/** Read straight from the browser URL rather than `useSearchParams()` — a
+ * static export requires that hook be wrapped in Suspense. Only staff ever
+ * reach this page, so a next= here is only ever meaningful if it's outside
+ * the parent-only /portal/ area — see lib/auth.ts safeNextPath/isPortalPath. */
+function staffNextFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const next = safeNextPath(new URLSearchParams(window.location.search).get("next"));
+  return next && !isPortalPath(next) ? next : null;
+}
 
 export default function MfaPage() {
   const router = useRouter();
@@ -18,7 +28,7 @@ export default function MfaPage() {
       try {
         const s = await mfaStatus();
         if (s.mfa_verified) {
-          router.replace("/");
+          router.replace(staffNextFromUrl() ?? "/");
           return;
         }
         if (s.mfa_enrolled) {
@@ -39,7 +49,7 @@ export default function MfaPage() {
     setError(null);
     try {
       await mfaConfirm(code.trim());
-      router.replace("/");
+      router.replace(staffNextFromUrl() ?? "/");
     } catch {
       setError("That code didn't match. Check the time on your phone and retry.");
     } finally {

@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { isStaff, logout, whoami, type Role } from "@/lib/auth";
+import { isStaff, loginRedirectUrl, logout, whoami, type Role } from "@/lib/auth";
 import { getSchoolProfile } from "@/lib/school";
 import { getSiteConfig } from "@/lib/config";
 import { label, setMoneyCurrency } from "@/lib/format";
@@ -72,7 +72,11 @@ export default function ConsoleLayout({
   useEffect(() => {
     if (isLoading) return;
     if (!isStaff(me?.role)) {
-      router.replace("/login/");
+      // Not signed in at all (me null) -> preserve where they were headed.
+      // An authenticated non-staff role (a parent who typed a console URL)
+      // has nowhere useful to "return to" here - plain /login/ for that
+      // case, same as before.
+      router.replace(me ? "/login/" : loginRedirectUrl());
       return;
     }
     if (me?.mfa_enrollment_required || (me?.must_use_mfa && !me?.mfa_verified)) {

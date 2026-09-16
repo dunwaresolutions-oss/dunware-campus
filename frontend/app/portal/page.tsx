@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { isStaff, logout, whoami } from "@/lib/auth";
+import { isStaff, loginRedirectUrl, logout, whoami } from "@/lib/auth";
 import {
   portalDashboard,
   payInvoices,
@@ -165,7 +165,7 @@ export default function PortalPage() {
   const [payFor, setPayFor] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!meLoading && !me) router.replace("/login/");
+    if (!meLoading && !me) router.replace(loginRedirectUrl());
     if (!meLoading && me && isStaff(me.role)) router.replace("/");
   }, [meLoading, me, router]);
 

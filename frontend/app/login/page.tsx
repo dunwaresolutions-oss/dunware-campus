@@ -3,8 +3,16 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { isStaff, login, setupStatus } from "@/lib/auth";
+import { isPortalPath, isStaff, login, safeNextPath, setupStatus } from "@/lib/auth";
 import { Button, Card, ErrorNote } from "@/components/ui";
+
+/** Read straight from the browser URL rather than `useSearchParams()` — a
+ * static export requires that hook be wrapped in Suspense, and the value
+ * is only ever needed once, on submit, not during render. */
+function nextFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,12 +35,21 @@ export default function LoginPage() {
     setError(null);
     try {
       const me = await login(username, password, otp || undefined);
+      const next = nextFromUrl();
       if (isStaff(me.role)) {
+        // A parent-area next= is meaningless for a staff account — fall
+        // back to the normal default rather than send them somewhere
+        // their own role guard would immediately bounce them out of.
+        const staffNext = next && !isPortalPath(next) ? next : null;
         const needsMfa =
           me.mfa_enrollment_required || (me.must_use_mfa && !me.mfa_verified);
-        router.push(needsMfa ? "/mfa/" : "/");
+        if (needsMfa) {
+          router.push(staffNext ? `/mfa/?next=${encodeURIComponent(staffNext)}` : "/mfa/");
+        } else {
+          router.push(staffNext ?? "/");
+        }
       } else {
-        router.push("/portal/");
+        router.push(next && isPortalPath(next) ? next : "/portal/");
       }
     } catch (err) {
       setError(

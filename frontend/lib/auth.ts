@@ -49,6 +49,59 @@ export const STAFF_ROLES: Role[] = [
 
 export const isStaff = (r: Role | undefined) => !!r && STAFF_ROLES.includes(r);
 
+/* --------------------------------------------------------- next= redirect */
+
+// Pages that are themselves part of signing in — never a legitimate
+// post-login destination, and pointing `next` at one risks a confusing
+// "still on the login screen after logging in" dead end rather than an
+// actual redirect loop (nothing here re-triggers on its own).
+const AUTH_FLOW_PREFIXES = ["/login/", "/mfa/", "/setup/"];
+
+/**
+ * Validates a `next=` value pulled off a URL (always via
+ * `URLSearchParams.get()`, which already percent-decodes it once — never
+ * decode it again here, that's how a double-encoded value slips past a
+ * naive check) before it's ever passed to `router.push`/`replace`.
+ *
+ * This exists solely to stop an open redirect: `next` must resolve to a
+ * same-origin, same-document path, never something a browser would treat
+ * as protocol-relative (`//evil.com`, `/\evil.com`) or an embedded scheme
+ * (`/javascript:...`). It is NOT an authorization check — landing on
+ * `next` never grants access to anything by itself. Every destination
+ * page still runs its own existing auth/role guard off the session
+ * cookie, and every API call it makes is still checked by the backend's
+ * own permission classes exactly as before; this only decides whether a
+ * string is a legitimate place in *this app* to point the browser.
+ */
+export function safeNextPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  if (raw.length > 1000) return null; // not a real path, don't bother
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//") || raw.startsWith("/\\")) return null;
+  if (/^\/[a-z][a-z0-9+.-]*:/i.test(raw)) return null; // e.g. "/javascript:..."
+  if (/[\r\n\t]/.test(raw)) return null;
+  if (AUTH_FLOW_PREFIXES.some((p) => raw.startsWith(p))) return null;
+  return raw;
+}
+
+/** Everything under /portal/ is the parent/student area; everything else
+ * authenticated is the staff console — used to keep a `next=` value from
+ * sending the wrong role's post-login redirect into the other area (that
+ * area's own guard would just bounce them straight back to /login/ with
+ * the same next, landing on a "logged in but still see the login form"
+ * dead end rather than anywhere useful). */
+export const isPortalPath = (path: string) => path.startsWith("/portal");
+
+/** Build `/login/?next=...` for an unauthenticated visit to a protected
+ * route, so a successful sign-in can return here instead of the generic
+ * default — call only from a client-only effect (reads window.location).
+ * The three route guards (portal layout, portal page, console layout) all
+ * funnel through this so the encoding is consistent everywhere. */
+export function loginRedirectUrl(): string {
+  const next = window.location.pathname + window.location.search;
+  return `/login/?next=${encodeURIComponent(next)}`;
+}
+
 export async function whoami(): Promise<CurrentUser | null> {
   try {
     return await api<CurrentUser>("/auth/whoami/");
