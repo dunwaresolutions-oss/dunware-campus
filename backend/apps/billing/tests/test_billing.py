@@ -23,8 +23,10 @@ from apps.billing.models import (
     InvoiceLine,
     Payment,
     PaymentAttempt,
+    PaymentAttemptInvoice,
 )
 from apps.billing.services import (
+    allocate_payment,
     initiate_online_payment,
     issue_invoice,
     mark_paid,
@@ -32,6 +34,7 @@ from apps.billing.services import (
     resolve_payment_attempt,
     void_invoice,
 )
+from apps.people.models import GuardianLink
 from apps.people.tests.factories import link_guardian, make_student
 
 pytestmark = pytest.mark.django_db
@@ -94,6 +97,21 @@ def _paid_invoice_setup(total_cents=5_000):
     return inv
 
 
+def _attempt_with_allocation(invoice, *, gateway, reference, amount_cents=None, **extra):
+    """A saved `PaymentAttempt` with the one `PaymentAttemptInvoice` row every
+    real attempt has (single-invoice here: 100% of the amount) - matches
+    what `services.initiate_online_payment` itself does, so tests that
+    build an attempt directly (bypassing that function) still produce a
+    realistic row for `resolve_payment_attempt`/`is_visible_to` to read."""
+    amount = invoice.balance_cents if amount_cents is None else amount_cents
+    attempt = PaymentAttempt.objects.create(
+        gateway=gateway, reference=reference, amount_cents=amount,
+        currency=invoice.currency, **extra,
+    )
+    PaymentAttemptInvoice.objects.create(attempt=attempt, invoice=invoice, allocated_cents=amount)
+    return attempt
+
+
 def test_gateway_config_is_a_singleton():
     a = GatewayConfig.load()
     b = GatewayConfig.load()
@@ -121,11 +139,8 @@ def test_paystack_initialize_success(monkeypatch):
                                   "access_code": "abc", "reference": "campus_x"},
     }))
     monkeypatch.setattr(gw, "_client", lambda: fake)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_x",
-        amount_cents=inv.balance_cents, currency=inv.currency,
-    )
-    url, session_id = gw.initialize(invoice=inv, attempt=attempt)
+    attempt = _attempt_with_allocation(inv, gateway=Gateway.PAYSTACK, reference="campus_x")
+    url, session_id = gw.initialize(invoices=[inv], attempt=attempt)
     assert url == "https://checkout.paystack.com/xyz"
     assert session_id == ""  # Paystack verifies by our own reference - no gateway id needed
 
@@ -137,12 +152,9 @@ def test_paystack_initialize_without_guardian_email_raises():
     InvoiceLine.objects.create(invoice=inv, description="fee", unit_amount_cents=1000)
     issue_invoice(inv)
     gw = PaystackGateway(cfg)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_y",
-        amount_cents=inv.balance_cents, currency=inv.currency,
-    )
+    attempt = _attempt_with_allocation(inv, gateway=Gateway.PAYSTACK, reference="campus_y")
     with pytest.raises(GatewayError):
-        gw.initialize(invoice=inv, attempt=attempt)
+        gw.initialize(invoices=[inv], attempt=attempt)
 
 
 def test_paystack_initialize_rejects_a_paystack_error(monkeypatch):
@@ -151,12 +163,9 @@ def test_paystack_initialize_rejects_a_paystack_error(monkeypatch):
     gw = PaystackGateway(cfg)
     fake = _FakeHttpxClient(post=_FakeResponse(401, {"status": False, "message": "Invalid key"}))
     monkeypatch.setattr(gw, "_client", lambda: fake)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_z",
-        amount_cents=inv.balance_cents, currency=inv.currency,
-    )
+    attempt = _attempt_with_allocation(inv, gateway=Gateway.PAYSTACK, reference="campus_z")
     with pytest.raises(GatewayError):
-        gw.initialize(invoice=inv, attempt=attempt)
+        gw.initialize(invoices=[inv], attempt=attempt)
 
 
 def _bare_attempt(gateway, reference="some-reference", **extra) -> PaymentAttempt:
@@ -242,11 +251,10 @@ def test_flutterwave_initialize_converts_cents_to_major_units(monkeypatch):
         "status": "success", "data": {"link": "https://checkout.flutterwave.com/xyz"},
     }))
     monkeypatch.setattr(gw, "_client", lambda: fake)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.FLUTTERWAVE, reference="campus_fw",
-        amount_cents=5_000, currency=inv.currency,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.FLUTTERWAVE, reference="campus_fw", amount_cents=5_000
     )
-    url, session_id = gw.initialize(invoice=inv, attempt=attempt)
+    url, session_id = gw.initialize(invoices=[inv], attempt=attempt)
     assert url == "https://checkout.flutterwave.com/xyz"
     assert session_id == ""
     assert captured["payload"]["amount"] == 50.0  # 5000 cents -> 50.00 major units
@@ -277,12 +285,11 @@ def test_stripe_initialize_requires_a_return_url():
     cfg = _configure_gateway(Gateway.STRIPE)
     inv = _paid_invoice_setup()
     gw = StripeGateway(cfg)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.STRIPE, reference="campus_stripe_no_url",
-        amount_cents=inv.balance_cents, currency=inv.currency,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.STRIPE, reference="campus_stripe_no_url"
     )
     with pytest.raises(GatewayError):
-        gw.initialize(invoice=inv, attempt=attempt)  # no return_url
+        gw.initialize(invoices=[inv], attempt=attempt)  # no return_url
 
 
 def test_stripe_initialize_success_returns_session_id(monkeypatch):
@@ -293,11 +300,12 @@ def test_stripe_initialize_success_returns_session_id(monkeypatch):
         "id": "cs_test_abc123", "url": "https://checkout.stripe.com/c/pay/cs_test_abc123",
     }))
     monkeypatch.setattr(gw, "_client", lambda: fake)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.STRIPE, reference="campus_stripe_ok",
-        amount_cents=2_500, currency=inv.currency,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.STRIPE, reference="campus_stripe_ok", amount_cents=2_500
     )
-    url, session_id = gw.initialize(invoice=inv, attempt=attempt, return_url="https://school.example/return")
+    url, session_id = gw.initialize(
+        invoices=[inv], attempt=attempt, return_url="https://school.example/return"
+    )
     assert url == "https://checkout.stripe.com/c/pay/cs_test_abc123"
     assert session_id == "cs_test_abc123"
 
@@ -346,7 +354,7 @@ def test_stripe_verify_expired_session_is_failed(monkeypatch):
 def test_initiate_online_payment_requires_a_real_online_gateway():
     inv = _paid_invoice_setup()  # GatewayConfig still MANUAL (default)
     with pytest.raises(GatewayNotConfigured):
-        initiate_online_payment(inv)
+        initiate_online_payment([inv])
 
 
 def test_initiate_online_payment_creates_a_pending_attempt(monkeypatch):
@@ -354,13 +362,15 @@ def test_initiate_online_payment_creates_a_pending_attempt(monkeypatch):
     inv = _paid_invoice_setup(total_cents=3_000)
     monkeypatch.setattr(
         PaystackGateway, "initialize",
-        lambda self, *, invoice, attempt, return_url="": ("https://checkout.paystack.com/abc", ""),
+        lambda self, *, invoices, attempt, return_url="": ("https://checkout.paystack.com/abc", ""),
     )
-    attempt = initiate_online_payment(inv)
+    attempt = initiate_online_payment([inv])
     assert attempt.status == PaymentAttempt.Status.PENDING
     assert attempt.checkout_url == "https://checkout.paystack.com/abc"
     assert attempt.amount_cents == 3_000
     assert attempt.gateway == Gateway.PAYSTACK
+    assert attempt.allocations.count() == 1
+    assert attempt.allocations.get().allocated_cents == 3_000
 
 
 def test_initiate_online_payment_rejects_a_fully_paid_invoice():
@@ -368,15 +378,98 @@ def test_initiate_online_payment_rejects_a_fully_paid_invoice():
     inv = _paid_invoice_setup(total_cents=1_000)
     ManualGateway().charge(inv, 1_000, method=Payment.Method.CASH)
     with pytest.raises(ValueError):
-        initiate_online_payment(inv)
+        initiate_online_payment([inv])
+
+
+def test_initiate_online_payment_rejects_invoices_from_different_guardians(monkeypatch):
+    _configure_paystack()
+    inv_a = _paid_invoice_setup(total_cents=2_000)
+    inv_b = _paid_invoice_setup(total_cents=3_000)  # a different student/guardian entirely
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": ("https://checkout.paystack.com/abc", ""),
+    )
+    with pytest.raises(ValueError, match="same guardian"):
+        initiate_online_payment([inv_a, inv_b])
+
+
+def test_initiate_online_payment_combines_siblings_into_one_attempt(monkeypatch):
+    _configure_paystack()
+    kid1 = make_student()
+    kid2 = make_student()
+    guardian_link = link_guardian(kid1, email="family@example.test", is_primary_contact=True)
+    GuardianLink.objects.create(
+        student=kid2, guardian=guardian_link.guardian, is_primary_contact=True,
+        relationship=GuardianLink.Relationship.PARENT,
+    )
+    inv1 = Invoice.objects.create(student=kid1)
+    InvoiceLine.objects.create(invoice=inv1, description="fee", unit_amount_cents=3_000)
+    inv2 = Invoice.objects.create(student=kid2)
+    InvoiceLine.objects.create(invoice=inv2, description="fee", unit_amount_cents=1_000)
+    issue_invoice(inv1)
+    issue_invoice(inv2)
+    assert inv1.guardian_id == inv2.guardian_id  # both defaulted to the shared primary contact
+
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/combo", ""
+        ),
+    )
+    attempt = initiate_online_payment([inv1, inv2])
+    assert attempt.amount_cents == 4_000
+    allocations = {a.invoice_id: a.allocated_cents for a in attempt.allocations.all()}
+    assert allocations == {inv1.pk: 3_000, inv2.pk: 1_000}
+
+
+def test_initiate_online_payment_allows_a_smaller_custom_amount(monkeypatch):
+    _configure_paystack()
+    inv = _paid_invoice_setup(total_cents=10_000)
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/partial", ""
+        ),
+    )
+    attempt = initiate_online_payment([inv], amount_cents=4_000)
+    assert attempt.amount_cents == 4_000
+    assert attempt.allocations.get().allocated_cents == 4_000
+
+
+def test_initiate_online_payment_rejects_a_custom_amount_over_the_balance():
+    _configure_paystack()
+    inv = _paid_invoice_setup(total_cents=1_000)
+    with pytest.raises(ValueError):
+        initiate_online_payment([inv], amount_cents=2_000)
+
+
+# ---- services: allocate_payment (largest-remainder proportional split) ----
+
+def test_allocate_payment_splits_the_full_balance_exactly():
+    inv1 = _paid_invoice_setup(total_cents=3_000)
+    inv2 = _paid_invoice_setup(total_cents=1_000)
+    allocations = allocate_payment([inv1, inv2], 4_000)
+    assert dict((inv.pk, cents) for inv, cents in allocations) == {inv1.pk: 3_000, inv2.pk: 1_000}
+
+
+def test_allocate_payment_splits_a_partial_amount_proportionally_and_sums_exactly():
+    inv1 = _paid_invoice_setup(total_cents=1_000)  # weight 1
+    inv2 = _paid_invoice_setup(total_cents=2_000)  # weight 2
+    inv3 = _paid_invoice_setup(total_cents=3_000)  # weight 3, total weight 6
+    # 1000 / 6 doesn't divide evenly - exercises the largest-remainder path.
+    allocations = allocate_payment([inv1, inv2, inv3], 1_000)
+    cents = [c for _inv, c in allocations]
+    assert sum(cents) == 1_000  # never off by a cent, however the rounding falls
+    # proportional: inv3 (heaviest) gets the largest share, inv1 the smallest.
+    assert cents[2] >= cents[1] >= cents[0]
 
 
 def test_resolve_payment_attempt_success_creates_a_gateway_payment(monkeypatch):
     _configure_paystack()
     inv = _paid_invoice_setup(total_cents=4_000)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_ok",
-        amount_cents=4_000, currency=inv.currency, status=PaymentAttempt.Status.PENDING,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.PAYSTACK, reference="campus_ok",
+        status=PaymentAttempt.Status.PENDING,
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
@@ -394,12 +487,39 @@ def test_resolve_payment_attempt_success_creates_a_gateway_payment(monkeypatch):
     assert payment.amount_cents == 4_000
 
 
+def test_resolve_payment_attempt_success_splits_across_combined_invoices(monkeypatch):
+    _configure_paystack()
+    inv1 = _paid_invoice_setup(total_cents=3_000)
+    inv2 = _paid_invoice_setup(total_cents=1_000)
+    attempt = PaymentAttempt.objects.create(
+        gateway=Gateway.PAYSTACK, reference="campus_combo",
+        amount_cents=4_000, currency=inv1.currency, status=PaymentAttempt.Status.PENDING,
+    )
+    PaymentAttemptInvoice.objects.create(attempt=attempt, invoice=inv1, allocated_cents=3_000)
+    PaymentAttemptInvoice.objects.create(attempt=attempt, invoice=inv2, allocated_cents=1_000)
+    monkeypatch.setattr(
+        PaystackGateway, "verify",
+        lambda self, attempt: VerifiedResult(
+            status="success", amount_cents=4_000, currency=inv1.currency, channel="card", raw={},
+        ),
+    )
+    resolved = resolve_payment_attempt(attempt)
+    assert resolved.status == PaymentAttempt.Status.SUCCESS
+    inv1.refresh_from_db()
+    inv2.refresh_from_db()
+    assert inv1.status == Invoice.Status.PAID
+    assert inv2.status == Invoice.Status.PAID
+    payments = Payment.objects.filter(gateway_reference="campus_combo")
+    assert payments.count() == 2
+    assert {p.invoice_id: p.amount_cents for p in payments} == {inv1.pk: 3_000, inv2.pk: 1_000}
+
+
 def test_resolve_payment_attempt_mismatch_does_not_create_a_payment(monkeypatch):
     _configure_paystack()
     inv = _paid_invoice_setup(total_cents=4_000)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_mismatch",
-        amount_cents=4_000, currency=inv.currency, status=PaymentAttempt.Status.PENDING,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.PAYSTACK, reference="campus_mismatch",
+        status=PaymentAttempt.Status.PENDING,
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
@@ -417,9 +537,9 @@ def test_resolve_payment_attempt_mismatch_does_not_create_a_payment(monkeypatch)
 def test_resolve_payment_attempt_failed(monkeypatch):
     _configure_paystack()
     inv = _paid_invoice_setup()
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_fail",
-        amount_cents=inv.balance_cents, currency=inv.currency, status=PaymentAttempt.Status.PENDING,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.PAYSTACK, reference="campus_fail",
+        status=PaymentAttempt.Status.PENDING,
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
@@ -434,9 +554,9 @@ def test_resolve_payment_attempt_failed(monkeypatch):
 def test_resolve_payment_attempt_terminal_status_never_calls_the_gateway(monkeypatch):
     _configure_paystack()
     inv = _paid_invoice_setup()
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_done",
-        amount_cents=inv.balance_cents, currency=inv.currency, status=PaymentAttempt.Status.SUCCESS,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.PAYSTACK, reference="campus_done",
+        status=PaymentAttempt.Status.SUCCESS,
     )
 
     def _boom(self, attempt):
@@ -447,48 +567,165 @@ def test_resolve_payment_attempt_terminal_status_never_calls_the_gateway(monkeyp
     assert resolved.status == PaymentAttempt.Status.SUCCESS
 
 
-# ---- API: POST /api/invoices/{id}/pay/, GET /api/payment-attempts/{ref}/ --
+# ---- API: POST /api/invoices/pay/, GET /api/payment-attempts/{ref}/ ------
 
 def test_api_parent_can_start_a_checkout(auth_client, make_user, monkeypatch):
     _configure_paystack()
     kid = make_student()
     parent_user = make_user(username="payparent", role="PARENT")
-    link_guardian(kid, user=parent_user, email="payparent@example.test")
+    link_guardian(kid, user=parent_user, email="payparent@example.test", is_primary_contact=True)
     inv = Invoice.objects.create(student=kid)
     InvoiceLine.objects.create(invoice=inv, description="fee", unit_amount_cents=2_000)
     issue_invoice(inv)
 
     monkeypatch.setattr(
         PaystackGateway, "initialize",
-        lambda self, *, invoice, attempt, return_url="": ("https://checkout.paystack.com/xyz", ""),
+        lambda self, *, invoices, attempt, return_url="": ("https://checkout.paystack.com/xyz", ""),
     )
     client = auth_client(parent_user)
-    resp = client.post(f"/api/invoices/{inv.pk}/pay/")
+    resp = client.post("/api/invoices/pay/", {"invoice_ids": [str(inv.pk)]}, format="json")
     assert resp.status_code == 201
     assert resp.data["checkout_url"] == "https://checkout.paystack.com/xyz"
     assert resp.data["status"] == "PENDING"
+    assert len(resp.data["allocations"]) == 1
+    assert resp.data["allocations"][0]["allocated_cents"] == 2_000
+
+
+def test_api_parent_can_combine_two_childrens_invoices(auth_client, make_user, monkeypatch):
+    _configure_paystack()
+    kid1 = make_student()
+    kid2 = make_student()
+    parent_user = make_user(username="combineparent", role="PARENT")
+    link = link_guardian(
+        kid1, user=parent_user, email="combineparent@example.test", is_primary_contact=True
+    )
+    GuardianLink.objects.create(
+        student=kid2, guardian=link.guardian, is_primary_contact=True,
+        relationship=GuardianLink.Relationship.PARENT,
+    )
+    inv1 = Invoice.objects.create(student=kid1)
+    InvoiceLine.objects.create(invoice=inv1, description="fee", unit_amount_cents=2_000)
+    inv2 = Invoice.objects.create(student=kid2)
+    InvoiceLine.objects.create(invoice=inv2, description="fee", unit_amount_cents=1_000)
+    issue_invoice(inv1)
+    issue_invoice(inv2)
+
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/combo", ""
+        ),
+    )
+    client = auth_client(parent_user)
+    resp = client.post(
+        "/api/invoices/pay/", {"invoice_ids": [str(inv1.pk), str(inv2.pk)]}, format="json"
+    )
+    assert resp.status_code == 201
+    assert resp.data["amount_cents"] == 3_000
+    assert len(resp.data["allocations"]) == 2
+
+
+def test_api_parent_cannot_combine_someone_elses_invoice(auth_client, make_user):
+    _configure_paystack()
+    kid = make_student()
+    other_kid = make_student()
+    parent_user = make_user(username="onlymine", role="PARENT")
+    link_guardian(kid, user=parent_user, email="onlymine@example.test", is_primary_contact=True)
+    link_guardian(other_kid, email="stranger@example.test", is_primary_contact=True)
+    mine = Invoice.objects.create(student=kid)
+    InvoiceLine.objects.create(invoice=mine, description="fee", unit_amount_cents=1_000)
+    not_mine = Invoice.objects.create(student=other_kid)
+    InvoiceLine.objects.create(invoice=not_mine, description="fee", unit_amount_cents=1_000)
+    issue_invoice(mine)
+    issue_invoice(not_mine)
+
+    client = auth_client(parent_user)
+    resp = client.post(
+        "/api/invoices/pay/", {"invoice_ids": [str(mine.pk), str(not_mine.pk)]}, format="json"
+    )
+    assert resp.status_code == 403
+
+
+def test_api_front_office_can_generate_a_link_for_a_familys_invoices(
+    auth_client, admin_user, monkeypatch
+):
+    _configure_paystack()
+    kid1 = make_student()
+    kid2 = make_student()
+    link = link_guardian(kid1, email="office@example.test", is_primary_contact=True)
+    GuardianLink.objects.create(
+        student=kid2, guardian=link.guardian, is_primary_contact=True,
+        relationship=GuardianLink.Relationship.PARENT,
+    )
+    inv1 = Invoice.objects.create(student=kid1)
+    InvoiceLine.objects.create(invoice=inv1, description="fee", unit_amount_cents=2_000)
+    inv2 = Invoice.objects.create(student=kid2)
+    InvoiceLine.objects.create(invoice=inv2, description="fee", unit_amount_cents=1_000)
+    issue_invoice(inv1)
+    issue_invoice(inv2)
+
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/link", ""
+        ),
+    )
+    client = auth_client(admin_user)
+    resp = client.post(
+        "/api/invoices/pay/", {"invoice_ids": [str(inv1.pk), str(inv2.pk)]}, format="json"
+    )
+    assert resp.status_code == 201
+    assert resp.data["amount_cents"] == 3_000
+
+
+def test_api_pay_allows_a_smaller_custom_amount(auth_client, make_user, monkeypatch):
+    _configure_paystack()
+    kid = make_student()
+    parent_user = make_user(username="partialparent", role="PARENT")
+    link_guardian(
+        kid, user=parent_user, email="partialparent@example.test", is_primary_contact=True
+    )
+    inv = Invoice.objects.create(student=kid)
+    InvoiceLine.objects.create(invoice=inv, description="fee", unit_amount_cents=10_000)
+    issue_invoice(inv)
+
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/small", ""
+        ),
+    )
+    client = auth_client(parent_user)
+    resp = client.post(
+        "/api/invoices/pay/",
+        {"invoice_ids": [str(inv.pk)], "amount_cents": 4_000},
+        format="json",
+    )
+    assert resp.status_code == 201
+    assert resp.data["amount_cents"] == 4_000
 
 
 def test_api_teacher_cannot_start_a_checkout(auth_client, staff):
     _configure_paystack()
     inv = _paid_invoice_setup()
     client = auth_client(staff)
-    assert client.post(f"/api/invoices/{inv.pk}/pay/").status_code == 403
+    resp = client.post("/api/invoices/pay/", {"invoice_ids": [str(inv.pk)]}, format="json")
+    assert resp.status_code == 403
 
 
 def test_api_pay_returns_409_when_no_gateway_configured(auth_client, admin_user):
     inv = _paid_invoice_setup()  # GatewayConfig still MANUAL
     client = auth_client(admin_user)
-    resp = client.post(f"/api/invoices/{inv.pk}/pay/")
+    resp = client.post("/api/invoices/pay/", {"invoice_ids": [str(inv.pk)]}, format="json")
     assert resp.status_code == 409
 
 
 def test_api_payment_attempt_lookup_resolves_live(auth_client, admin_user, monkeypatch):
     _configure_paystack()
     inv = _paid_invoice_setup(total_cents=2_500)
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_api_ok",
-        amount_cents=2_500, currency=inv.currency, status=PaymentAttempt.Status.PENDING,
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.PAYSTACK, reference="campus_api_ok",
+        status=PaymentAttempt.Status.PENDING,
     )
     monkeypatch.setattr(
         PaystackGateway, "verify",
@@ -560,10 +797,7 @@ def test_payments_test_command_override_requires_keys():
 def test_api_payment_attempt_hides_no_raw_response_field(auth_client, admin_user):
     _configure_paystack()
     inv = _paid_invoice_setup()
-    attempt = PaymentAttempt.objects.create(
-        invoice=inv, gateway=Gateway.PAYSTACK, reference="campus_shape",
-        amount_cents=inv.balance_cents, currency=inv.currency,
-    )
+    attempt = _attempt_with_allocation(inv, gateway=Gateway.PAYSTACK, reference="campus_shape")
     client = auth_client(admin_user)
     resp = client.get(f"/api/payment-attempts/{attempt.reference}/")
     assert "raw_response" not in resp.data
@@ -672,7 +906,7 @@ def test_api_parent_reads_only_their_childs_issued_invoices(auth_client, make_us
     kid = make_student()
     other_kid = make_student()
     parent = make_user(username="billparent", role="PARENT")
-    link_guardian(kid, user=parent)
+    link_guardian(kid, user=parent, is_primary_contact=True)
 
     mine = Invoice.objects.create(student=kid)
     InvoiceLine.objects.create(invoice=mine, description="fee", unit_amount_cents=1000)
@@ -688,10 +922,40 @@ def test_api_parent_reads_only_their_childs_issued_invoices(auth_client, make_us
     assert resp.status_code == 200
     ids = {str(row["id"]) for row in resp.data["results"]}
     assert ids == {str(mine.pk)}
+    # object-level: the specific billing guardian can open their own invoice
+    assert parent_client.get(f"/api/invoices/{mine.pk}/").status_code == 200
     # a parent cannot mark their own invoice paid
     assert parent_client.post(f"/api/invoices/{mine.pk}/mark-paid/",
                               {"amount_cents": 1000, "method": "CASH"},
                               format="json").status_code == 403
+
+
+def test_invoice_is_not_visible_to_a_guardian_linked_but_not_billed(auth_client, make_user):
+    """The gap closed alongside multi-child invoicing (2026-09-16): a
+    non-custodial/estranged co-parent (or a step-parent with no financial
+    role) may be linked to a child without being the guardian an invoice is
+    actually billed to - `is_visible_to` must key off that specific
+    billing relationship, not "any guardian linked to this student.\""""
+    kid = make_student()
+    billing_parent = make_user(username="billingparent", role="PARENT")
+    other_parent = make_user(username="estrangedparent", role="PARENT")
+    link_guardian(kid, user=billing_parent, is_primary_contact=True)
+    link_guardian(kid, user=other_parent, is_primary_contact=False)  # linked, not the payer
+
+    invoice = Invoice.objects.create(student=kid)
+    InvoiceLine.objects.create(invoice=invoice, description="fee", unit_amount_cents=1_000)
+    issue_invoice(invoice)
+    assert invoice.guardian.user_id == billing_parent.pk  # defaulted to the primary contact
+
+    billed_client = auth_client(billing_parent)
+    assert billed_client.get(f"/api/invoices/{invoice.pk}/").status_code == 200
+
+    other_client = auth_client(other_parent)
+    # Still in the parent-role queryset (linked to the same student), but
+    # `IsObjectOwnerOrStaff` denies it via the tightened `is_visible_to` -
+    # a 403, not a 404 (the object IS visible enough to be found, just not
+    # to be opened).
+    assert other_client.get(f"/api/invoices/{invoice.pk}/").status_code == 403
 
 
 def test_fee_schedule_display_string_uses_dollars():

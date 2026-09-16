@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment, PaymentAttempt
+from .models import (
+    Credit,
+    FeeSchedule,
+    Invoice,
+    InvoiceLine,
+    Payment,
+    PaymentAttempt,
+    PaymentAttemptInvoice,
+)
 
 
 class FeeScheduleSerializer(serializers.ModelSerializer):
@@ -33,16 +41,31 @@ class PaymentSerializer(serializers.ModelSerializer):
         read_only_fields = ["received_at", "received_by"]
 
 
+class PaymentAttemptInvoiceSerializer(serializers.ModelSerializer):
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+    student_name = serializers.CharField(source="invoice.student.display_name", read_only=True)
+
+    class Meta:
+        model = PaymentAttemptInvoice
+        fields = ["invoice", "invoice_number", "student_name", "allocated_cents"]
+        read_only_fields = fields
+
+
 class PaymentAttemptSerializer(serializers.ModelSerializer):
     """No `raw_response` here — it's the gateway's own payload (dispute
     evidence, not something a client needs), and it's the one encrypted PII
-    field on this model; nothing forces it to round-trip through the API."""
+    field on this model; nothing forces it to round-trip through the API.
 
-    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+    `allocations` replaces the old singular `invoice`/`invoice_number`
+    fields - every attempt (single- or multi-invoice alike) has at least
+    one, so a client never has to special-case "was this a combined
+    payment"."""
+
+    allocations = PaymentAttemptInvoiceSerializer(many=True, read_only=True)
 
     class Meta:
         model = PaymentAttempt
-        fields = ["id", "invoice", "invoice_number", "gateway", "reference", "amount_cents",
+        fields = ["id", "allocations", "gateway", "reference", "amount_cents",
                   "currency", "status", "checkout_url", "channel", "created_at", "updated_at"]
         read_only_fields = fields
 

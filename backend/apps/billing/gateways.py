@@ -71,17 +71,20 @@ class VerifiedResult:
     raw: dict[str, Any]
 
 
-def _guardian_email(invoice: Invoice) -> str:
+def _guardian_email(invoices: list[Invoice]) -> str:
     """Every gateway here needs a payer email (Paystack/Flutterwave
     `customer.email`, Stripe `customer_email`) - shared lookup so the
     "which guardian, and what if none has an email on file" logic exists
-    exactly once."""
-    guardian = invoice.guardian
+    exactly once. `invoices` may be several (a combined family payment) -
+    the caller (`services.initiate_online_payment`) already enforced that
+    every one of them belongs to the same billing guardian, so the first
+    invoice's guardian is authoritative for all of them."""
+    guardian = invoices[0].guardian
     if guardian is None:
         from apps.people.models import GuardianLink
 
         link = (
-            GuardianLink.objects.filter(student=invoice.student, is_primary_contact=True)
+            GuardianLink.objects.filter(student=invoices[0].student, is_primary_contact=True)
             .select_related("guardian").first()
         )
         guardian = link.guardian if link else None
@@ -91,6 +94,16 @@ def _guardian_email(invoice: Invoice) -> str:
             "This invoice's guardian has no email on file - required to start a hosted checkout."
         )
     return email
+
+
+def _description(invoices: list[Invoice]) -> str:
+    """Human-readable line item / product name for a checkout - one invoice
+    number, or a combined-payment summary for a family's multi-child
+    checkout (Campus_Payments_Action_Plan.html - multi-invoice combine)."""
+    if len(invoices) == 1:
+        return f"Invoice {invoices[0].invoice_number}"
+    numbers = ", ".join(inv.invoice_number for inv in invoices)
+    return f"{len(invoices)} invoices ({numbers})"
 
 
 def _safe_json(resp) -> dict:
@@ -163,9 +176,14 @@ class OnlineGateway(PaymentGateway):
         return self.config
 
     @abc.abstractmethod
-    def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
+    def initialize(self, *, invoices: list[Invoice], attempt: PaymentAttempt,
                    return_url: str = "") -> tuple[str, str]:
-        """Start a hosted checkout for `attempt`. Returns
+        """Start a hosted checkout for `attempt`, covering one or several
+        invoices (a family's combined payment - Campus_Payments_Action_Plan
+        multi-invoice combine). `attempt.amount_cents` is already the real
+        total to charge (which may be less than the invoices' combined
+        balance - a partial payment); `invoices` is only needed here for
+        the payer's email and a human-readable description. Returns
         `(checkout_url, gateway_session_id)` - the second element is ""
         for a gateway that verifies by `attempt.reference` directly."""
 
@@ -212,16 +230,17 @@ class PaystackGateway(OnlineGateway):
             headers={"Authorization": f"Bearer {cfg.secret_key}"},
         )
 
-    def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
+    def initialize(self, *, invoices: list[Invoice], attempt: PaymentAttempt,
                    return_url: str = "") -> tuple[str, str]:
         import httpx
 
-        email = _guardian_email(invoice)
+        email = _guardian_email(invoices)
         payload = {
             "email": email,
             "amount": attempt.amount_cents,
             "currency": attempt.currency,
             "reference": attempt.reference,
+            "metadata": {"description": _description(invoices)},
         }
         if return_url:
             payload["callback_url"] = return_url
@@ -296,17 +315,18 @@ class FlutterwaveGateway(OnlineGateway):
             headers={"Authorization": f"Bearer {cfg.secret_key}"},
         )
 
-    def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
+    def initialize(self, *, invoices: list[Invoice], attempt: PaymentAttempt,
                    return_url: str = "") -> tuple[str, str]:
         import httpx
 
-        email = _guardian_email(invoice)
+        email = _guardian_email(invoices)
         payload = {
             "tx_ref": attempt.reference,
             "amount": attempt.amount_cents / 100,  # major units - see class docstring
             "currency": attempt.currency,
             "redirect_url": return_url,
             "customer": {"email": email},
+            "customizations": {"description": _description(invoices)},
         }
         try:
             with self._client() as client:
@@ -386,7 +406,7 @@ class StripeGateway(OnlineGateway):
         cfg = self._require_config()
         return httpx.Client(base_url=self.BASE_URL, timeout=self.TIMEOUT, auth=(cfg.secret_key, ""))
 
-    def initialize(self, *, invoice: Invoice, attempt: PaymentAttempt,
+    def initialize(self, *, invoices: list[Invoice], attempt: PaymentAttempt,
                    return_url: str = "") -> tuple[str, str]:
         import httpx
 
@@ -394,9 +414,14 @@ class StripeGateway(OnlineGateway):
             raise GatewayError(
                 "Stripe Checkout requires a return_url (success/cancel destination)."
             )
-        email = _guardian_email(invoice)
+        email = _guardian_email(invoices)
         sep = "&" if "?" in return_url else "?"
         success_url = f"{return_url}{sep}session_id={{CHECKOUT_SESSION_ID}}"
+        # One line item for `attempt.amount_cents` as a whole, not one per
+        # invoice - the total may be a custom partial amount that doesn't
+        # correspond 1:1 to each invoice's own balance (see
+        # services.allocate_payment), so per-invoice line amounts would be
+        # fiction. The description names every invoice instead.
         form = {
             "mode": "payment",
             "success_url": success_url,
@@ -405,7 +430,7 @@ class StripeGateway(OnlineGateway):
             "client_reference_id": attempt.reference,
             "line_items[0][price_data][currency]": attempt.currency.lower(),
             "line_items[0][price_data][unit_amount]": str(attempt.amount_cents),
-            "line_items[0][price_data][product_data][name]": f"Invoice {invoice.invoice_number}",
+            "line_items[0][price_data][product_data][name]": _description(invoices),
             "line_items[0][quantity]": "1",
         }
         try:

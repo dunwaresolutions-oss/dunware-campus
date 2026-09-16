@@ -12,7 +12,7 @@ from apps.audit.models import AuditAction
 from apps.audit.services import record
 
 from .gateways import GatewayError, GatewayNotConfigured, OnlineGateway, get_gateway
-from .models import Invoice, Payment, PaymentAttempt
+from .models import Invoice, Payment, PaymentAttempt, PaymentAttemptInvoice
 
 logger = logging.getLogger(__name__)
 
@@ -54,15 +54,46 @@ def void_invoice(invoice: Invoice, *, reason: str = "", actor=None) -> Invoice:
     return invoice
 
 
+@transaction.atomic
 def initiate_online_payment(
-    invoice: Invoice, *, initialized_by=None, return_url: str = ""
+    invoices: list[Invoice], *, initialized_by=None, return_url: str = "",
+    amount_cents: int | None = None,
 ) -> PaymentAttempt:
-    """Start a hosted checkout for `invoice`'s current balance (P3 §flow,
-    step 2). Raises `GatewayNotConfigured` if this install has no real
-    online gateway wired up (still MANUAL, or an unimplemented one - see
+    """Start a hosted checkout covering one or several invoices at once - a
+    family paying for two or more children in a single real gateway charge
+    (Campus_Payments_Action_Plan.html multi-invoice combine), not one
+    transaction fee per child. `invoices` must all be billed to the same
+    guardian (`Invoice.guardian`) - that FK is the only thing that decides
+    what may be combined, deliberately not address or "any linked guardian",
+    so a step-child's or estranged co-parent's invoice can never end up on
+    someone else's combined charge (see `Invoice.is_visible_to`). Role-based
+    "is this guardian allowed to pay *this* invoice at all" is the caller's
+    job (`views.InvoiceViewSet.pay`); this function only enforces that a
+    combine is internally consistent.
+
+    `amount_cents` lets the payer enter a custom total smaller than the
+    invoices' full combined balance (partial payment is allowed - decision
+    confirmed 2026-09-16) - defaults to the full combined balance. Whatever
+    the total ends up being, `allocate_payment` splits it back across each
+    invoice's own ledger proportionally, so every invoice's balance still
+    updates correctly even though only one real charge happened.
+
+    Raises `GatewayNotConfigured` if this install has no real online gateway
+    wired up (still MANUAL, or an unimplemented one - see
     `gateways._ONLINE_IMPLEMENTATIONS`)."""
-    if invoice.status == Invoice.Status.VOID:
+    if not invoices:
+        raise ValueError("At least one invoice is required.")
+    if any(inv.status == Invoice.Status.VOID for inv in invoices):
         raise ValueError("Cannot start a checkout for a void invoice.")
+    guardian_ids = {inv.guardian_id for inv in invoices}
+    if len(guardian_ids) > 1 or None in guardian_ids:
+        raise ValueError(
+            "All invoices in a combined payment must be billed to the same guardian."
+        )
+    currencies = {inv.currency for inv in invoices}
+    if len(currencies) > 1:
+        raise ValueError("Cannot combine invoices billed in different currencies.")
+
     gateway = get_gateway()
     if not isinstance(gateway, OnlineGateway):
         raise GatewayNotConfigured(
@@ -70,19 +101,32 @@ def initiate_online_payment(
             "manual mark-paid workflow, or configure one with "
             "`manage set_gateway_config`."
         )
-    amount_cents = invoice.balance_cents
-    if amount_cents <= 0:
-        raise ValueError("This invoice has no outstanding balance to pay.")
+
+    combined_balance = sum(inv.balance_cents for inv in invoices)
+    if combined_balance <= 0:
+        raise ValueError("These invoices have no outstanding balance to pay.")
+    if amount_cents is None:
+        amount_cents = combined_balance
+    elif amount_cents <= 0:
+        raise ValueError("The payment amount must be greater than zero.")
+    elif amount_cents > combined_balance:
+        raise ValueError("The payment amount cannot exceed the combined outstanding balance.")
+
+    allocations = allocate_payment(invoices, amount_cents)
 
     attempt = PaymentAttempt.objects.create(
-        invoice=invoice, gateway=gateway.config.gateway, reference=_generate_reference(invoice),
-        amount_cents=amount_cents, currency=invoice.currency,
+        gateway=gateway.config.gateway, reference=_generate_reference(invoices[0]),
+        amount_cents=amount_cents, currency=invoices[0].currency,
         status=PaymentAttempt.Status.INITIALIZED,
         initialized_by=initialized_by if getattr(initialized_by, "pk", None) else None,
     )
+    PaymentAttemptInvoice.objects.bulk_create([
+        PaymentAttemptInvoice(attempt=attempt, invoice=inv, allocated_cents=cents)
+        for inv, cents in allocations
+    ])
     try:
         checkout_url, gateway_session_id = gateway.initialize(
-            invoice=invoice, attempt=attempt, return_url=return_url
+            invoices=invoices, attempt=attempt, return_url=return_url
         )
     except GatewayError:
         attempt.status = PaymentAttempt.Status.FAILED
@@ -93,9 +137,37 @@ def initiate_online_payment(
     attempt.status = PaymentAttempt.Status.PENDING
     attempt.save(update_fields=["checkout_url", "gateway_session_id", "status", "updated_at"])
     record(AuditAction.CREATE, attempt,
-           summary=f"online checkout started ({attempt.gateway}, ${amount_cents / 100:.2f})",
+           summary=f"online checkout started ({attempt.gateway}, ${amount_cents / 100:.2f}, "
+                   f"{len(invoices)} invoice{'s' if len(invoices) != 1 else ''})",
            actor=initialized_by)
     return attempt
+
+
+def allocate_payment(invoices: list[Invoice], total_cents: int) -> list[tuple[Invoice, int]]:
+    """Split `total_cents` (the real amount the gateway will actually
+    charge, possibly less than the invoices' combined balance - a partial
+    payment) across `invoices`, proportional to each invoice's own
+    `balance_cents`. Largest-remainder method - same technique already used
+    for `seed_demo`'s grade-size apportionment - so the per-invoice cents
+    always sum to exactly `total_cents` (a naive proportional round can be
+    off by a cent or two, which billing math can't tolerate)."""
+    weights = [inv.balance_cents for inv in invoices]
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        raise ValueError("Nothing outstanding to allocate.")
+    shares: list[list] = []
+    remainders: list[float] = []
+    allocated_so_far = 0
+    for inv, weight in zip(invoices, weights, strict=True):
+        exact = total_cents * weight / total_weight
+        base = int(exact)
+        shares.append([inv, base])
+        remainders.append(exact - base)
+        allocated_so_far += base
+    leftover = total_cents - allocated_so_far
+    for i in sorted(range(len(invoices)), key=lambda i: remainders[i], reverse=True)[:leftover]:
+        shares[i][1] += 1
+    return [(inv, cents) for inv, cents in shares]
 
 
 def _generate_reference(invoice: Invoice) -> str:
@@ -152,15 +224,23 @@ def resolve_payment_attempt(attempt: PaymentAttempt) -> PaymentAttempt:
         amount_ok = result.amount_cents is None or result.amount_cents == attempt.amount_cents
         currency_ok = result.currency is None or result.currency.upper() == attempt.currency.upper()
         if amount_ok and currency_ok:
-            payment = Payment.objects.create(
-                invoice=attempt.invoice, amount_cents=attempt.amount_cents,
-                source=Payment.Source.GATEWAY, gateway=attempt.gateway,
-                gateway_reference=attempt.reference, received_at=timezone.now(),
-                note=f"via {attempt.gateway.title()}",
-            )
-            attempt.invoice.refresh_status()
-            summary = f"payment recorded (${attempt.amount_cents / 100:.2f}, {attempt.gateway})"
-            record(AuditAction.CREATE, payment, summary=summary)
+            allocations = list(attempt.allocations.select_related("invoice"))
+            multi = len(allocations) > 1
+            note = f"via {attempt.gateway.title()}"
+            if multi:
+                note += f" (combined payment, {len(allocations)} invoices)"
+            for alloc in allocations:
+                payment = Payment.objects.create(
+                    invoice=alloc.invoice, amount_cents=alloc.allocated_cents,
+                    source=Payment.Source.GATEWAY, gateway=attempt.gateway,
+                    gateway_reference=attempt.reference, received_at=timezone.now(),
+                    note=note,
+                )
+                alloc.invoice.refresh_status()
+                summary = (
+                    f"payment recorded (${alloc.allocated_cents / 100:.2f}, {attempt.gateway})"
+                )
+                record(AuditAction.CREATE, payment, summary=summary)
             attempt.status = PaymentAttempt.Status.SUCCESS
         else:
             logger.warning(

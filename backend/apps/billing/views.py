@@ -54,8 +54,11 @@ class BillingAccess(BasePermission):
 class CanPayInvoice(BasePermission):
     """`pay` is the one billing write a parent may trigger directly — every
     other write (issue/void/mark-paid/create) is staff-only via
-    `BillingAccess`. `IsObjectOwnerOrStaff` still does the object-level check
-    (a parent may only pay their own child's invoice)."""
+    `BillingAccess`. `pay` is collection-level (it may cover several
+    invoices at once - a combined family payment), so there is no single
+    object for `IsObjectOwnerOrStaff` to check; `InvoiceViewSet.pay` itself
+    enforces that a parent may only pay invoices billed specifically to
+    them."""
 
     def has_permission(self, request, view):
         if not MFAVerified().has_permission(request, view):
@@ -92,7 +95,11 @@ class InvoiceViewSet(CampusViewSet):
 
     def get_permissions(self):
         if self.action == "pay":
-            return [p() for p in (BillingEnabled, CanPayInvoice, IsObjectOwnerOrStaff)]
+            # Collection-level (may cover several invoices at once - a
+            # combined family payment) - there is no single object for
+            # IsObjectOwnerOrStaff to check, `pay()` itself enforces that a
+            # parent may only combine invoices billed to them.
+            return [p() for p in (BillingEnabled, CanPayInvoice)]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -154,17 +161,61 @@ class InvoiceViewSet(CampusViewSet):
             status=status.HTTP_201_CREATED,
         )
 
-    @action(detail=True, methods=["post"])
-    def pay(self, request, pk=None):
-        """Start a hosted checkout (P3 §flow). Parents call this from the
-        portal's Pay button; front office can also call it to "generate a
-        payment link" for a family that doesn't use the portal — same
-        endpoint either way, `initialized_by` just records who."""
-        invoice = self.get_object()
+    @action(detail=False, methods=["post"])
+    def pay(self, request):
+        """Start a hosted checkout (P3 §flow), for one invoice or several at
+        once — a family combining two or more children's invoices into a
+        single real gateway charge instead of paying (and being charged a
+        transaction fee) separately for each. Parents call this from the
+        portal's Pay button; front office/admin/superadmin can also call it
+        to "generate a payment link" for a family that doesn't use the
+        portal — same endpoint either way, `initialized_by` just records
+        who. Body: `invoice_ids` (required, one or more), `return_url`,
+        optional `amount_cents` (a custom total smaller than the invoices'
+        combined balance — partial payment is allowed)."""
+        invoice_ids = request.data.get("invoice_ids") or []
+        if not isinstance(invoice_ids, list) or not invoice_ids:
+            return Response(
+                {"detail": "invoice_ids is required (a list of one or more invoice ids)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        invoices = list(
+            Invoice.objects.filter(pk__in=invoice_ids).select_related("guardian", "student")
+        )
+        if len(invoices) != len(set(invoice_ids)):
+            return Response(
+                {"detail": "One or more invoices were not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        role = getattr(request.user, "role", None)
+        if role not in _ADMIN_ROLES:
+            # A parent may only combine/pay invoices billed specifically to
+            # them (Invoice.guardian) - never a step-child's or an
+            # estranged co-parent's invoice, even one for a child they are
+            # otherwise linked to. Staff generating a payment link on a
+            # family's behalf are not the payer, so this check is theirs
+            # alone to skip.
+            guardian = getattr(request.user, "guardian_profile", None)
+            if guardian is None or any(inv.guardian_id != guardian.id for inv in invoices):
+                return Response(
+                    {"detail": "You may only pay invoices billed to you."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         return_url = (request.data.get("return_url") or "")[:500]
+        raw_amount = request.data.get("amount_cents")
+        try:
+            amount_cents = int(raw_amount) if raw_amount is not None else None
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "amount_cents must be a whole number of cents."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         try:
             attempt = initiate_online_payment(
-                invoice, initialized_by=request.user, return_url=return_url
+                invoices, initialized_by=request.user, return_url=return_url,
+                amount_cents=amount_cents,
             )
         except GatewayNotConfigured as e:
             return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
@@ -227,12 +278,18 @@ class PaymentAttemptViewSet(CampusViewSet):
     audit_reads = False  # a polled confirmation status, not a sensitive record browse
 
     def get_queryset(self):
-        qs = PaymentAttempt.objects.select_related("invoice", "invoice__student")
+        qs = PaymentAttempt.objects.prefetch_related("allocations__invoice__student")
         role = getattr(self.request.user, "role", None)
         if role in _ADMIN_ROLES:
             return qs
         if role == Role.PARENT:
-            return qs.filter(invoice__student__in=Student.visible_queryset(self.request.user))
+            # Broad queryset scoping ("any allocated invoice's student is
+            # visible to me") - the strict "every allocated invoice must be
+            # billed specifically to me" check is `PaymentAttempt.is_visible_to`,
+            # enforced at the object level by `IsObjectOwnerOrStaff` on retrieve.
+            return qs.filter(
+                allocations__invoice__student__in=Student.visible_queryset(self.request.user)
+            ).distinct()
         return qs.none()
 
     def retrieve(self, request, *args, **kwargs):

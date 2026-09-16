@@ -157,6 +157,24 @@ class Invoice(SensitiveModel):
             from apps.core.models import SiteConfiguration
 
             self.currency = SiteConfiguration.load().currency
+        if self._state.adding and self.guardian_id is None:
+            # The field's own help_text has always promised this ("defaults
+            # to the primary contact") but nothing implemented it - every
+            # invoice was silently created with guardian=None unless a
+            # caller set it explicitly. That was harmless while visibility
+            # was checked through the student (any linked guardian could
+            # see it); now that `is_visible_to` checks this FK specifically
+            # (multi-child invoicing work, 2026-09-16), an unset guardian
+            # would make the invoice invisible to everyone but staff -  so
+            # the documented default has to actually exist.
+            from apps.people.models import GuardianLink
+
+            link = (
+                GuardianLink.objects.filter(student_id=self.student_id, is_primary_contact=True)
+                .select_related("guardian").first()
+            )
+            if link:
+                self.guardian = link.guardian
         if self._state.adding and not self.invoice_number:
             self.invoice_number = self._generate_invoice_number()
         super().save(*args, **kwargs)
@@ -215,7 +233,18 @@ class Invoice(SensitiveModel):
         if role in _ADMIN_ROLES:
             return True
         if role == Role.PARENT:
-            return self.student.is_visible_to(user)
+            # Deliberately NOT `self.student.is_visible_to(user)` - that
+            # asks "is any guardian linked to this child," which any
+            # linked guardian (a non-custodial parent, an estranged
+            # co-parent with no financial role) would pass. An invoice
+            # discloses financial detail about a *specific billing
+            # relationship*, not just the student - only the guardian
+            # actually assigned to it should ever see it. Tightened
+            # 2026-09-16 (multi-child invoicing work exposed this as a
+            # real gap in the existing single-invoice model too, not
+            # something the new feature introduces).
+            guardian = getattr(user, "guardian_profile", None)
+            return guardian is not None and self.guardian_id == guardian.id
         return False
 
 
@@ -308,7 +337,6 @@ class PaymentAttempt(SensitiveModel):
         ABANDONED = "ABANDONED", "Abandoned"
         MISMATCH = "MISMATCH", "Mismatch"
 
-    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="payment_attempts")
     gateway = models.CharField(max_length=12, choices=Gateway.choices)
     reference = models.CharField(max_length=64, unique=True)
     amount_cents = models.PositiveIntegerField()
@@ -335,13 +363,51 @@ class PaymentAttempt(SensitiveModel):
     class Meta:
         db_table = "billing_payment_attempt"
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["invoice", "status"])]
+        indexes = [models.Index(fields=["gateway", "status"])]
 
     def __str__(self) -> str:
         return f"{self.gateway} attempt {self.reference} ({self.status})"
 
     def is_visible_to(self, user) -> bool:
-        return self.invoice.is_visible_to(user)
+        # No `invoice` FK here (see PaymentAttemptInvoice) - an attempt
+        # always has at least one allocation, single- or multi-invoice
+        # alike, and is visible only if *every* allocated invoice is
+        # visible to `user` (a combined family payment must not leak one
+        # child's billing detail to a guardian who only has rights to
+        # another child on the same attempt).
+        allocations = list(self.allocations.select_related("invoice"))
+        return bool(allocations) and all(a.invoice.is_visible_to(user) for a in allocations)
+
+
+class PaymentAttemptInvoice(BaseModel):
+    """One invoice's slice of a `PaymentAttempt` - always present, even for
+    the plain single-invoice case (one row, 100% of the amount), so
+    `resolve_payment_attempt`'s success handling never needs two code
+    paths for "one invoice" vs "several." Lets a family combine multiple
+    children's invoices into one real gateway charge (one transaction fee,
+    not one per child) while each invoice's own ledger still updates
+    correctly - `allocated_cents` is this invoice's share of whatever the
+    parent actually paid, which may be less than the full combined balance
+    (partial payment is allowed - see `services.allocate_payment`)."""
+
+    attempt = models.ForeignKey(
+        PaymentAttempt, on_delete=models.CASCADE, related_name="allocations"
+    )
+    invoice = models.ForeignKey(
+        Invoice, on_delete=models.CASCADE, related_name="payment_attempt_allocations"
+    )
+    allocated_cents = models.PositiveIntegerField()
+
+    class Meta:
+        db_table = "billing_payment_attempt_invoice"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt", "invoice"], name="one_allocation_per_invoice_per_attempt"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.attempt_id}: ${self.allocated_cents / 100:.2f} -> invoice {self.invoice_id}"
 
 
 class Credit(BaseModel):
