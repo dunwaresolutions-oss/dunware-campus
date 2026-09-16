@@ -5,6 +5,7 @@ from .views import (
     FeeScheduleViewSet,
     InvoiceLineViewSet,
     InvoiceViewSet,
+    PaymentAttemptViewSet,
     PaymentViewSet,
 )
 
@@ -13,6 +14,7 @@ router.register("fee-schedules", FeeScheduleViewSet, basename="fee-schedule")
 router.register("invoices", InvoiceViewSet, basename="invoice")
 router.register("invoice-lines", InvoiceLineViewSet, basename="invoice-line")
 router.register("payments", PaymentViewSet, basename="payment")
+router.register("payment-attempts", PaymentAttemptViewSet, basename="payment-attempt")
 router.register("credits", CreditViewSet, basename="credit")
 
 urlpatterns = router.urls

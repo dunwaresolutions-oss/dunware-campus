@@ -1,10 +1,14 @@
 """
-Payments — PLACEHOLDER only in v1 (see docs/DATA_MODEL.md, Phase-0 decisions).
+Payments (see docs/DATA_MODEL.md, Phase-0 decisions, and Campus_Payments_Action_Plan.html
+- P2/P3 of that accepted roadmap).
 
-Real models, a real manual "mark paid" workflow, and a `PaymentGateway`
-interface with a working `ManualGateway` and a **stubbed** `StripeGateway`
-(raises `NotImplementedError`). No card data is ever collected or stored —
-there is nothing here for PCI scope to attach to. Amounts are integer cents to
+A manual "mark paid" workflow (real since Phase 7), plus, as of P2/P3, real
+online-gateway checkout: `GatewayConfig` (this install's one configured
+gateway - Direct-API-Key model, keys encrypted) and `PaymentAttempt` (the
+audit trail of one hosted checkout, worked by the poller / resolved on
+demand). No card data is ever collected or stored by Campus itself - a
+gateway's hosted checkout is what actually takes the card, Campus only ever
+sees a reference/amount/status. Amounts are integer cents throughout, to
 avoid float rounding.
 """
 from __future__ import annotations
@@ -13,6 +17,7 @@ from django.conf import settings
 from django.db import models
 
 from apps.accounts.models import Role
+from apps.core.fields import EncryptedCharField, EncryptedTextField
 from apps.core.models import BaseModel, SensitiveModel
 from apps.people.models import Group, Guardian, Student
 
@@ -42,6 +47,65 @@ class FeeSchedule(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.name} (${self.amount_cents / 100:.2f})"
+
+
+class Gateway(models.TextChoices):
+    """Shared across `GatewayConfig`, `Payment.gateway` and `PaymentAttempt.gateway`
+    so there's exactly one list of gateway names in the codebase. MANUAL isn't
+    a real online gateway - it's the explicit "no online gateway configured"
+    value `GatewayConfig` defaults to, kept in the same enum so a config row
+    always has *a* value rather than a separate nullable flag."""
+
+    MANUAL = "MANUAL", "Manual only"
+    PAYSTACK = "PAYSTACK", "Paystack"
+    FLUTTERWAVE = "FLUTTERWAVE", "Flutterwave"
+    STRIPE = "STRIPE", "Stripe"
+    KANOO = "KANOO", "Kanoo"
+
+
+class GatewayConfig(BaseModel):
+    """This install's one configured online gateway - Direct API Key model
+    (Campus_Payments_Action_Plan.html decision 1): the school's own merchant
+    keys, pasted in and stored encrypted, never a Dunware-held account.
+    Singleton, same pattern as `SiteConfiguration`/`SchoolProfile` - "one
+    active row per install" (decision 9) means one row, not one-of-many with
+    an active flag. Written only by `manage set_gateway_config` (the eventual
+    companion app's Payments tab shells out to the same command) - there is
+    deliberately no browser-facing write endpoint for secret keys (decision
+    9: "The browser wizard is not the place for it")."""
+
+    gateway = models.CharField(max_length=12, choices=Gateway.choices, default=Gateway.MANUAL)
+
+    class Mode(models.TextChoices):
+        TEST = "TEST", "Test"
+        LIVE = "LIVE", "Live"
+
+    mode = models.CharField(max_length=4, choices=Mode.choices, default=Mode.TEST)
+    public_key = models.CharField(max_length=255, blank=True, default="")
+    secret_key = EncryptedCharField(max_length=255, blank=True, default="")
+    # reserved for a possible future aggregator/subaccount model - not used by
+    # the Direct API Key model P2/P3 actually implement.
+    subaccount_id = models.CharField(max_length=100, blank=True, default="")
+    configured_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    configured_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "billing_gateway_config"
+        verbose_name = "gateway configuration"
+
+    def __str__(self) -> str:
+        return f"{self.get_gateway_display()} ({self.mode})"
+
+    @classmethod
+    def load(cls) -> GatewayConfig:
+        obj = cls.objects.first()
+        return obj if obj is not None else cls.objects.create()
+
+    @property
+    def is_online(self) -> bool:
+        return self.gateway != Gateway.MANUAL
 
 
 class Invoice(SensitiveModel):
@@ -180,18 +244,30 @@ class InvoiceLine(BaseModel):
 
 
 class Payment(BaseModel):
-    """A manually recorded payment. There is no card path — `method` is one of
-    the manual options only; `StripeGateway` never reaches this model."""
+    """A recorded payment - manual (front office entered it after the fact)
+    or, as of P3, gateway-sourced (a `PaymentAttempt` resolved to success).
+    `source` distinguishes the two; `method` describes a manual payment's
+    real-world form and is blank for a gateway payment (there's no
+    cash/cheque/e-transfer/terminal "method" for a hosted-checkout charge -
+    `gateway` + `gateway_reference` already say exactly what it was)."""
+
+    class Source(models.TextChoices):
+        MANUAL = "MANUAL", "Manual"
+        GATEWAY = "GATEWAY", "Online gateway"
 
     class Method(models.TextChoices):
         CASH = "CASH", "Cash"
         CHEQUE = "CHEQUE", "Cheque"
         E_TRANSFER = "E_TRANSFER", "e-Transfer"
+        CARD_TERMINAL = "CARD_TERMINAL", "Card — terminal"
         OTHER = "OTHER", "Other"
 
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="payments")
     amount_cents = models.PositiveIntegerField()
-    method = models.CharField(max_length=10, choices=Method.choices)
+    source = models.CharField(max_length=7, choices=Source.choices, default=Source.MANUAL)
+    method = models.CharField(max_length=13, choices=Method.choices, blank=True, default="")
+    gateway = models.CharField(max_length=12, choices=Gateway.choices, blank=True, default="")
+    gateway_reference = models.CharField(max_length=100, blank=True, default="")
     reference = models.CharField(max_length=100, blank=True)
     received_at = models.DateTimeField()
     received_by = models.ForeignKey(
@@ -204,7 +280,58 @@ class Payment(BaseModel):
         ordering = ["-received_at"]
 
     def __str__(self) -> str:
-        return f"${self.amount_cents / 100:.2f} {self.method} on invoice {self.invoice_id}"
+        label = self.method or self.get_gateway_display()
+        return f"${self.amount_cents / 100:.2f} {label} on invoice {self.invoice_id}"
+
+    def is_visible_to(self, user) -> bool:
+        return self.invoice.is_visible_to(user)
+
+
+class PaymentAttempt(SensitiveModel):
+    """The audit trail of one hosted-checkout attempt (Campus_Payments_Action_Plan.html
+    §data — new in P2/P3). Created when a Pay action calls `gateway.initialize()`;
+    resolved (on demand today - see `services.resolve_payment_attempt` - by a
+    scheduled poller once P4 lands) by calling `gateway.verify()`. A verified
+    SUCCESS whose amount/currency match this attempt creates a real `Payment`;
+    a mismatch is never auto-applied. `raw_response` holds the last `verify`
+    payload as dispute evidence - encrypted, since a gateway's response can
+    include payer details (email, card brand/last4, etc)."""
+
+    PII_FIELDS = ("raw_response",)
+    PII_PURPOSE = {"raw_response": "dispute evidence for one checkout; the gateway's own payload"}
+
+    class Status(models.TextChoices):
+        INITIALIZED = "INITIALIZED", "Initialized"
+        PENDING = "PENDING", "Pending"
+        SUCCESS = "SUCCESS", "Success"
+        FAILED = "FAILED", "Failed"
+        ABANDONED = "ABANDONED", "Abandoned"
+        MISMATCH = "MISMATCH", "Mismatch"
+
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="payment_attempts")
+    gateway = models.CharField(max_length=12, choices=Gateway.choices)
+    reference = models.CharField(max_length=64, unique=True)
+    amount_cents = models.PositiveIntegerField()
+    currency = models.CharField(max_length=3)
+    status = models.CharField(max_length=11, choices=Status.choices, default=Status.INITIALIZED)
+    checkout_url = models.CharField(max_length=500, blank=True, default="")
+    channel = models.CharField(max_length=30, blank=True, default="")
+    raw_response = EncryptedTextField(blank=True, default="")
+    initialized_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="Who triggered checkout - the parent from the portal, or "
+                   "staff generating a payment link.",
+    )
+    last_checked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "billing_payment_attempt"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["invoice", "status"])]
+
+    def __str__(self) -> str:
+        return f"{self.gateway} attempt {self.reference} ({self.status})"
 
     def is_visible_to(self, user) -> bool:
         return self.invoice.is_visible_to(user)

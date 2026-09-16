@@ -16,15 +16,23 @@ from apps.core.permissions import (
 )
 from apps.people.models import Student
 
-from .models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment
+from .gateways import GatewayError, GatewayNotConfigured
+from .models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment, PaymentAttempt
 from .serializers import (
     CreditSerializer,
     FeeScheduleSerializer,
     InvoiceLineSerializer,
     InvoiceSerializer,
+    PaymentAttemptSerializer,
     PaymentSerializer,
 )
-from .services import issue_invoice, mark_paid, void_invoice
+from .services import (
+    initiate_online_payment,
+    issue_invoice,
+    mark_paid,
+    resolve_payment_attempt,
+    void_invoice,
+)
 
 _ADMIN_ROLES = {Role.SUPERADMIN, Role.ADMIN, Role.FRONT_DESK}
 
@@ -41,6 +49,19 @@ class BillingAccess(BasePermission):
         if request.method in SAFE_METHODS:
             return role in _ADMIN_ROLES or role == Role.PARENT
         return role in _ADMIN_ROLES
+
+
+class CanPayInvoice(BasePermission):
+    """`pay` is the one billing write a parent may trigger directly — every
+    other write (issue/void/mark-paid/create) is staff-only via
+    `BillingAccess`. `IsObjectOwnerOrStaff` still does the object-level check
+    (a parent may only pay their own child's invoice)."""
+
+    def has_permission(self, request, view):
+        if not MFAVerified().has_permission(request, view):
+            return False
+        role = getattr(request.user, "role", None)
+        return role in _ADMIN_ROLES or role == Role.PARENT
 
 
 class FeeScheduleViewSet(CampusViewSet):
@@ -68,6 +89,11 @@ class InvoiceViewSet(CampusViewSet):
     serializer_class = InvoiceSerializer
     permission_classes = [BillingEnabled, BillingAccess, IsObjectOwnerOrStaff]
     audit_reads = True
+
+    def get_permissions(self):
+        if self.action == "pay":
+            return [p() for p in (BillingEnabled, CanPayInvoice, IsObjectOwnerOrStaff)]
+        return super().get_permissions()
 
     def get_queryset(self):
         # No prefetch_related on lines/payments here: total_cents/paid_cents
@@ -128,6 +154,26 @@ class InvoiceViewSet(CampusViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        """Start a hosted checkout (P3 §flow). Parents call this from the
+        portal's Pay button; front office can also call it to "generate a
+        payment link" for a family that doesn't use the portal — same
+        endpoint either way, `initialized_by` just records who."""
+        invoice = self.get_object()
+        return_url = (request.data.get("return_url") or "")[:500]
+        try:
+            attempt = initiate_online_payment(
+                invoice, initialized_by=request.user, return_url=return_url
+            )
+        except GatewayNotConfigured as e:
+            return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+        except GatewayError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(PaymentAttemptSerializer(attempt).data, status=status.HTTP_201_CREATED)
+
 
 class InvoiceLineViewSet(CampusViewSet):
     serializer_class = InvoiceLineSerializer
@@ -162,6 +208,36 @@ class PaymentViewSet(CampusViewSet):
                 | Q(reference__icontains=q)
             )
         return qs
+
+
+class PaymentAttemptViewSet(CampusViewSet):
+    """Read-only — an attempt is only ever created via `InvoiceViewSet.pay`.
+    Looked up by `reference` (not the UUID pk): the portal's return-poll page
+    (P3 §flow, step 4) is handed the reference in the checkout redirect, and
+    `retrieve` resolves it live against the gateway (see
+    `services.resolve_payment_attempt`) rather than just reading a cached
+    row — the return-poll page needs this endpoint to actually be the
+    confirmation path today, ahead of P4's scheduled poller."""
+
+    serializer_class = PaymentAttemptSerializer
+    permission_classes = [BillingEnabled, BillingAccess, IsObjectOwnerOrStaff]
+    http_method_names = ["get", "head", "options"]
+    lookup_field = "reference"
+    lookup_value_regex = "[^/]+"
+    audit_reads = False  # a polled confirmation status, not a sensitive record browse
+
+    def get_queryset(self):
+        qs = PaymentAttempt.objects.select_related("invoice", "invoice__student")
+        role = getattr(self.request.user, "role", None)
+        if role in _ADMIN_ROLES:
+            return qs
+        if role == Role.PARENT:
+            return qs.filter(invoice__student__in=Student.visible_queryset(self.request.user))
+        return qs.none()
+
+    def retrieve(self, request, *args, **kwargs):
+        attempt = resolve_payment_attempt(self.get_object())
+        return Response(self.get_serializer(attempt).data)
 
 
 class CreditViewSet(CampusViewSet):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment
+from .models import Credit, FeeSchedule, Invoice, InvoiceLine, Payment, PaymentAttempt
 
 
 class FeeScheduleSerializer(serializers.ModelSerializer):
@@ -28,8 +28,23 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = ["id", "invoice", "invoice_number", "student_name", "amount_cents",
-                  "method", "reference", "received_at", "received_by", "note", "created_at"]
+                  "source", "method", "gateway", "gateway_reference", "reference",
+                  "received_at", "received_by", "note", "created_at"]
         read_only_fields = ["received_at", "received_by"]
+
+
+class PaymentAttemptSerializer(serializers.ModelSerializer):
+    """No `raw_response` here — it's the gateway's own payload (dispute
+    evidence, not something a client needs), and it's the one encrypted PII
+    field on this model; nothing forces it to round-trip through the API."""
+
+    invoice_number = serializers.CharField(source="invoice.invoice_number", read_only=True)
+
+    class Meta:
+        model = PaymentAttempt
+        fields = ["id", "invoice", "invoice_number", "gateway", "reference", "amount_cents",
+                  "currency", "status", "checkout_url", "channel", "created_at", "updated_at"]
+        read_only_fields = fields
 
 
 class CreditSerializer(serializers.ModelSerializer):
