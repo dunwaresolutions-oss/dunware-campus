@@ -210,6 +210,28 @@ class Invoice(SensitiveModel):
     def balance_cents(self) -> int:
         return max(self.total_cents - self.paid_cents, 0)
 
+    @property
+    def effective_guardian(self) -> Guardian | None:
+        """`guardian`, falling back to the student's primary-contact
+        `GuardianLink`. `Invoice.save()` only defaults `guardian` at
+        creation time (added 2026-09-16 alongside multi-invoice combine) -
+        every invoice created before that, real or seeded, still has
+        `guardian_id` NULL until a data migration backfills it. This is
+        what keeps payment code (initiate_online_payment's guardian-
+        consistency check, the parent-ownership check in views.py,
+        `gateways._guardian_email`) and portal/console visibility correct
+        for those rows in the meantime - and for any row the backfill
+        itself can't resolve (no primary contact on file at all)."""
+        if self.guardian_id:
+            return self.guardian
+        from apps.people.models import GuardianLink
+
+        link = (
+            GuardianLink.objects.filter(student_id=self.student_id, is_primary_contact=True)
+            .select_related("guardian").first()
+        )
+        return link.guardian if link else None
+
     def refresh_status(self):
         if self.status in (self.Status.VOID,):
             return
@@ -244,7 +266,10 @@ class Invoice(SensitiveModel):
             # real gap in the existing single-invoice model too, not
             # something the new feature introduces).
             guardian = getattr(user, "guardian_profile", None)
-            return guardian is not None and self.guardian_id == guardian.id
+            if guardian is None:
+                return False
+            effective = self.effective_guardian
+            return effective is not None and effective.id == guardian.id
         return False
 
 

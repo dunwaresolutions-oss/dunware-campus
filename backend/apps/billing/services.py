@@ -85,7 +85,13 @@ def initiate_online_payment(
         raise ValueError("At least one invoice is required.")
     if any(inv.status == Invoice.Status.VOID for inv in invoices):
         raise ValueError("Cannot start a checkout for a void invoice.")
-    guardian_ids = {inv.guardian_id for inv in invoices}
+    # `effective_guardian`, not the raw `guardian_id` column - an invoice
+    # created before `Invoice.save()` started defaulting it (2026-09-16)
+    # still has it NULL until backfilled, and would otherwise make even a
+    # single, uncombined invoice unpayable.
+    guardian_ids = {
+        (g.id if (g := inv.effective_guardian) else None) for inv in invoices
+    }
     if len(guardian_ids) > 1 or None in guardian_ids:
         raise ValueError(
             "All invoices in a combined payment must be billed to the same guardian."

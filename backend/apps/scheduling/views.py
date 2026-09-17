@@ -264,7 +264,9 @@ class SessionOccurrenceViewSet(CampusViewSet):
             return err
 
         role = getattr(request.user, "role", None)
-        scope_group_ids = None if role in _ADMIN_ROLES else list(_instructor_group_ids(request.user))
+        scope_group_ids = (
+            None if role in _ADMIN_ROLES else list(_instructor_group_ids(request.user))
+        )
 
         payload = calendar_payload(
             start, end,

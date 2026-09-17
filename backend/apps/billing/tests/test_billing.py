@@ -393,6 +393,37 @@ def test_initiate_online_payment_rejects_invoices_from_different_guardians(monke
         initiate_online_payment([inv_a, inv_b])
 
 
+def test_initiate_online_payment_works_for_a_legacy_invoice_with_no_guardian_set(monkeypatch):
+    """Real bug, found 2026-09-16: every invoice created before
+    Invoice.save() started defaulting `guardian` at creation time has
+    `guardian_id` NULL - and initiate_online_payment's guardian-
+    consistency check used to read that raw column directly, so paying
+    ANY such invoice (the vast majority of the live demo data at the
+    time) failed with "must be billed to the same guardian" even for a
+    single, uncombined invoice. Fixed via `Invoice.effective_guardian`
+    (falls back to the primary-contact GuardianLink)."""
+    _configure_paystack()
+    kid = make_student()
+    link_guardian(kid, email="legacy@example.test", is_primary_contact=True)
+    inv = Invoice.objects.create(student=kid)
+    InvoiceLine.objects.create(invoice=inv, description="fee", unit_amount_cents=3_000)
+    issue_invoice(inv)
+    # simulate a pre-2026-09-16 row: guardian_id never got backfilled
+    Invoice.objects.filter(pk=inv.pk).update(guardian=None)
+    inv.refresh_from_db()
+    assert inv.guardian_id is None
+
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/legacy", ""
+        ),
+    )
+    attempt = initiate_online_payment([inv])
+    assert attempt.status == PaymentAttempt.Status.PENDING
+    assert attempt.amount_cents == 3_000
+
+
 def test_initiate_online_payment_combines_siblings_into_one_attempt(monkeypatch):
     _configure_paystack()
     kid1 = make_student()
@@ -589,6 +620,33 @@ def test_api_parent_can_start_a_checkout(auth_client, make_user, monkeypatch):
     assert resp.data["status"] == "PENDING"
     assert len(resp.data["allocations"]) == 1
     assert resp.data["allocations"][0]["allocated_cents"] == 2_000
+
+
+def test_api_parent_can_pay_a_legacy_invoice_with_no_guardian_set(
+    auth_client, make_user, monkeypatch
+):
+    """The exact bug Damien hit live: a real invoice from before the
+    guardian-default fix, guardian_id NULL - the view's own parent-
+    ownership check used the raw column too, so this 403'd for the
+    correct guardian ("You may only pay invoices billed to you.")."""
+    _configure_paystack()
+    kid = make_student()
+    parent_user = make_user(username="legacyparent", role="PARENT")
+    link_guardian(kid, user=parent_user, email="legacyparent@example.test", is_primary_contact=True)
+    inv = Invoice.objects.create(student=kid)
+    InvoiceLine.objects.create(invoice=inv, description="fee", unit_amount_cents=1_500)
+    issue_invoice(inv)
+    Invoice.objects.filter(pk=inv.pk).update(guardian=None)
+
+    monkeypatch.setattr(
+        PaystackGateway, "initialize",
+        lambda self, *, invoices, attempt, return_url="": (
+            "https://checkout.paystack.com/legacy", ""
+        ),
+    )
+    client = auth_client(parent_user)
+    resp = client.post("/api/invoices/pay/", {"invoice_ids": [str(inv.pk)]}, format="json")
+    assert resp.status_code == 201
 
 
 def test_api_parent_can_combine_two_childrens_invoices(auth_client, make_user, monkeypatch):

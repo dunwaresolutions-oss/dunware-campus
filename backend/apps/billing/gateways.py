@@ -77,17 +77,9 @@ def _guardian_email(invoices: list[Invoice]) -> str:
     "which guardian, and what if none has an email on file" logic exists
     exactly once. `invoices` may be several (a combined family payment) -
     the caller (`services.initiate_online_payment`) already enforced that
-    every one of them belongs to the same billing guardian, so the first
-    invoice's guardian is authoritative for all of them."""
-    guardian = invoices[0].guardian
-    if guardian is None:
-        from apps.people.models import GuardianLink
-
-        link = (
-            GuardianLink.objects.filter(student=invoices[0].student, is_primary_contact=True)
-            .select_related("guardian").first()
-        )
-        guardian = link.guardian if link else None
+    every one of them resolves to the same billing guardian, so the first
+    invoice's `effective_guardian` is authoritative for all of them."""
+    guardian = invoices[0].effective_guardian
     email = getattr(guardian, "email", "") or ""
     if not email:
         raise GatewayError(

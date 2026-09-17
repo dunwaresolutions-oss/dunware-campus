@@ -195,7 +195,13 @@ class InvoiceViewSet(CampusViewSet):
             # family's behalf are not the payer, so this check is theirs
             # alone to skip.
             guardian = getattr(request.user, "guardian_profile", None)
-            if guardian is None or any(inv.guardian_id != guardian.id for inv in invoices):
+            # effective_guardian, not the raw guardian_id column - see
+            # Invoice.effective_guardian for why (invoices from before
+            # 2026-09-16 still have it NULL until backfilled).
+            if guardian is None or any(
+                (inv.effective_guardian.id if inv.effective_guardian else None) != guardian.id
+                for inv in invoices
+            ):
                 return Response(
                     {"detail": "You may only pay invoices billed to you."},
                     status=status.HTTP_403_FORBIDDEN,
