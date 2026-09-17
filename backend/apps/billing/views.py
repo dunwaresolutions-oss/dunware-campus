@@ -258,7 +258,7 @@ class PaymentViewSet(CampusViewSet):
         if q:
             qs = qs.filter(multi_word_icontains(q, [
                 "invoice__invoice_number", "invoice__student__first_name",
-                "invoice__student__last_name", "reference",
+                "invoice__student__last_name", "reference", "gateway_reference",
             ]))
         return qs
 

@@ -149,8 +149,16 @@ export default function BillingPage() {
               },
               { header: "Student", cell: (r) => (r.student_name as string) || "—" },
               { header: "Amount", cell: (r) => money(r.amount_cents as number) },
-              { header: "Method", cell: (r) => label(r.method as string) },
-              { header: "Reference", cell: (r) => (r.reference as string) || "—" },
+              {
+                header: "Method",
+                // A gateway payment (Stripe/Paystack/Flutterwave) never has a
+                // `method` set - `gateway` says what it was instead.
+                cell: (r) => label((r.method as string) || (r.gateway as string)),
+              },
+              {
+                header: "Reference",
+                cell: (r) => (r.reference as string) || (r.gateway_reference as string) || "—",
+              },
               { header: "Received", cell: (r) => date(r.received_at as string) },
             ]}
             detailTitle={(r) => `Payment — ${money(r.amount_cents as number)}`}
@@ -161,8 +169,14 @@ export default function BillingPage() {
               },
               { label: "Student", value: (r) => (r.student_name as string) || "—" },
               { label: "Amount", value: (r) => money(r.amount_cents as number) },
-              { label: "Method", value: (r) => label(r.method as string) },
-              { label: "Reference", value: (r) => (r.reference as string) || "—" },
+              {
+                label: "Method",
+                value: (r) => label((r.method as string) || (r.gateway as string)),
+              },
+              {
+                label: "Reference",
+                value: (r) => (r.reference as string) || (r.gateway_reference as string) || "—",
+              },
               {
                 label: "Received",
                 value: (r) =>
@@ -533,6 +547,8 @@ interface InvoiceFull {
     id: number;
     amount_cents: number;
     method: string;
+    gateway: string;
+    gateway_reference: string;
     reference: string;
     received_at: string;
     note: string;
@@ -713,8 +729,13 @@ function InvoiceDetail({
                     <span>
                       <span className="font-medium">{money(p.amount_cents)}</span>{" "}
                       <span className="text-[var(--campus-muted)]">
-                        · {label(p.method)}
-                        {p.reference ? ` · ${p.reference}` : ""}
+                        {/* A gateway payment (Stripe/Paystack/Flutterwave) never
+                         * has a `method` - `gateway` + `gateway_reference` say
+                         * what it was instead. */}
+                        · {label(p.method || p.gateway)}
+                        {(p.reference || p.gateway_reference)
+                          ? ` · ${p.reference || p.gateway_reference}`
+                          : ""}
                       </span>
                     </span>
                     <span className="text-xs text-[var(--campus-muted)]">

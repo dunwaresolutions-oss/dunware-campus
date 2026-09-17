@@ -1038,3 +1038,39 @@ def test_api_invoice_search_matches_a_full_first_and_last_name(auth_client, admi
     assert resp.status_code == 200
     ids = {str(row["id"]) for row in resp.data["results"]}
     assert ids == {str(mine.pk)}
+
+
+def test_api_gateway_payment_exposes_gateway_and_reference(auth_client, admin_user, monkeypatch):
+    """Damien, 2026-09-17: a real partial Stripe payment succeeded (balance
+    updated correctly) but the console's Payments section showed no
+    method/reference for it. Not a Stripe-side thing - `Payment.method`/
+    `reference` are deliberately blank for a gateway payment (no cash/
+    cheque/etc "method" applies); `gateway`/`gateway_reference` carry the
+    same information instead, and the serializer already exposed them -
+    this locks down that the API response actually has them (the frontend
+    fix that reads them is out of scope for a backend test)."""
+    _configure_paystack()
+    inv = _paid_invoice_setup(total_cents=4_000)
+    attempt = _attempt_with_allocation(
+        inv, gateway=Gateway.PAYSTACK, reference="campus_gw_ref_test",
+        status=PaymentAttempt.Status.PENDING,
+    )
+    monkeypatch.setattr(
+        PaystackGateway, "verify",
+        lambda self, attempt: VerifiedResult(
+            status="success", amount_cents=4_000, currency=inv.currency, channel="card", raw={},
+        ),
+    )
+    resolve_payment_attempt(attempt)
+
+    client = auth_client(admin_user)
+    resp = client.get("/api/payments/")
+    assert resp.status_code == 200
+    row = next(r for r in resp.data["results"] if r["gateway_reference"] == "campus_gw_ref_test")
+    assert row["gateway"] == "PAYSTACK"
+    assert row["method"] == ""
+
+    # and it's findable by that same gateway_reference via search
+    search = client.get("/api/payments/?q=campus_gw_ref_test")
+    assert search.status_code == 200
+    assert any(r["gateway_reference"] == "campus_gw_ref_test" for r in search.data["results"])
