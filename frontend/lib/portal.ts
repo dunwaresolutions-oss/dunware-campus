@@ -15,6 +15,7 @@ export interface PortalDashboard {
 export interface PortalInvoice {
   id: string;
   status: "ISSUED" | "PARTIALLY_PAID" | "PAID" | "OVERDUE" | "VOID";
+  currency: string;
   total_cents: number;
   balance_cents: number;
   due_date: string | null;

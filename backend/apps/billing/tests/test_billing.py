@@ -931,7 +931,9 @@ def test_portal_summary_excludes_drafts_and_has_no_card_fields():
     issue_invoice(inv)
     rows = portal_summary(inv.student)
     assert len(rows) == 1
-    assert set(rows[0]) == {"id", "status", "total_cents", "balance_cents", "due_date"}
+    assert set(rows[0]) == {
+        "id", "status", "currency", "total_cents", "balance_cents", "due_date",
+    }
 
 
 def test_credit_is_scoped_like_a_student_record():

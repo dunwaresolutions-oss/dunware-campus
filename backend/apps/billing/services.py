@@ -267,12 +267,18 @@ def resolve_payment_attempt(attempt: PaymentAttempt) -> PaymentAttempt:
 
 
 def portal_summary(student) -> list[dict]:
-    """Read-only shape for the parent portal dashboard — no card data, ever."""
+    """Read-only shape for the parent portal dashboard — no card data, ever.
+    `currency` is each invoice's OWN currency, not the site default - an
+    invoice can be created with an explicit override (see `Invoice.currency`,
+    and the Paystack-currency test fixtures in
+    `seed_paystack_currencies`), so a dashboard spanning several invoices
+    can genuinely span several currencies at once."""
     rows = []
     for inv in Invoice.objects.filter(student=student).exclude(status=Invoice.Status.DRAFT):
         rows.append({
             "id": str(inv.pk),
             "status": inv.status,
+            "currency": inv.currency,
             "total_cents": inv.total_cents,
             "balance_cents": inv.balance_cents,
             "due_date": inv.due_date,

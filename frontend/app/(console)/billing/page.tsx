@@ -250,6 +250,7 @@ function Invoices({
     student: string;
     student_name?: string;
     status: string;
+    currency: string;
     total_cents: number;
     balance_cents: number;
     due_date: string | null;
@@ -311,8 +312,8 @@ function Invoices({
                   {inv.invoice_number || "—"}
                 </td>
                 <td className="px-3 py-2.5">{inv.student_name || inv.student}</td>
-                <td className="px-3 py-2.5">{money(inv.total_cents)}</td>
-                <td className="px-3 py-2.5">{money(inv.balance_cents)}</td>
+                <td className="px-3 py-2.5">{money(inv.total_cents, inv.currency)}</td>
+                <td className="px-3 py-2.5">{money(inv.balance_cents, inv.currency)}</td>
                 <td className="px-3 py-2.5">{date(inv.due_date)}</td>
                 <td className="px-3 py-2.5">
                   <Badge
@@ -344,7 +345,7 @@ function Invoices({
                       <>
                         <ActionButton
                           label="Mark paid"
-                          title={`Record a payment · balance ${money(inv.balance_cents)}`}
+                          title={`Record a payment · balance ${money(inv.balance_cents, inv.currency)}`}
                           fields={[
                             { name: "amount_cents", label: "Amount", type: "money", required: true },
                             {
@@ -445,6 +446,7 @@ interface PaymentAttemptLink {
   reference: string;
   checkout_url: string;
   amount_cents: number;
+  currency: string;
   status: string;
 }
 
@@ -500,7 +502,7 @@ function PayLinkButton({ invoiceId }: { invoiceId: number }) {
         {attempt && (
           <div className="space-y-3 text-sm">
             <p className="text-[var(--campus-muted)]">
-              Share this link with the family — {money(attempt.amount_cents)} due. The
+              Share this link with the family — {money(attempt.amount_cents, attempt.currency)} due. The
               payment provider emails their own receipt once it&apos;s paid.
             </p>
             <div className="flex gap-2">
@@ -530,6 +532,7 @@ interface InvoiceFull {
   student: string;
   student_name?: string;
   status: string;
+  currency: string;
   issued_at: string | null;
   due_date: string | null;
   notes: string;
@@ -629,20 +632,20 @@ function InvoiceDetail({
               <div className="text-xs uppercase tracking-wide text-[var(--campus-muted)]">
                 Total
               </div>
-              <div className="text-base font-semibold">{money(inv.total_cents)}</div>
+              <div className="text-base font-semibold">{money(inv.total_cents, inv.currency)}</div>
             </div>
             <div>
               <div className="text-xs uppercase tracking-wide text-[var(--campus-muted)]">
                 Paid
               </div>
-              <div className="text-base font-semibold">{money(inv.paid_cents)}</div>
+              <div className="text-base font-semibold">{money(inv.paid_cents, inv.currency)}</div>
             </div>
             <div>
               <div className="text-xs uppercase tracking-wide text-[var(--campus-muted)]">
                 Balance
               </div>
               <div className="text-base font-semibold">
-                {money(inv.balance_cents)}
+                {money(inv.balance_cents, inv.currency)}
               </div>
             </div>
           </div>
@@ -669,10 +672,10 @@ function InvoiceDetail({
                     >
                       <td className="py-2">{l.description}</td>
                       <td className="py-2 text-right text-[var(--campus-muted)]">
-                        {l.quantity} × {money(l.unit_amount_cents)}
+                        {l.quantity} × {money(l.unit_amount_cents, inv.currency)}
                       </td>
                       <td className="py-2 text-right font-medium">
-                        {money(l.amount_cents)}
+                        {money(l.amount_cents, inv.currency)}
                       </td>
                     </tr>
                   ))}
@@ -727,7 +730,7 @@ function InvoiceDetail({
                     className="flex items-center justify-between gap-2 px-3 py-2"
                   >
                     <span>
-                      <span className="font-medium">{money(p.amount_cents)}</span>{" "}
+                      <span className="font-medium">{money(p.amount_cents, inv.currency)}</span>{" "}
                       <span className="text-[var(--campus-muted)]">
                         {/* A gateway payment (Stripe/Paystack/Flutterwave) never
                          * has a `method` - `gateway` + `gateway_reference` say

@@ -296,6 +296,20 @@ class Command(BaseCommand):
         parser.add_argument("--seed", type=int, default=1729)
         parser.add_argument("--force", action="store_true",
                             help="Allow running even when DEBUG is False")
+        parser.add_argument(
+            "--currency", default="ZAR",
+            help="ISO-4217 code for SiteConfiguration.currency, and so for every "
+                 "invoice this command creates (Invoice.save() defaults an invoice's "
+                 "currency to the site's at creation time - see apps/billing/models.py). "
+                 "Defaults to ZAR, not BSD (the school's own Bahamian currency) - BSD "
+                 "isn't one of the currencies Paystack supports (NGN/GHS/ZAR/KES/USD, "
+                 "per paystack.com/docs as of 2026-09), and this dataset exists to "
+                 "exercise real online-gateway checkout, not just to look Bahamian. "
+                 "ZAR specifically because that's the currency this install's actual "
+                 "Paystack test merchant account is configured for (confirmed "
+                 "2026-09-18, after NGN failed with 'Currency not supported by "
+                 "merchant'). Override if you switch merchant accounts.",
+        )
 
     def handle(self, *args, **options):
         if not settings.DEBUG and not options["force"]:
@@ -356,7 +370,7 @@ class Command(BaseCommand):
 
         SiteConfiguration.objects.all().delete()
         SiteConfiguration.objects.create(
-            country="BS", currency="BSD", locale="en-BS", collects_fees=True,
+            country="BS", currency=opts["currency"], locale="en-BS", collects_fees=True,
         )
         made["site_config"] = 1
 
@@ -1550,7 +1564,14 @@ class Command(BaseCommand):
                 gfn = rng.choice(FEMALE_FIRST + MALE_FIRST)
             g = Guardian.objects.create(
                 first_name=gfn, last_name=ln,
-                email=f"{gfn.lower()}.{ln.lower()}.{number}{j}@example.test",
+                # example.com, not example.test - both are IANA-reserved
+                # documentation domains that will never deliver real mail
+                # (docs/PII_SECURITY.md's "never a real person" guarantee still
+                # holds), but Paystack's own email validator rejects the
+                # `.test` TLD outright ('"email" must be a valid email') since
+                # it isn't a real gTLD, which broke every online-gateway
+                # checkout attempt against this dataset until this changed.
+                email=f"{gfn.lower()}.{ln.lower()}.{number}{j}@example.com",
                 phone=f"(242) 555-{rng.randint(1000, 9999)}",
                 address=f"{rng.randint(1, 199)} {rng.choice(FIRST)} Street, Nassau",
             )

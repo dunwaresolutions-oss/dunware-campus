@@ -21,7 +21,7 @@ import { ScheduleCalendar } from "@/components/ScheduleCalendar";
 import { useToast } from "@/components/Toast";
 import { api } from "@/lib/api";
 import { list, create } from "@/lib/resource";
-import { date, datetime, time, money, label, apiMessage } from "@/lib/format";
+import { date, datetime, time, money, label, apiMessage, setMoneyCurrency } from "@/lib/format";
 import type { CalendarSession } from "@/lib/calendar";
 
 /* ------------------------------------------------------------------ icons */
@@ -160,6 +160,15 @@ export default function PortalPage() {
     queryFn: portalDashboard,
     enabled: !!me && !isStaff(me.role),
   });
+  useEffect(() => {
+    // The console layout wires this from /config/ (staff-only) - the portal
+    // never called it at all, so money() here fell back to its hardcoded
+    // "CAD" default regardless of the install's real currency. The portal
+    // already has the site currency on the dashboard payload itself
+    // (build_dashboard's `currency`), so use that instead of adding a
+    // second, staff-gated request just for this.
+    if (dash.data?.currency) setMoneyCurrency(dash.data.currency);
+  }, [dash.data?.currency]);
   const [contactFor, setContactFor] = useState(false);
   const [activeChild, setActiveChild] = useState<string | null>(null);
   const [payFor, setPayFor] = useState<string | null>(null);
@@ -280,7 +289,6 @@ export default function PortalPage() {
         open={!!payFor}
         onClose={() => setPayFor(null)}
         childrenList={children}
-        currency={dash.data?.currency ?? "CAD"}
         preselectChildId={payFor}
       />
     </div>
@@ -633,7 +641,7 @@ function ChildDashboard({
                 {child.invoices.map((i) => (
                   <li key={i.id} className="flex items-center justify-between text-sm">
                     <span>
-                      {money(i.total_cents)}
+                      {money(i.total_cents, i.currency)}
                       {i.due_date && (
                         <span className="text-xs text-[var(--campus-muted)]"> · due {date(i.due_date)}</span>
                       )}
@@ -641,7 +649,7 @@ function ChildDashboard({
                     <span className="flex items-center gap-2">
                       {i.balance_cents > 0 && i.status !== "VOID" && (
                         <span className="text-xs font-medium text-[var(--campus-muted)]">
-                          bal {money(i.balance_cents)}
+                          bal {money(i.balance_cents, i.currency)}
                         </span>
                       )}
                       <Badge
@@ -790,13 +798,11 @@ function PayInvoicesModal({
   open,
   onClose,
   childrenList,
-  currency,
   preselectChildId,
 }: {
   open: boolean;
   onClose: () => void;
   childrenList: PortalChild[];
-  currency: string;
   preselectChildId: string | null;
 }) {
   const toast = useToast();
@@ -826,6 +832,13 @@ function PayInvoicesModal({
 
   const selectedRows = rows.filter((r) => selected.has(r.invoice.id));
   const selectedTotalCents = selectedRows.reduce((s, r) => s + r.invoice.balance_cents, 0);
+  // A combined payment must be one real gateway charge in one currency - the
+  // backend refuses to combine invoices billed in different currencies
+  // (initiate_online_payment), so catch it here with a clear message instead
+  // of letting the parent hit that 400 after already starting checkout.
+  const selectedCurrencies = new Set(selectedRows.map((r) => r.invoice.currency));
+  const mixedCurrency = selectedCurrencies.size > 1;
+  const selectedCurrency = selectedRows[0]?.invoice.currency;
 
   // Reset the amount to the new full total whenever the selection changes -
   // but typing in the field doesn't itself change selectedTotalCents, so
@@ -844,7 +857,7 @@ function PayInvoicesModal({
   }
 
   const amountCents = Math.round((parseFloat(amount) || 0) * 100);
-  const amountValid = amountCents > 0 && amountCents <= selectedTotalCents;
+  const amountValid = amountCents > 0 && amountCents <= selectedTotalCents && !mixedCurrency;
 
   async function pay() {
     if (!amountValid || selected.size === 0) return;
@@ -900,7 +913,9 @@ function PayInvoicesModal({
                       </span>
                     </span>
                   </span>
-                  <span className="font-medium">{money(r.invoice.balance_cents, currency)}</span>
+                  <span className="font-medium">
+                    {money(r.invoice.balance_cents, r.invoice.currency)}
+                  </span>
                 </label>
               </li>
             ))}
@@ -908,8 +923,17 @@ function PayInvoicesModal({
 
           <div className="flex items-center justify-between border-t border-[var(--campus-line)] pt-3 text-sm">
             <span className="text-[var(--campus-muted)]">Selected balance</span>
-            <span className="font-semibold">{money(selectedTotalCents, currency)}</span>
+            <span className="font-semibold">
+              {mixedCurrency ? "—" : money(selectedTotalCents, selectedCurrency)}
+            </span>
           </div>
+
+          {mixedCurrency && (
+            <p className="text-xs text-red-600">
+              These invoices are billed in different currencies and can&apos;t be paid
+              together in one charge — select invoices in only one currency at a time.
+            </p>
+          )}
 
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--campus-muted)]">
@@ -941,7 +965,7 @@ function PayInvoicesModal({
             <Button disabled={!amountValid || selected.size === 0 || submitting} onClick={pay}>
               {submitting
                 ? "Starting checkout…"
-                : `Pay ${amount ? money(amountCents, currency) : ""}`}
+                : `Pay ${amount && !mixedCurrency ? money(amountCents, selectedCurrency) : ""}`}
             </Button>
           </div>
         </div>
