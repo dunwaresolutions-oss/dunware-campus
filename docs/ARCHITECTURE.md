@@ -47,7 +47,7 @@ LAN-only by default. `deploy/remote-setup-ui.ps1` (a Start-Menu window; `remote-
 
 ## App boundaries
 
-`core` (shared: `EncryptedField`, base models, permission mixins, PII log scrub) · `accounts` (User + roles + MFA) · `audit` (append-only log + middleware) · then the domain apps: `people`, `health` (encrypted, stricter), `registration`, `scheduling`, `attendance`, `lessons`, `grades`, `booking`, `communication` (email only), `billing` (placeholder), `reporting` (export / erasure / retention jobs).
+`core` (shared: `EncryptedField`, base models, permission mixins, PII log scrub) · `accounts` (User + roles + MFA) · `audit` (append-only log + middleware) · then the domain apps: `people`, `health` (encrypted, stricter), `registration`, `scheduling`, `attendance`, `lessons`, `grades`, `booking`, `communication` (email only), `billing` (manual payments + online gateways: Paystack / Flutterwave / Stripe, hosted checkout), `reporting` (export / erasure / retention jobs).
 
 ## Build & ship
 

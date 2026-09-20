@@ -147,6 +147,34 @@ lockout and the audit log attribute remote users correctly. Tunnel mode adds a
 superadmin console has a read-only **Remote access** page showing the current
 state. `/admin` is never reachable off-LAN, in any mode.
 
+## Online payments (optional)
+
+Billing works with manual payments out of the box. To let families pay online,
+use **Start Menu → "Campus — Payments Setup"** (it self-elevates): pick
+**Paystack**, **Flutterwave** or **Stripe**, choose Test or Live mode, enter the
+keys from that gateway's dashboard, click **Test connection** (it tests exactly
+what is in the form, without saving), then **Apply**. Secret keys are stored
+AES-256-GCM encrypted in the database, never in `.env`, logs or the support
+bundle. The window is a front end for `campus-app.exe manage set_gateway_config`
+and `payments_test`, which can be run from an elevated PowerShell instead.
+
+- **One currency per install**, and the gateway account must be able to charge
+  in it. A Paystack merchant account is single-currency (NGN, GHS, ZAR, KES or
+  USD, matching the country it was registered in) — a charge in any other
+  currency is rejected by Paystack, not by Campus.
+- **Flutterwave needs the classic v3 key pair** (`FLWPUBK-…` / `FLWSECK-…`), not
+  the newer v4 Client ID / Client Secret / Encryption Key that some dashboards
+  show by default.
+- **Campus never sees a card number.** Checkout is the gateway's hosted page; the
+  gateway emails the parent's receipt. A family can combine several children's
+  invoices into one charge (same guardian, same currency) and may pay part of
+  the balance.
+- **Confirmation** is checked live against the gateway when the parent returns to
+  Campus (the return page polls for a few minutes); a scheduled background
+  poller is not built yet. Refunds are manual (issue a `Credit`).
+- Kanoo (Bahamas) is not offered until CaribPay grants API access; a Bahamas
+  install records payments manually meanwhile.
+
 ## Field support
 
 Run these in the elevated shell on the box (`campus-app.exe` is at
@@ -177,7 +205,9 @@ built from, before anyone is told a fresh install is ready.
 
 ## Day 2
 
-- **Backups:** `deploy\backup.ps1` — encrypted `pg_dump` + media. Schedule it
+- **Backups:** `deploy\backup.ps1` — encrypted `pg_dump` + media + a copy of
+  `.env` (so the restored data's encryption key travels with it; restore puts
+  only that key back). Schedule it
   (Task Scheduler) and move the output off-box. Superadmin/Admin can also take
   an **on-demand** backup from the console (**Backups → Run backup now**): it
   shells out to this same script with `-Kind MANUAL`, dropping the archive in

@@ -35,11 +35,11 @@ service log and are flagged by `manage check` (`core.W001`). See
 cd frontend; npm run build; cd ..
 
 cd backend
-..\.venv\Scripts\pip install -r requirements\build.txt
+.\.venv\Scripts\pip install -r requirements\build.txt
 $env:DJANGO_SETTINGS_MODULE = "config.settings.prod"
 $env:SECRET_KEY = "<any 50+ char placeholder — only used while PyInstaller imports settings>"
 $env:FIELD_ENCRYPTION_KEY = "<any 32-byte base64 placeholder, same reason>"
-..\.venv\Scripts\pyinstaller ..\deploy\campus.spec --distpath ..\dist --workpath ..\build --noconfirm
+.\.venv\Scripts\pyinstaller ..\deploy\campus.spec --distpath ..\dist --workpath ..\build --noconfirm
 cd ..
 
 # stage deploy/_thirdparty/{pgsql,caddy}[,nssm] — see "Third-party binaries" below
@@ -48,8 +48,28 @@ cd deploy
 & "C:\...\Inno Setup 6\ISCC.exe" campus.iss
 ```
 
-Output: `dist/installer/Campus-Setup.exe` — 266 MB with the third-party
-binaries staged and bundled in, ~37 MB without. Like the `bookkeeping-tool`
+The virtualenv is `backend\.venv` (create it there; it is gitignored). Inno
+Setup 6 or 7 both work — e.g. `C:\Program Files\Inno Setup 7\ISCC.exe`; a full
+compile with everything staged takes ~7 minutes.
+
+Smoke-test the frozen app before compiling, with the **prod** settings the
+build uses (the dev settings import `django_extensions`, which is deliberately
+not bundled, so they fail on the frozen exe):
+
+```powershell
+$env:DJANGO_SETTINGS_MODULE = "config.settings.prod"
+$env:SECRET_KEY = "<placeholder>"; $env:FIELD_ENCRYPTION_KEY = "<placeholder>"
+.\dist\campus-app\campus-app.exe manage check     # expect: no issues
+```
+
+The two companion windows (**Campus — Remote Access Setup**, **Campus —
+Payments Setup**) are not separate installers: `campus.iss` copies
+`remote-setup-ui.ps1` / `campus-payments-setup-ui.ps1` into `{app}\scripts` and
+adds their Start Menu shortcuts, so one `iscc` run keeps them current.
+
+Output: `dist/installer/Campus-Setup.exe` — ~294 MB with the third-party
+binaries staged and bundled in (266 MB when this was first written, before
+GnuPG and the GTK3 runtime were added), ~37 MB without. Like the `bookkeeping-tool`
 installer, this is never committed — it's a build artifact / GitHub Release
 asset (`dist/`, `build/`, `deploy/_thirdparty/` are all in `.gitignore`).
 

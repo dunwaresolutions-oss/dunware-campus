@@ -27,7 +27,7 @@ Eleven staff-console modules plus a restricted parent/student portal, all on one
 | **Grades** | assessment schemes (marks / rubric / narrative / mixed), results, and a report-card editor — entries, preview, generate, release |
 | **Booking** | tutoring & extra-curricular offerings, availability windows, capacity slots with a waitlist, ICS export |
 | **Messages** | announcements, staff↔parent threads, structured incident reports with guardian acknowledgement — email only |
-| **Billing** | **placeholder** — invoices, a fee ledger, and a manual "mark paid" workflow; no card processing |
+| **Billing** | invoices in the school's currency, a fee ledger, a manual "mark paid" workflow, and optional online payment through the school's own Paystack, Flutterwave or Stripe account (hosted checkout — Campus never handles card data); parents can pay several children's invoices in one charge |
 | **Staff** | invite-based onboarding, a directory, and group assignments that drive instructor scoping |
 
 Security and privacy are part of the data model, not a later pass: mandatory TOTP MFA for staff, `django-axes` lockout, Argon2, object-level permissions on every endpoint, field-level AES-256-GCM encryption at rest, an append-only read-and-write audit log, a break-glass admin behind an IP allow-list, retention / erasure / data-subject-export jobs, and an operator checklist mapping the controls to PIPEDA, Ontario CCEYA, FIPPA, PHIPA (Canada) and FERPA, COPPA, and US state law. `manage.py check --deploy` passes clean; the backend test suite runs behind `ruff`, `bandit`, and `pip-audit`.
@@ -57,7 +57,7 @@ backend/          Django 5.2 + DRF
     grades/       assessment schemes, marks / rubrics / narratives, report cards
     booking/      tutor & extra-curricular offerings, availability, slots, waitlist
     communication/ announcements, threads, incident reports  (email only, no SMS)
-    billing/      PLACEHOLDER — invoices, fee items, manual payment, gateway stub
+    billing/      invoices, fee items, manual payment, online gateways (Paystack / Flutterwave / Stripe)
     reporting/    exports, data-subject access / erasure, retention jobs
   requirements/   base.txt  dev.txt  prod.txt
 frontend/         Next.js 15 (App Router, TS, Tailwind) — output: 'export'

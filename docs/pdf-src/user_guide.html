@@ -1,0 +1,411 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: Letter; margin: 1.9cm 2cm 2.1cm 2cm;
+    @bottom-center { content: "Campus — Overview & User Guide   ·   page " counter(page) " of " counter(pages); font-size: 8.5px; color: #8a8f98; } }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.3px; color: #23262b; line-height: 1.5; }
+  h1 { font-size: 25px; color: #0f3d3e; margin: 0 0 4px; }
+  h2 { font-size: 16px; color: #0f3d3e; border-bottom: 2px solid #16706b; padding-bottom: 4px; margin: 22px 0 9px; page-break-after: avoid; }
+  h3 { font-size: 12.5px; color: #16706b; margin: 16px 0 6px; page-break-after: avoid; }
+  h4 { font-size: 10.8px; color: #3a3f47; margin: 12px 0 4px; page-break-after: avoid; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0 10px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .cover { text-align: center; padding-top: 26%; }
+  .cover .kicker { letter-spacing: 3px; text-transform: uppercase; color: #16706b; font-size: 11px; font-weight: 600; }
+  .cover h1 { font-size: 38px; margin-top: 10px; }
+  .cover .sub { font-size: 13px; color: #565c66; margin-top: 8px; }
+  .cover .meta { margin-top: 60px; font-size: 9.5px; color: #8a8f98; }
+  .pagebreak { page-break-before: always; }
+  .note { background: #eef7f5; border-left: 3px solid #16706b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .warn { background: #fdf3e7; border-left: 3px solid #c9821e; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  code, .code { font-family: Consolas, "Courier New", monospace; background: #f1f3f5; padding: 1px 5px; border-radius: 3px; font-size: 9.6px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.8px; }
+  th, td { border: 1px solid #d7dbe0; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef7f5; color: #0f3d3e; }
+  .toc a { display: flex; justify-content: space-between; color: inherit; text-decoration: none; border-bottom: 1px dotted #c7cbd1; padding: 4px 0; font-size: 10.5px; }
+  .toc a::after { content: target-counter(attr(href), page); }
+  .role-tag { display: inline-block; background: #e6eef0; color: #16706b; border-radius: 3px; padding: 1px 6px; font-size: 8.5px; font-weight: 600; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">Campus School Management</div>
+  <h1>Overview &amp; User Guide</h1>
+  <div class="sub">For front office, teachers, and school leadership — with a section for<br>the parent / student portal at the end.</div>
+  <div class="meta">Describes Campus 0.9.0 as built on 19 September 2026, including online payments,<br>staff chat, universal search and the role-based dashboard. Revised September&nbsp;2026.</div>
+</div>
+
+<div class="pagebreak"></div>
+<h2>Contents</h2>
+<div class="toc">
+<a href="#s1">1. What Campus is, and who uses it</a>
+<a href="#s2">2. Signing in &amp; the console layout</a>
+<a href="#s3">3. Dashboard</a>
+<a href="#s4">4. Students</a>
+<a href="#s5">5. Scheduling</a>
+<a href="#s6">6. Attendance</a>
+<a href="#s7">7. Lessons</a>
+<a href="#s8">8. Grades &amp; report cards</a>
+<a href="#s9">9. IEPs</a>
+<a href="#s10">10. Messages, announcements, incidents &amp; staff chat</a>
+<a href="#s11">11. Billing &amp; online payments</a>
+<a href="#s12">12. Booking</a>
+<a href="#s13">13. Registration</a>
+<a href="#s14">14. Staff</a>
+<a href="#s15">15. School settings, backups, remote access &amp; the audit log</a>
+<a href="#s16">16. The parent / student portal</a>
+<a href="#s17">17. Getting help</a>
+</div>
+
+<div class="pagebreak"></div>
+<h2 id="s1">1. What Campus is, and who uses it</h2>
+<p>Campus is a single-school management system that runs entirely on your own
+server — enrolment, scheduling, attendance, grades and report cards,
+billing, communication, and a parent/student portal, all in one place, with
+nothing sent to a third-party cloud. Everything below describes the
+<b>staff console</b>; the last section covers the <b>parent/student portal</b>
+your families use.</p>
+<p>Every person who logs in has one role, and the console only shows the
+sections that role is allowed to use:</p>
+<table>
+<tr><th>Role</th><th>Typically</th><th>Sees</th></tr>
+<tr><td><span class="role-tag">Superadmin</span></td><td>School director, whoever owns the system</td><td>Every section, including Remote access</td></tr>
+<tr><td><span class="role-tag">Admin</span></td><td>School director, office manager</td><td>Every section except Remote access</td></tr>
+<tr><td><span class="role-tag">Front desk</span></td><td>Registrar, office staff</td><td>Office work across the whole school: Students, Registration, Scheduling, Attendance, Grades, Booking, Messages, Billing</td></tr>
+<tr><td><span class="role-tag">Teacher / Tutor</span></td><td>Classroom &amp; activity staff</td><td>Students, Scheduling, Attendance, Lessons, Grades, IEPs, Booking, Messages — only for the groups they're assigned to teach</td></tr>
+<tr><td><span class="role-tag">Parent / Guardian</span></td><td>Families</td><td>The portal only — their own linked children</td></tr>
+<tr><td><span class="role-tag">Student</span></td><td>Older students, where enabled</td><td>The portal only — their own record</td></tr>
+</table>
+
+<h2 id="s2">2. Signing in &amp; the console layout</h2>
+<p>Open Campus in a browser (your office will have given you the address —
+typically <code>https://&lt;server-name&gt;/</code>). Staff accounts require a
+one-time code from an authenticator app (TOTP) in addition to a password;
+the first login walks you through setting that up. If you open a link to a
+specific page while signed out, Campus takes you there once you've signed in.</p>
+<p>The left-hand navigation lists the sections your role can use, in this
+order: <b>Dashboard, Students, Registration, Scheduling, Attendance,
+Lessons, Grades, IEPs, Booking, Messages, Billing, Staff, Audit log,
+Backups, School settings, Remote access.</b> <b>Billing</b> disappears
+entirely if your school doesn't collect fees through Campus.</p>
+<h3>Search, and the chat bell</h3>
+<ul>
+<li><b>Search everything</b> — press <b>Ctrl K</b> (or <b>⌘ K</b> on a Mac)
+anywhere in the console to search students, guardians, staff, groups, report
+cards and applications at once. A full name like "Jane Smith" works, not just
+a first or last name. Pick a result to jump straight to it.</li>
+<li><b>Staff chat</b> — the bell in the left sidebar opens direct messages
+between any two staff accounts (see section 10).</li>
+</ul>
+<h3>Working with lists and records</h3>
+<p>Clicking a row in almost any list opens a <b>read-only view</b> of that
+record — its fields, and for records that have them, their lines, documents or
+history. Use the <b>Edit</b> button (in the row, or inside the view) when you
+want to change it. Most lists have a search box that understands full names, and
+filters for status, group or date where they help.</p>
+
+<h2 id="s3">3. Dashboard</h2>
+<p>The landing page: a snapshot of the school right now, built from what your
+role is allowed to see — the header line tells you the scope. A teacher's
+dashboard reflects only their own groups; office staff see the whole school; an
+administrator also sees system health. Sections you may see:</p>
+<ul>
+<li><b>Attendance</b> — attendance rate over the recent window, absences,
+lates, chronic absentees, and students not yet marked today.</li>
+<li><b>Academics</b> — how much has been graded and released, average marks,
+and report-card progress (draft, finalized, released).</li>
+<li><b>Wellbeing</b> — recent incidents by severity and category, and how many
+are still open.</li>
+<li><b>Enrolment</b> — students by status and, for office staff, capacity,
+waitlist and the application funnel.</li>
+<li><b>Billing</b> (office and administrators) — invoiced, collected and
+outstanding amounts, and overdue invoices.</li>
+<li><b>Consent, booking &amp; messages</b> (office and administrators) — consent
+coverage, booking capacity and open message threads.</li>
+<li><b>Staffing &amp; system</b> (administrators) — security events in the last
+24 hours, staff by role, MFA coverage, and the state of your backups.</li>
+</ul>
+<p>Today's sessions and open incidents are listed underneath. Clicking a
+section heading takes you to the matching list rather than just refreshing the
+number.</p>
+
+<h2 id="s4">4. Students</h2>
+<p>The child record is the spine of Campus. Open a student to see tabs for
+their profile, guardians, emergency contacts and authorized pickups,
+observations, health information, documents, timetable, classes,
+attendance, and (where applicable) IEP and billing.</p>
+
+<h3>Profile</h3>
+<p>Name, date of birth, grade/stage, primary group (homeroom), and — where a
+government ID is on file — both the ID itself (encrypted at rest) and its
+<b>type</b> (national ID, passport, birth certificate, social insurance /
+security number, voter ID, or other), picked from a dropdown rather than
+typed freehand.</p>
+
+<h3>Guardians</h3>
+<p>Search guardians by name, email or phone from the student's Guardians tab
+or the school-wide guardian search. Each guardian link records the
+relationship, custody notes, whether they can pick the child up, and
+whether they receive communications. From here you can also manage a
+guardian's <b>portal login</b> — reset their password or delete their login
+entirely (for example, after a custody change) — without touching the
+guardian record itself.</p>
+
+<h3>Consents</h3>
+<p>Request a consent decision (photo, media, field trip, data sharing,
+medical treatment, technology use, sunscreen) directly from the student —
+it emails the guardian a prompt and the decision is recorded, versioned, the
+moment they respond on the portal.</p>
+
+<h3>Timetable</h3>
+<div class="note">This is the student's own, real, class-by-class day — not
+a single all-day "homeroom" block. It shows exactly the periods they're
+actually in: their homeroom's compulsory subjects, plus every course-of-study
+section they're enrolled in for older grades, each in its own time slot, never
+overlapping. Use this tab (not the Scheduling section) whenever you need to
+know what a specific student is doing at a given time.</div>
+<p>Switch between month, week and day views. Week is the default. Click any
+class for its time, room, and status.</p>
+
+<h3>Classes</h3>
+<p>Every group this student belongs to — homeroom and every course-of-study
+section — not just their homeroom, along with any after-school
+booking they hold.</p>
+
+<h3>Attendance</h3>
+<p>A running total (present / late / absent / excused) plus the full history,
+filterable by date range and status — not just the most recent handful of
+records.</p>
+
+<h2 id="s5">5. Scheduling</h2>
+<div class="warn"><b>The Scheduling section's calendar is not a
+timetable.</b> With hundreds of students across dozens of groups, listing
+every class period on one whole-school calendar would be unreadable, and
+that isn't what this view is for. It shows only <b>whole-school
+exceptions</b> — closures (no school) and early dismissals (school runs,
+just shorter) — shaded amber and sky-blue respectively. Click either for its
+full reason, date range and scope, with a shortcut into the matching tab to
+edit it. For a specific student's actual class-by-class day, use their
+<b>Timetable</b> tab under Students instead.</div>
+<p>The other tabs here are where the timetable itself comes from:</p>
+<ul>
+<li><b>Sessions</b> — every dated meeting of a group, generated from a
+template. Open one for its roster (who was actually enrolled that day) and
+to cancel a single meeting.</li>
+<li><b>Templates</b> — the recurring pattern (group, weekday, time, room,
+term) that Sessions are generated from. Press <b>Generate</b> with a date
+range to expand a template into dated sessions; safe to re-run.</li>
+<li><b>Closures</b> — a day or span with no sessions, site-wide or for one
+group.</li>
+<li><b>Early dismissals</b> — a shorter day; <b>Notify guardians</b> sends a
+one-click email to the affected families.</li>
+<li><b>Terms</b> and <b>Academic years</b> — the calendar's own top-level
+structure; mark exactly one year current.</li>
+<li><b>Rooms</b> — the physical spaces templates and bookings point at.</li>
+</ul>
+
+<h2 id="s6">6. Attendance</h2>
+<p>Pick a group and date to check students in and out. Check-out is only
+permitted to an authorized pickup for that child or a guardian cleared for
+pickup — anyone else is refused, on purpose. Search by student name and
+filter by status to find a specific record quickly rather than scrolling a
+whole day's roster.</p>
+
+<h2 id="s7">7. Lessons</h2>
+<p>Curriculum units group a term's learning into blocks; lesson plans are
+the individual sessions inside them, draft through published, each with its
+own objectives, plan and linked resources. Open a plan or a unit to read it
+in full and edit it in a roomy view; both lists can be filtered by group,
+unit, status and term. A resource (a reading list, a permission-slip
+template) can be attached to a whole group without belonging to one dated
+lesson.</p>
+
+<h2 id="s8">8. Grades &amp; report cards</h2>
+<p>Assessment schemes (marks, rubric, narrative, or a mix), assessments,
+per-student results, and report cards, searchable by student name and
+subject rather than hunting through a flat list.</p>
+
+<h3>Report card grading</h3>
+<p>A dedicated tab lets front office define and activate a <b>grading
+scheme</b> for report cards — the letter/level bands a mark falls into, and
+whether the school uses a GPA. Four ready-made presets ship with Campus
+(Bahamas 4.0 GPA, Ontario elementary 4-level, South Africa NCS 7-point,
+Botswana letter bands); pick one, adjust it, or build your own. Only one
+scheme is active at a time.</p>
+<p>When a scheme uses a GPA, every generated report card shows each subject's
+grade letter/level <i>and</i> the student's cumulative GPA for the term.
+When it doesn't, the card just shows the appropriate grade labels — no GPA
+line is fabricated where the school's own system doesn't use one. Whichever
+scheme was active <i>at generation time</i> is locked to that card
+permanently, so changing the school's grading policy later never silently
+rewrites a report card that already went home.</p>
+<p>Report cards open in a review view first: you can adjust the summary and
+each subject's entries, <b>Preview</b> the finished card at any stage, then
+<b>Generate</b>, and finally <b>Release</b> it to families. A released card
+can't be regenerated, and a card must be finalized before it can be
+released. Cards carry your school's letterhead and the principal's
+signature (section 15).</p>
+
+<h2 id="s9">9. IEPs</h2>
+<p>Individual Education Plans — goals, accommodations, services and review
+history for a student, searchable by name. Content is encrypted at rest and
+every read is logged. Any teacher of the student can read and update the plan;
+a formatted document with your letterhead can be generated from it. Guardians
+see their child's active plan on the portal.</p>
+
+<h2 id="s10">10. Messages, announcements, incidents &amp; staff chat</h2>
+<p>Announcements go to all staff, all parents, one group, or the whole
+site. Message threads are a private staff↔parent conversation,
+participant-scoped. Incident reports move draft → sent → acknowledged, with
+a per-guardian acknowledgement the portal tracks automatically; use the
+search box to filter incidents by student rather than paging through
+everything. Email templates support merge fields (student/guardian name,
+etc.) chosen from a palette that only offers the fields that make sense for
+that kind of message; every send is logged (subject and recipients — never the
+message body).</p>
+<h3>Staff chat</h3>
+<p>The bell in the left sidebar is a private chat between staff accounts:
+direct messages between any two staff members, and — for front office and
+administrators — broadcasts to all teachers, all tutors or all staff. The
+bell shows unread messages and the conversation refreshes every few seconds;
+you can delete a message you sent. Parents and students can never see or reach
+staff chat.</p>
+
+<h2 id="s11">11. Billing &amp; online payments</h2>
+<p>Per-family invoices built from your fee schedules. Every invoice carries a
+real, human-readable <b>invoice number</b> (<code>INV-000123</code>-style) and
+shows amounts in the school's currency. Payments show the student's name, and
+search works across invoices, payments, and families. Click an invoice for its
+lines, its payments and its running balance. If your school doesn't collect
+fees through Campus, the Billing section is hidden altogether.</p>
+<p>A payment reaches an invoice in one of three ways:</p>
+<ul>
+<li><b>Record it yourself</b> — <b>Mark paid</b> on an invoice records a payment
+you took outside Campus: cash, cheque, e-transfer, card (terminal) or other,
+with a reference. This is always available.</li>
+<li><b>The family pays online from the portal</b> — see section 16. Nothing for
+staff to do; the payment appears on the invoice on its own.</li>
+<li><b>You send a payment link</b> — for a family without a portal login, use
+<b>Payment link</b> on an invoice (front office, administrators and
+superadmin). Campus generates a link to the payment provider's secure checkout
+page for that invoice's full balance; copy it and send it to the family.</li>
+</ul>
+<div class="note"><b>How online payments work.</b> Your school connects its own
+Stripe, Paystack or Flutterwave merchant account (an administrator does this
+once, on the server — see the Technical &amp; Troubleshooting Guide). Families
+pay on the provider's own hosted page, so <b>Campus never sees or stores a
+card number</b>, and the money goes straight to your school's account. The
+provider emails the family their receipt. When the family returns to Campus,
+Campus checks with the provider that the payment really went through and, only
+if the amount and currency match, records it. An online payment shows the
+provider and its reference in the Payments list instead of a cash/cheque
+method. Where no supported provider serves your country, use <b>Mark
+paid</b>.</div>
+<p><b>Currency.</b> A Campus install bills in one currency, set under <b>School
+settings → Region &amp; fees</b>; every amount is shown with it. Once invoices
+exist the currency is locked, and changing it after that is a deliberate step
+for technical staff. <b>Refunds</b> are
+handled manually: record a <b>Credit</b> in Campus and return the money through
+your payment provider's own account.</p>
+
+<h2 id="s12">12. Booking</h2>
+<p>Tutoring and extra-curricular offerings, their recurring availability,
+the dated capacity-limited slots that availability expands into, and
+bookings — confirmed while seats last, then waitlisted in order with
+automatic promotion when a seat frees up. Search by student name to find
+their bookings directly.</p>
+
+<h2 id="s13">13. Registration</h2>
+<p>An enquiry becomes an application, an application becomes an offer (or a
+waitlist place), and an accepted offer converts into a real student record
+with an enrolment. Open an application to see the applicant, uploaded
+documents, offers and the whole lifecycle in one place. Consent decisions along
+the way are versioned, never overwritten. Note that the registration waitlist is
+a manual list — it does not offer places automatically; the booking waitlist,
+by contrast, does promote automatically (section 12).</p>
+
+<h2 id="s14">14. Staff</h2>
+<p>Invite colleagues, browse the directory, and assign teachers/assistants
+to the groups that control what they can see elsewhere in Campus. Beyond
+simply active/inactive, each staff member carries a <b>status</b> — active,
+sick leave, on leave, sedentary duty, transferred, suspended, or terminated
+— so the directory can say <i>why</i> someone isn't in class without
+disabling their account. The directory can be searched and filtered by role.</p>
+
+<h2 id="s15">15. School settings, backups, remote access &amp; the audit log</h2>
+<p><b>School settings</b> (administrators) — your school's name, address,
+contact details, logo, and the principal's name, title and signature. These
+appear on generated report cards, IEP documents and the Campus header. A
+superadmin designates who the principal is, and only that person (or a
+superadmin) can upload or replace the signature that appears on every report
+card.</p>
+<p><b>Region &amp; fees</b> (administrators, on the same page) — the school's
+country, currency and locale, and a switch for whether the school collects
+tuition or fees through Campus at all. Turning it off hides the whole Billing
+area, in the console and the portal. The currency can't be changed here once
+invoices exist.</p>
+<p><b>Backups</b> (administrators) — a health summary and every backup and
+restore-verification run, with success or failure and the last error. <b>Run
+backup now</b> starts an on-demand backup; you enter the backup passphrase for
+that run and Campus never stores it. <b>Backups are not scheduled
+automatically</b> — ask whoever looks after your server to set up a recurring
+backup (the Technical &amp; Troubleshooting Guide explains how), and to move
+copies off the machine. The summary turns amber when your newest successful
+backup is more than two days old or the latest run failed.</p>
+<p><b>Remote access</b> (superadmin) — read-only status of off-premises access;
+it is switched on or off from the server itself, not the console.</p>
+<p><b>Audit log</b> (administrators) — every create, update and delete, and
+every read of a sensitive record. Append-only; nothing here can be edited or
+removed from the app.</p>
+
+<h2 id="s16">16. The parent / student portal</h2>
+<p>Families sign in with the same login system, but see a different,
+simplified view: no staff navigation, only their own children.</p>
+<ul>
+<li><b>Who you're viewing</b> — every page shows a persistent line naming
+the child whose data is on screen, with their student number. Families with
+more than one child at the school get a switcher (an avatar chip per child)
+above that.</li>
+<li><b>Upcoming schedule</b> — a real, interactive calendar, defaulting to a
+week view, with day and month views available — not a static list. It shows
+exactly the same class-by-class day the console's Timetable tab does for
+that child, and nothing about any other family's schedule.</li>
+<li><b>Attendance</b> — a 14-day colour-coded strip plus recent detail.</li>
+<li><b>Report cards</b> — released cards only, opened right in the browser.</li>
+<li><b>Billing</b> — each invoice's status, total, balance and due date, in the
+invoice's own currency, plus a <b>Pay</b> button when something is owing (see
+below). Never any card or payment-method detail.</li>
+<li><b>Messages</b> — the same private threads staff use, read and reply
+from the portal.</li>
+<li><b>Announcements, consents, incident reports, IEP summary, after-school
+bookings</b> — all visible where they apply to that child.</li>
+<li><b>Requesting a change</b> — a guardian can propose an update to their
+own email, phone, address, or a per-child communication/custody flag; staff
+approve or reject it. Guardians never edit their own record directly.</li>
+</ul>
+<h3>Paying online</h3>
+<p>Press <b>Pay</b> on a child's billing card. The window lists every unpaid
+invoice you are the billing guardian for — across all of your children — with
+the child you clicked from already ticked. Tick the invoices to pay together
+(they must be in the same currency; if not, the window says so and asks you to
+choose one currency at a time), and change the amount if you want to pay only
+part of the balance. Campus then sends you to the payment provider's secure
+page. After you pay you land back in Campus, which confirms the payment with
+the provider for up to a couple of minutes and shows the result: paid,
+failed, or — if the amount didn't match — a message to contact the school
+office and <b>not</b> pay again. The provider emails your receipt. If your
+school hasn't set up online payments yet, Campus shows a message saying it
+isn't available and you pay at the office instead.</p>
+
+<h2 id="s17">17. Getting help</h2>
+<p>For anything install-, configuration-, or troubleshooting-related, see
+the companion <i>Campus — Technical &amp; Troubleshooting Guide</i>. For a
+question about a specific record or workflow, your school's own Campus
+administrator (front office/admin role) is the first point of contact.</p>
+
+</body>
+</html>

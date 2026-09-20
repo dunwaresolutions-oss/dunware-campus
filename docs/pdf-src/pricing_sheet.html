@@ -1,0 +1,90 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: Letter; margin: 1.7cm 2.2cm 1.9cm 2.2cm;
+    @bottom-center { content: "Dunware Solutions · Campus School Management"; font-size: 8.5px; color: #8a8f98; } }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.4px; color: #23262b; line-height: 1.48; }
+  .kicker { letter-spacing: 3px; text-transform: uppercase; color: #16706b; font-size: 11px; font-weight: 600; }
+  h1 { font-size: 28px; color: #0f3d3e; margin: 3px 0 2px; }
+  .tag { font-size: 12.5px; color: #565c66; margin-bottom: 14px; }
+  .hero { background: #0f3d3e; color: #fff; border-radius: 10px; padding: 16px 22px; margin: 8px 0 16px; }
+  .hero .line1 { font-size: 17px; font-weight: 700; }
+  .hero .line2 { font-size: 10.2px; color: #cfe8e4; margin-top: 5px; line-height: 1.5; }
+  h2 { font-size: 13.5px; color: #0f3d3e; border-bottom: 2px solid #16706b; padding-bottom: 3px; margin: 16px 0 7px; page-break-after: avoid; }
+  .base-price { font-size: 15px; font-weight: 700; color: #16706b; }
+  p { margin: 5px 0; }
+  table { border-collapse: collapse; width: 100%; margin: 5px 0 3px; font-size: 10.1px; }
+  th, td { border: 1px solid #d7dbe0; padding: 5px 10px; text-align: left; vertical-align: top; }
+  th { background: #eef7f5; color: #0f3d3e; width: 78%; }
+  td.price { text-align: right; font-weight: 600; white-space: nowrap; }
+  .fineprint { font-size: 9.2px; color: #6a7079; margin: 5px 0 3px; font-style: italic; }
+  .support-box { background: #f6f8f9; border: 1px solid #d7dbe0; border-radius: 8px; padding: 11px 16px; margin-top: 5px; }
+  .support-box .amt { font-size: 16px; font-weight: 700; color: #16706b; }
+  .footer-note { margin-top: 16px; padding-top: 9px; border-top: 1px solid #d7dbe0; font-size: 9.4px; color: #6a7079; text-align: center; }
+</style>
+</head>
+<body>
+
+<div class="kicker">Dunware Solutions</div>
+<h1>Campus — Pricing</h1>
+<div class="tag">School management software, running entirely on your own server.</div>
+
+<div class="hero">
+  <div class="line1">One license. No per-student fees. Ever.</div>
+  <div class="line2">That's not a starting price — it's the whole model. Most school-management
+  software charges more every time your enrollment grows. Campus doesn't: the price
+  is for the software, not for how many students or staff use it.</div>
+</div>
+
+<h2>Base package — <span class="base-price">$1,450</span></h2>
+<p>Everything Campus does — registration, scheduling, attendance, grades &amp;
+report cards (with GPA / grading schemes), billing with optional online payments,
+communications, booking, IEPs, and the parent/student portal — installed on one
+server. No networking beyond that machine. Includes install support and 30 days of
+post-install support. <b>No student or user limit, now or ever.</b></p>
+<p class="fineprint">Online payments run through your school's own Stripe, Paystack or Flutterwave
+merchant account: parents pay on the gateway's hosted page, the money goes straight to
+your account, and Campus never sees or stores card details. The gateway's own
+transaction fees are charged by the gateway. Where no supported gateway serves your
+country, payments are recorded manually.</p>
+
+<h2>Networking</h2>
+<table>
+<tr><th>LAN access for multiple devices (front desk + classroom machines on the same network)</th><td class="price">+$250</td></tr>
+<tr><th>Remote access — Cloudflare Tunnel, WireGuard VPN, or your own domain (plain gateway)</th><td class="price">+$500</td></tr>
+</table>
+<p class="fineprint">Your data is never stored anywhere but your own server, in every mode —
+turning remote access on only changes how a connection is routed to reach it, never
+where anything lives. The three remote options differ solely in how much a third
+party can see a connection while it's in transit; pick based on your own privacy
+comfort, not price — all three cost the same.</p>
+
+<h2>One-time services</h2>
+<table>
+<tr><th>Data migration from an existing system</th><td class="price">from $350</td></tr>
+<tr><th>Staff training (on-site or live remote)</th><td class="price">$150/hr · $600/half-day</td></tr>
+<tr><th>Custom branding (beyond your logo &amp; name)</th><td class="price">+$300</td></tr>
+<tr><th>Off-box backup destination setup (network share / cloud relay)</th><td class="price">+$150</td></tr>
+<tr><th>Priority / same-day install</th><td class="price">+$200</td></tr>
+</table>
+
+<h2>Multi-site</h2>
+<p>Campus is single-tenant by design — each school gets its own install, its
+own database, its own server. Purchasing more than one at the same time:
+<b>40% off base</b> for the 2nd and every install after it.</p>
+
+<h2>Ongoing support <span style="font-weight:400; color:#6a7079; font-size:10px;">(optional)</span></h2>
+<div class="support-box">
+<span class="amt">18% / year</span> of total license cost — every installer update that ships with a
+fix, security patches, and email/phone support. Without a plan: ad-hoc support billed at <b>$95/hr</b>.
+</div>
+
+<div class="footer-note">
+Prices reflect a single-school deployment as of September 2026 and are a starting
+point for discussion — contact Dunware Solutions for a quote tailored to your school.
+</div>
+
+</body>
+</html>

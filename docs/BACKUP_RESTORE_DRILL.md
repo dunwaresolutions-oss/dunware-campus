@@ -7,15 +7,27 @@ against this build.
 
 ## What the scripts do
 
-`deploy/backup.ps1` — `pg_dump` (custom format) + the `media/` directory,
-packed into one zip, then GPG symmetric-encrypted with the operator's
-passphrase (`AES256`, `gpg --symmetric`). The plaintext zip is deleted the
-moment encryption succeeds; nothing readable is ever left on disk. Old
-encrypted backups past `-RetentionDays` (default 30) are pruned.
+`deploy/backup.ps1` — `pg_dump` (custom format) + the `media/` directory +
+a copy of `app\.env` (stored in the archive as `env.backup`), packed into one
+zip, then GPG symmetric-encrypted with the operator's passphrase (`AES256`,
+`gpg --symmetric`). The plaintext zip is deleted the moment encryption
+succeeds — and also if encryption fails, along with any half-written `.gpg`;
+nothing readable is ever left on disk. Old encrypted backups past
+`-RetentionDays` (default 30) are pruned.
+
+`env.backup` is there because every encrypted database field and stored
+document is keyed by `FIELD_ENCRYPTION_KEY`, and a fresh install generates a
+different key: without it, a restore onto new hardware leaves those fields
+unreadable. Archives made before `env.backup` was added carry no key.
 
 `deploy/restore.ps1` — decrypts, expands, stops the `Campus App` service,
+copies **only the `FIELD_ENCRYPTION_KEY` line** from `env.backup` into the
+target `app\.env` (never the whole file — a fresh install has its own
+`DATABASE_URL` and Postgres password, which must not be overwritten),
 `pg_restore --clean --if-exists`, restores `media/`, runs `manage.py migrate`
-(covers a backup taken before a schema change), restarts the service.
+(covers a backup taken before a schema change), restarts the service. For an
+archive with no `env.backup` it warns that the install's current key must
+already be the original one.
 
 Both resolve `pg_dump`/`pg_restore` from the bundled portable PostgreSQL
 (`%ProgramData%\Campus\pgsql\bin`) and fall back to `PATH`. `gpg` is resolved

@@ -1,0 +1,520 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: Letter; margin: 2.1cm 2cm 2.3cm 2cm;
+    @bottom-center { content: "Campus — Technical & Troubleshooting Guide   ·   page " counter(page) " of " counter(pages); font-size: 8.5px; color: #8a8f98; } }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.3px; color: #23262b; line-height: 1.5; }
+  h1 { font-size: 25px; color: #1c2a52; margin: 0 0 4px; }
+  h2 { font-size: 16px; color: #1c2a52; border-bottom: 2px solid #2f4a9c; padding-bottom: 4px; margin: 26px 0 10px; page-break-after: avoid; }
+  h2.part { font-size: 12px; color: #565c66; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: none; margin: 30px 0 -8px; }
+  h3 { font-size: 12.5px; color: #2f4a9c; margin: 16px 0 6px; page-break-after: avoid; }
+  h4 { font-size: 10.8px; color: #3a3f47; margin: 12px 0 4px; page-break-after: avoid; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0 10px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .cover { text-align: center; padding-top: 24%; }
+  .cover .kicker { letter-spacing: 3px; text-transform: uppercase; color: #2f4a9c; font-size: 11px; font-weight: 600; }
+  .cover h1 { font-size: 36px; margin-top: 10px; }
+  .cover .sub { font-size: 13px; color: #565c66; margin-top: 8px; }
+  .cover .meta { margin-top: 60px; font-size: 9.5px; color: #8a8f98; }
+  .pagebreak { page-break-before: always; }
+  .note { background: #eef2fb; border-left: 3px solid #2f4a9c; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .warn { background: #fdf3e7; border-left: 3px solid #c9821e; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .rule { background: #fdeceb; border-left: 3px solid #c0392b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .muted { color: #6a7079; }
+  code, .code { font-family: Consolas, "Courier New", monospace; background: #f1f3f5; padding: 1px 5px; border-radius: 3px; font-size: 9.6px; }
+  pre { font-family: Consolas, "Courier New", monospace; background: #1c2230; color: #dce3f0; padding: 9px 11px; border-radius: 5px; font-size: 9.2px; margin: 8px 0; white-space: pre-wrap; word-break: break-word; }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.6px; }
+  th, td { border: 1px solid #d7dbe0; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef2fb; color: #1c2a52; }
+  .toc a { display: flex; justify-content: space-between; color: inherit; text-decoration: none; border-bottom: 1px dotted #c7cbd1; padding: 3px 0; font-size: 10.2px; }
+  .toc a::after { content: target-counter(attr(href), page); }
+  .issue { border: 1px solid #d7dbe0; border-radius: 6px; margin: 12px 0; }
+  .issue .hd { background: #fdeceb; color: #a02a1f; font-weight: 700; padding: 6px 10px; font-size: 10.6px; page-break-after: avoid; }
+  .issue .lbl { page-break-after: avoid; }
+  .issue .bd { padding: 2px 12px 8px; }
+  .issue .lbl { font-weight: 700; font-size: 8.8px; text-transform: uppercase; letter-spacing: .4px; color: #6a7079; margin: 9px 0 0; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">Campus School Management</div>
+  <h1>Technical &amp; Troubleshooting Guide</h1>
+  <div class="sub">For the person who builds, installs, updates and supports the box — and for an<br>organization's own technical staff running Campus independently.<br>On-prem, Windows, self-contained.</div>
+  <div class="meta">Companion to <i>Campus — Overview &amp; User Guide</i>. Full technical detail lives in <code>docs/</code> inside the repo;<br>this is the field-facing guide. Describes Campus 0.9.0 as built on 19 September&nbsp;2026.</div>
+</div>
+
+<div class="pagebreak"></div>
+<h2>Contents</h2>
+<div class="toc">
+<a href="#s1">1. Architecture, in one page</a>
+<a href="#s2">2. Installing fresh</a>
+<a href="#s3">3. Updating a live install</a>
+<a href="#s4">4. Building from source</a>
+<a href="#s5">5. Staging third-party dependencies</a>
+<a href="#s6">6. Repairing &amp; uninstalling</a>
+<a href="#s7">7. Online payments — connecting a gateway</a>
+<a href="#s8">8. Backups &amp; restore — how the tooling works</a>
+<a href="#s9">9. Field-support tools</a>
+<a href="#s10">10. The hotfix overlay — and its one hard rule</a>
+<a href="#s11">11. Changing the address from localhost</a>
+<a href="#s12">12. Data model, security &amp; privacy — the short version</a>
+<a href="#s13">13. How the calendars and grading schemes work</a>
+<a href="#s14">14. Known issues — root cause and fix</a>
+<a href="#s15">15. General diagnostics playbook</a>
+<a href="#s16">16. System requirements &amp; sizing</a>
+<a href="#s17">17. Version tracking &amp; the update lifecycle</a>
+<a href="#s18">18. Backup schedule, retention &amp; disaster recovery</a>
+<a href="#s19">19. Security &amp; compliance — what becomes your responsibility</a>
+<a href="#s20">20. Extending or customizing the codebase safely</a>
+<a href="#s21">21. Data ownership, export &amp; portability</a>
+<a href="#s22">22. What's covered vs. what's now yours</a>
+<a href="#s23">23. Where to look next</a>
+</div>
+<p class="muted" style="margin-top:14px">Sections 1–15 apply to every install, whoever operates it. Sections 16–22
+are for an organization that has bought Campus outright and will run, update and back it up itself.</p>
+
+<div class="pagebreak"></div>
+<h2 class="part">Part I · Build, install, and fix</h2>
+<h2 id="s1">1. Architecture, in one page</h2>
+<table>
+<tr><th>Layer</th><th>What it is</th></tr>
+<tr><td>Backend</td><td>Django 5.2 + Django REST Framework, frozen with PyInstaller (onedir) into <code>campus-app.exe</code> — no separate Python install needed on the box. <code>campus-app.exe serve</code> runs the web tier; <code>campus-app.exe manage &lt;command&gt;</code> runs any Django management command.</td></tr>
+<tr><td>Frontend</td><td>Next.js 15, built as a fully static export (<code>frontend/out</code>) — no Node runtime on the box; served straight off disk by Caddy.</td></tr>
+<tr><td>Database</td><td>PostgreSQL 16, bundled and run as a Windows service.</td></tr>
+<tr><td>Proxy</td><td>Caddy — TLS termination, HTTP→HTTPS redirect, serves the static frontend, reverse-proxies <code>/api /admin /static /media</code> to the app.</td></tr>
+<tr><td>Process manager</td><td>NSSM wraps the app and the proxy as real Windows services (Postgres registers itself with <code>pg_ctl register</code>).</td></tr>
+</table>
+<h3>Services</h3>
+<table>
+<tr><th>Service</th><th>Runs</th><th>Notes</th></tr>
+<tr><td><code>Campus PostgreSQL</code></td><td>Postgres 16, port 5432, loopback only</td><td>Registered via <code>pg_ctl register</code> — a different mechanism from the other two, which matters when only this one comes up after a failed install (§14.1, §14.2).</td></tr>
+<tr><td><code>Campus App</code></td><td><code>campus-app.exe serve --host 127.0.0.1 --port 8001</code></td><td>The frozen Django/DRF backend under <code>waitress</code>. Loopback only.</td></tr>
+<tr><td><code>Campus Proxy</code></td><td><code>caddy run --config Caddyfile</code></td><td>The only service listening on a non-loopback address (80/443).</td></tr>
+<tr><td><code>Campus Remote</code></td><td><code>cloudflared</code></td><td>Exists only if Cloudflare Tunnel remote access was turned on (see the Remote access section of <code>docs/DEPLOYMENT.md</code>).</td></tr>
+</table>
+<p>The system is single-tenant and on-premises — one install per school, nothing shared, nothing sent to a third-party cloud unless the school deliberately sets up remote access or an online payment gateway.</p>
+<h3>File layout on the target machine</h3>
+<pre>C:\ProgramData\Campus\
+  app\        campus-app.exe + _internal\ (frozen Python/Django), .env, frontend_out\, hotfix\, media\, staticfiles\
+  pgsql\      portable PostgreSQL binaries          pgdata\   the database files
+  caddy\      caddy.exe, nssm.exe (under caddy\bin\), Caddyfile (live, templated) + Caddyfile.template (pristine)
+  logs\       Campus-App.log, Campus-Proxy.log, PostgreSQL logs, backup-manual.log
+  scripts\    install.ps1, repair-campus.ps1, backup.ps1, restore.ps1, uninstall-services.ps1, create-campus-admin.ps1,
+              remote-setup.ps1 / remote-setup.lib.ps1 / remote-setup-ui.ps1, campus-payments-setup-ui.ps1
+  backups\    GPG-encrypted archives (ACL'd to SYSTEM + Administrators)
+  gpg\        bundled GnuPG, GNUPGHOME under gpg\home
+  gtk3\       bundled GTK3 runtime — the native half of WeasyPrint (report-card PDFs need gtk3\bin\*.dll)
+  remote\     created empty; remote-access config and binaries go here if a site opts in
+  campus-local-ca.crt   the local HTTPS root, to trust on other PCs</pre>
+<p><code>app\.env</code> holds every secret: <code>SECRET_KEY</code>, <code>FIELD_ENCRYPTION_KEY</code>, <code>DATABASE_URL</code> (a per-install random Postgres password — never the source-tree development default). It is ACL'd to SYSTEM + Administrators, so even a non-elevated administrator session cannot read it.</p>
+<h3>Source repo layout (for anyone building from source)</h3>
+<pre>dunware-campus\
+  backend\     Django project (campus_app.py is the ONE frozen entrypoint — serve | manage &lt;cmd&gt;); .venv\ lives here
+  frontend\    Next.js, output:'export' — static SPA, no Node runtime in production
+  deploy\      campus.spec (PyInstaller), campus.iss (Inno Setup), install.ps1, repair-campus.ps1, backup.ps1, restore.ps1,
+               remote-setup*.ps1, campus-payments-setup-ui.ps1, install-dependencies.ps1, proxy\Caddyfile(.template),
+               _thirdparty\ (gitignored — Postgres/Caddy/NSSM/GnuPG/GTK3 binaries)
+  docs\        ARCHITECTURE, DATA_MODEL, DEPLOYMENT, PACKAGING, ...; docs\pdf-src\ = PDF sources
+  dist\        build output (gitignored): campus-app\ and installer\Campus-Setup.exe</pre>
+
+<h2 id="s2">2. Installing fresh</h2>
+<ol>
+<li>Run <code>Campus-Setup.exe</code> as Administrator (it prompts). It lays out <code>C:\ProgramData\Campus</code>, stages the app, Postgres, Caddy, NSSM, GnuPG and the GTK3 runtime, and adds a <b>Campus</b> Start Menu group: <b>Campus</b> (opens the site), <b>Campus — Remote Access Setup</b>, and <b>Campus — Payments Setup</b>. A desktop shortcut is optional.</li>
+<li><code>install.ps1</code> runs automatically at the end, elevated. It generates unique secrets into <code>.env</code> and locks it down, initialises Postgres and registers the three services, runs migrations and <code>collectstatic</code>, templates the Caddyfile, trusts the local HTTPS certificate, and finally <b>verifies</b> that all services exist and <code>https://&lt;host&gt;/</code> answers — if any of that fails it throws rather than report success.</li>
+<li>It checks (and warns, but does not block, if not) that the data drive is BitLocker-encrypted.</li>
+<li>Open <code>https://localhost/</code> (or the configured hostname — §11). The very first visit shows <b>"Welcome to Campus"</b>: create the first superadmin there, then enrol its authenticator app. That screen disables itself as soon as a superadmin exists. (The headless equivalent is <code>campus-app.exe manage create_admin</code>; <code>create-campus-admin.ps1</code> exists for installs whose frozen exe predates it.)</li>
+<li><b>Keep a separate copy of <code>FIELD_ENCRYPTION_KEY</code> in secure custody.</b> Read it from <code>C:\ProgramData\Campus\app\.env</code> (elevated). Current backups carry it inside the encrypted archive, but a spare copy covers archives made by older versions of the backup script and a lost passphrase-holder (§18).</li>
+<li>Sign in, then use <b>School settings</b> to name the school and add its logo, address and principal.</li>
+<li>Set the country, currency and whether the school collects fees, if it isn't a default — in the console under <b>School settings → Region &amp; fees</b>, or from the command line: <code>campus-app.exe manage set_site_config --country BS --currency BSD</code> (and <code>--collects-fees no</code> for a fee-free school, which hides Billing entirely). One currency per install — see §7.</li>
+<li>Run <code>campus-app.exe manage seed_demo --force</code> only on a demo or training box — every record it creates is synthetic, and it refuses to run under a production profile without <code>--force</code>.</li>
+</ol>
+<p><code>install.ps1</code> also accepts <code>-LanHost</code>, <code>-Country</code> and <code>-Currency</code> when run by hand.</p>
+
+<h2 id="s3">3. Updating a live install</h2>
+<p>Two supported routes; both keep the database, media, <code>.env</code> and audit log.</p>
+<ul>
+<li><b>Run the new <code>Campus-Setup.exe</code> over the existing install.</b> It swaps the application files, re-runs migrations and restarts the services. (The bundled Caddyfile is only laid down when none exists, and a pristine <code>Caddyfile.template</code> always ships beside it, so a reinstall no longer resets a working proxy — see §14.13 for the older behaviour.) Uninstalling separately asks <b>"Keep Campus data (database, media, audit log)?"</b>, default <b>Yes</b>.</li>
+<li><b>The lighter route: <code>repair-campus.ps1 -RefreshAppFrom … -RefreshFrontendFrom … -RefreshScriptsFrom …</code></b> (§6) — swaps only what changed and re-migrates automatically.</li>
+</ul>
+<div class="rule"><b>Every installer that is handed off as ready for a fresh install must already contain every fix that has been built and tested</b> — never only a hotfix (§10). Before telling anyone an installer is ready: rebuild the frozen backend and the frontend static export from current source, run the full test suite, run <code>manage check</code> against the fresh freeze, and only then compile. A fresh install that depends on a hotfix to be correct is a packaging failure, not an acceptable interim state.</div>
+
+<h2 id="s4">4. Building from source</h2>
+<p>Prerequisites on the build machine: Node.js (for the frontend), the Python virtualenv at <code>backend\.venv</code> with <code>requirements\build.txt</code> installed, Inno Setup 6 or 7, and the third-party binaries staged in <code>deploy\_thirdparty\</code> (§5).</p>
+<pre>cd frontend
+npm run build                                    # -&gt; frontend\out\  (static export)
+
+cd ..\backend
+.\.venv\Scripts\pip install -r requirements\build.txt
+$env:DJANGO_SETTINGS_MODULE = "config.settings.prod"
+$env:SECRET_KEY = ("x" * 60)                     # any 50+ char placeholder — freeze time only
+$env:FIELD_ENCRYPTION_KEY = [Convert]::ToBase64String([byte[]]::new(32))   # any 32-byte base64 placeholder
+.\.venv\Scripts\pyinstaller.exe ..\deploy\campus.spec --distpath ..\dist --workpath ..\build --noconfirm
+
+..\dist\campus-app\campus-app.exe manage check   # smoke-test the freeze (same env vars as above)
+
+cd ..\deploy
+&amp; "C:\Program Files\Inno Setup 7\ISCC.exe" campus.iss     # -&gt; dist\installer\Campus-Setup.exe</pre>
+<div class="note">
+<p><b>Use the prod settings for the smoke test.</b> The dev settings import <code>django_extensions</code>, which is deliberately not bundled, so <code>manage check</code> fails on the frozen exe under them — that failure is expected, not a bug.</p>
+<p><b>Timing and size.</b> The full compile with everything staged takes about 7 minutes and produces an installer of roughly 294 MB (about 37 MB with nothing staged). Run it in the background.</p>
+<p><b>Inno Setup path.</b> Check both <code>C:\Program Files\Inno Setup 7\ISCC.exe</code> and the Inno Setup 6 path if a script can't find it.</p>
+<p><b>The two companion windows are not separate installers.</b> <code>campus.iss</code> copies <code>remote-setup-ui.ps1</code> and <code>campus-payments-setup-ui.ps1</code> into <code>{app}\scripts</code> and creates their Start Menu shortcuts, so one <code>iscc</code> run keeps them current.</p>
+</div>
+<h3>Release checklist</h3>
+<ol>
+<li>Backend: <code>ruff</code>, <code>manage check --deploy --fail-level WARNING</code>, <code>makemigrations --check --dry-run</code>, and the full <code>pytest</code> suite all clean.</li>
+<li>Frontend: <code>tsc --noEmit</code>, <code>next lint</code>, <code>next build</code> clean.</li>
+<li>Freeze, smoke-test the freeze, compile, and confirm the installer's timestamp and size are new.</li>
+<li>Regenerate any of the three PDFs whose subject changed: <code>backend\.venv\Scripts\python.exe docs\pdf-src\render_docs.py</code> (sources in <code>docs\pdf-src\</code>).</li>
+</ol>
+
+<h2 id="s5">5. Staging third-party dependencies</h2>
+<p><code>deploy\install-dependencies.ps1</code> is a technical-staff tool, <b>separate from and never run by the application's own installer</b> (<code>campus.iss</code>/<code>install.ps1</code> never invoke it, and it is not bundled into <code>Campus-Setup.exe</code>). It prepares <i>the build machine</i> by fetching and staging the third-party binaries <code>campus.iss</code> can bundle into <code>deploy\_thirdparty\</code>, in exactly the layout the installer expects. It detects what is already staged and skips it, and needs no elevation — it only ever writes under <code>deploy\_thirdparty\</code>.</p>
+<pre>powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1              # fetch everything missing
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1 -CheckOnly   # report only
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1 -Only gtk3,gpg
+powershell -ExecutionPolicy Bypass -File deploy\install-dependencies.ps1 -Force       # re-fetch even if already staged</pre>
+<p>The names it understands are <code>caddy</code>, <code>nssm</code>, <code>gtk3</code>, <code>gpg</code> and <code>postgres</code>. Each is individually optional — a partial <code>_thirdparty\</code> tree still compiles a working, reduced installer, and <code>install.ps1</code> degrades with clear messages for whatever is absent.</p>
+<table>
+<tr><th>Component</th><th>Pinned version</th><th>Staged at</th><th>Licence</th></tr>
+<tr><td>PostgreSQL, portable</td><td>16.15</td><td><code>_thirdparty\pgsql\</code></td><td>PostgreSQL</td></tr>
+<tr><td>Caddy</td><td>v2.11.4</td><td><code>_thirdparty\caddy\caddy.exe</code></td><td>Apache 2.0</td></tr>
+<tr><td>NSSM</td><td>2.24</td><td><code>_thirdparty\caddy\nssm.exe</code> (beside Caddy)</td><td>Public domain</td></tr>
+<tr><td>GnuPG (backup encryption)</td><td>2.5.22 standalone</td><td><code>_thirdparty\gpg\</code></td><td>GPLv3</td></tr>
+<tr><td>GTK3 runtime (PDF engine)</td><td>3.24.31</td><td><code>_thirdparty\gtk3\</code></td><td>LGPL 2.1</td></tr>
+<tr><td>cloudflared / WireGuard (remote access only)</td><td>current release</td><td><code>_thirdparty\remote\</code> — <b>fetched by hand</b>, not by this script</td><td>Apache 2.0 · GPLv2</td></tr>
+</table>
+<div class="note">If you skip <code>_thirdparty\remote\</code>, the installer still builds and works; only a site that will use Cloudflare Tunnel or WireGuard needs those binaries. <code>gtk3</code> and <code>gpg</code> ship as NSIS installers whose manifests demand elevation, so the script extracts them by <b>direct invocation</b> with <code>/S /D=&lt;path&gt;</code> — not <code>Start-Process</code> (§14.11).</div>
+<h3>Running it if you've never used PowerShell before</h3>
+<p>This is the same tool, in the order you'd actually do it, assuming nothing. It does not need Administrator — if something asks you to "Run as administrator" while you follow these steps, that is not this tool.</p>
+<ol>
+<li><b>Have the whole Campus source folder on this machine</b> (for example <code>D:\Solutions\dunware-campus</code>) — the whole folder, not just the script.</li>
+<li><b>Open PowerShell.</b> Press the Windows key, type <code>PowerShell</code>, press Enter on "Windows PowerShell". A blue or black text window opens — this is normal.</li>
+<li><b>Move into the <code>deploy</code> folder.</b> Type <code>cd</code>, a space, then the full path to the <code>deploy</code> folder (for example <code>cd D:\Solutions\dunware-campus\deploy</code>) and press Enter. Nothing dramatic happens — you're just "standing inside" that folder.</li>
+<li><b>Run the check.</b> Type exactly <code>powershell -ExecutionPolicy Bypass -File install-dependencies.ps1 -CheckOnly</code> and press Enter. It only <i>looks</i> — it downloads and changes nothing, so run it as often as you like. You'll see a list such as:
+<pre>caddy      present
+nssm       present
+gtk3       MISSING
+gpg        present
+postgres   present</pre>
+<code>present</code> means nothing to do; <code>MISSING</code> means it needs fetching.</li>
+<li><b>If everything says "present", you're done.</b></li>
+<li><b>If something says "MISSING"</b>, run the same command without <code>-CheckOnly</code>. It downloads only the missing pieces (PostgreSQL is the big one, about 330 MB — be patient) and prints each as it completes.</li>
+<li><b>Read the summary table at the end.</b> Each row should say <code>Installed</code> or <code>Skipped (already staged)</code>. A row beginning <code>FAILED</code> means that one piece didn't complete.</li>
+</ol>
+<div class="warn"><b>If a row says FAILED:</b> the most common cause by far is no internet connection, or a network that blocks GitHub and download sites (common on locked-down school or office networks). Try another network, or send the exact red <code>FAILED</code> line to whoever supports your Campus — that single line is normally enough to tell what went wrong.</div>
+
+<h2 id="s6">6. Repairing &amp; uninstalling</h2>
+<p><code>repair-campus.ps1</code>, run elevated, fixes the known install failure classes without a full reinstall:</p>
+<pre>powershell -ExecutionPolicy Bypass -File C:\ProgramData\Campus\scripts\repair-campus.ps1</pre>
+<p>With no flags it re-registers any missing service, re-templates the Caddyfile if it was reset to the raw template, strips a UTF-8 BOM from <code>.env</code>, and re-trusts the local HTTPS certificate. It is idempotent — safe to run repeatedly. To push new code into a live install:</p>
+<pre>repair-campus.ps1 `
+  -RefreshAppFrom      &lt;repo&gt;\dist\campus-app `   # swaps campus-app.exe + libs, keeps .env/media/staticfiles, re-migrates
+  -RefreshFrontendFrom &lt;repo&gt;\frontend\out `      # swaps the served SPA
+  -RefreshScriptsFrom  &lt;repo&gt;\deploy             # swaps the day-2 *.ps1 scripts themselves</pre>
+<p>Each flag is independent — pass only what changed. <code>-RefreshAppFrom</code> stops <b>Campus App</b> for the copy and restarts it after re-migrating; <code>-RefreshFrontendFrom</code> stops <b>Campus Proxy</b> so Caddy's file handles don't block the copy.</p>
+<div class="warn"><b>-RefreshAppFrom does not refresh <code>C:\ProgramData\Campus\scripts\</code>.</b> Those scripts come from the full installer or from <code>-RefreshScriptsFrom</code>. A site whose <code>backup.ps1</code> is older than its app can misbehave in specific ways (§14.12).</div>
+<p><b>Uninstall</b> is the standard Windows uninstall (Settings → Apps). It asks whether to keep the data (database, uploaded documents, audit log) for a future reinstall or delete it permanently; <code>uninstall-services.ps1</code> stops and removes the services.</p>
+
+<h2 id="s7">7. Online payments — connecting a gateway</h2>
+<p>Campus works with manual payments out of the box. To let families pay online, connect the school's <b>own</b> merchant account with the <b>Campus — Payments Setup</b> window (Start Menu; it self-elevates). Campus never sees a card number: checkout is the provider's hosted page (PCI SAQ-A), the provider emails the receipt, and the money goes straight to the school's account.</p>
+<h3>Connecting a gateway</h3>
+<ol>
+<li>Open <b>Start Menu → Campus → Campus — Payments Setup</b>.</li>
+<li>Pick <b>Paystack</b>, <b>Flutterwave</b> or <b>Stripe</b> (or <b>Manual</b> for none). Kanoo (Bahamas) is not offered until its provider grants API access; a Bahamas install records payments manually meanwhile.</li>
+<li>Choose <b>Test</b> or <b>Live</b> mode and enter the keys from the provider's dashboard.</li>
+<li>Click <b>Test connection</b>. It tests exactly the values in the form, without saving them.</li>
+<li>Click <b>Apply</b>. The secret key is stored AES-256-GCM encrypted in the database — never in <code>.env</code>, logs or the support bundle.</li>
+</ol>
+<p>The window is a front end for two commands you can also run from an elevated shell in <code>C:\ProgramData\Campus\app\</code>:</p>
+<pre>campus-app.exe manage set_gateway_config --gateway paystack --mode test --public-key &lt;pk&gt; --secret-key &lt;sk&gt;
+campus-app.exe manage payments_test [--gateway ... --mode ... --public-key ... --secret-key ...]   # tests saved or supplied values</pre>
+<h3>What each provider needs</h3>
+<table>
+<tr><th>Provider</th><th>Keys</th><th>Watch out for</th></tr>
+<tr><td>Paystack</td><td>Public + secret key</td><td>A merchant account is <b>single-currency</b> — one of NGN, GHS, ZAR, KES or USD, matching the country it was registered in. Charging any other currency is rejected by Paystack as <i>"Currency not supported by merchant"</i>; that is Paystack's rule, not a Campus fault.</td></tr>
+<tr><td>Flutterwave</td><td>The <b>classic v3</b> pair: <code>FLWPUBK-…</code> and <code>FLWSECK-…</code></td><td>Newer dashboards show v4 "Client ID / Client Secret / Encryption Key" by default. Those are not what Campus uses; ask Flutterwave support for, or find, the classic v3 keys. Campus uses Flutterwave's <i>hosted</i> checkout, so it never handles card details.</td></tr>
+<tr><td>Stripe</td><td>Publishable + secret key</td><td>Stripe is not available to merchants registered in every country (for example, not the Bahamas). Check the school's country is supported before promising it.</td></tr>
+</table>
+<h3>Country, currency and fees</h3>
+<p>A Campus install bills in <b>one currency</b>, and the gateway account must be able to charge in it. Set it in the console under <b>School settings → Region &amp; fees</b> (country, currency, locale, and a "collects tuition / fees" switch), or with <code>campus-app.exe manage set_site_config --country ZA --currency ZAR</code>. Once any invoice exists the currency is locked and the console's currency box is disabled; changing it then is a deliberate command-line step: <code>set_site_config --currency … --force</code>. (The console's hint mentions a <code>change_currency</code> command — that command does not exist; use <code>set_site_config</code>.) Turning the fees switch off, or <code>--collects-fees no</code>, hides Billing everywhere for a school that charges nothing through Campus. Every invoice carries its own currency and every screen displays it.</p>
+<h3>How a payment is confirmed</h3>
+<ul>
+<li>A parent presses <b>Pay</b> in the portal (or staff generate a <b>Payment link</b> on an invoice). Campus creates a <i>payment attempt</i> and sends the family to the provider's checkout.</li>
+<li>A family with several children may pay several invoices in <b>one</b> charge — they must share a billing guardian and a currency — and may pay part of the balance. The amount is split back across the invoices proportionally.</li>
+<li>When the family returns to Campus, the return page asks the provider whether the payment succeeded (checking every few seconds for about two minutes, then offering <b>Check again</b>). Only a success whose amount <i>and</i> currency match is recorded as a payment. A mismatch is <b>never</b> applied automatically; the family is told to contact the office and not pay again.</li>
+<li><b>There is no background reconciliation job yet.</b> A payment is confirmed when the family's return page (or a status check) asks. If a family pays but never returns to Campus, the money is in the school's provider account but the invoice stays unpaid in Campus — verify it in the provider's dashboard and record it with <b>Mark paid</b>, quoting the provider's reference.</li>
+<li><b>Refunds are manual:</b> record a <b>Credit</b> in Campus and return the money through the provider's own account.</li>
+</ul>
+<h3>Test data</h3>
+<p><code>manage seed_demo --currency ZAR</code> builds demo data in a chosen currency (default ZAR). <code>manage seed_paystack_currencies</code> adds one small payable test invoice for each currency Paystack supports (needs a debug profile or <code>--force</code>; <code>--flush</code> replaces them). Demo guardians use <code>@example.com</code> addresses because Paystack's own validator rejects the <code>.test</code> top-level domain.</p>
+
+<h2 id="s8">8. Backups &amp; restore — how the tooling works</h2>
+<p><code>backup.ps1</code> takes a custom-format <code>pg_dump</code>, the whole <code>media\</code> directory (encrypted documents, photos, signatures) and a copy of <code>app\.env</code> (stored as <code>env.backup</code>), packs them into one archive, and encrypts it with GnuPG (<code>--symmetric</code>, AES-256) using an operator-supplied passphrase. The plaintext archive is deleted the moment encryption succeeds — and also if encryption fails, along with any half-written file. The <code>.env</code> copy is there because it holds the <code>FIELD_ENCRYPTION_KEY</code> that every encrypted field and document depends on (§18); <b>archives made by an older version of the script do not contain it</b>. Archives older than <code>-RetentionDays</code> (default 30) are pruned on each run. <code>restore.ps1</code> reverses it: decrypt, stop <b>Campus App</b>, copy <b>only the <code>FIELD_ENCRYPTION_KEY</code> line</b> from <code>env.backup</code> into the target <code>.env</code> (never the whole file — a fresh install's own <code>DATABASE_URL</code> and Postgres password must not be overwritten), <code>pg_restore --clean --if-exists</code>, restore <code>media\</code>, run migrations (so a backup from before a schema change still restores), restart. For an archive with no <code>env.backup</code> it prints a warning. Both scripts have a <code>-Simulate</code> switch for drilling the archive/encrypt/decrypt path.</p>
+<ul>
+<li><b>GnuPG</b> is bundled at <code>C:\ProgramData\Campus\gpg</code>; the scripts use it first (with <code>GNUPGHOME</code> at <code>gpg\home</code>, touching no user profile) and fall back to a <code>gpg</code> on PATH. With neither, backups fail with a clear "gpg was not found".</li>
+<li><b>The passphrase is chosen by the operator.</b> Nothing generates or stores it — not the installer, not Campus. It is the encryption key: <b>if it is lost, every archive is unrecoverable.</b> Type it when asked, or set <code>CAMPUS_BACKUP_PASSPHRASE</code> in the <i>scheduled task's</i> environment for unattended runs.</li>
+<li><b>From the console:</b> administrators see <b>Backups</b> — a health summary plus every run. <b>Run backup now</b> starts the same script detached, tied to a tracked run record, so success or failure is visible without shell access. The passphrase is entered per run and passed only in that process's environment. Guards: at most one manual run in flight, and a 10-minute cooldown between runs. Output goes to <code>logs\backup-manual.log</code>.</li>
+<li>A run that never reports back is marked <b>FAILED</b> automatically after 30 minutes, and the summary turns amber if the newest success is over 48 hours old or the latest run failed.</li>
+<li><b>Existing installs</b> only get the key-carrying backup once their scripts are refreshed — install the new <code>Campus-Setup.exe</code> or run <code>repair-campus.ps1 -RefreshScriptsFrom &lt;repo&gt;\deploy</code> (§6) — and should then take a fresh backup, since every earlier archive lacks the key.</li>
+<li><b>Restore is drilled, not assumed:</b> <code>restore.ps1</code> also records a verification run. See <code>docs/BACKUP_RESTORE_DRILL.md</code> for the executed drill.</li>
+</ul>
+
+<h2 id="s9">9. Field-support tools</h2>
+<p>Run these in an elevated shell on the box (<code>campus-app.exe</code> lives in <code>C:\ProgramData\Campus\app\</code>):</p>
+<pre>campus-app.exe manage support_bundle
+campus-app.exe manage support_tail app|proxy|db|remote [-n N]
+campus-app.exe manage support_sql "&lt;query&gt;" --operator "&lt;your name&gt;" [--write]</pre>
+<p><code>support_bundle</code> produces one redacted ZIP — logs, health, service states, a secrets-stripped <code>.env</code>, table row counts, build stamp — and contains no student data, so it is safe to email or carry away. <code>support_sql</code> is read-only (and rolls back automatically) unless <code>--write</code> is passed; every run writes one append-only audit entry.</p>
+
+<h2 id="s10">10. The hotfix overlay — and its one hard rule</h2>
+<p>To patch a <b>logic-only</b> bug on a live box without a full rebuild, drop the corrected <code>.py</code> file under <code>C:\ProgramData\Campus\app\hotfix\</code> at its real package path (for example <code>hotfix\apps\grades\services.py</code>), then restart <b>Campus App</b>. It shadows the frozen copy. Active hotfixes are logged at startup, flagged by <code>manage check</code> (<code>core.W001</code>), and shown in the support bundle and the console's Remote access page — a patched box is never invisible.</p>
+<p>It <b>cannot</b> add a dependency or change a model or migration; those need a real patched build applied with <code>repair-campus.ps1 -RefreshAppFrom</code>.</p>
+<div class="rule"><b>A fresh install or reinstall does not carry the hotfix folder over.</b> It is empty on the new box, so a fix that only ever lived there quietly regresses the moment someone reinstalls — this has happened, and cost a debugging session tracing a "reintroduced" bug back to a wiped hotfix folder. Treat the overlay as a same-day stopgap only. Fold every hotfix into a real release and clear the folder once that release ships.</div>
+
+<h2 id="s11">11. Changing the address from localhost</h2>
+<p>By default Campus answers at <code>https://localhost/</code>. To make it answer to a name on the LAN (for example <code>https://campus/</code>):</p>
+<ol>
+<li>Re-run <code>install.ps1</code> or <code>repair-campus.ps1</code> with <code>-LanHost campus</code> (or your chosen name). This re-templates the Caddyfile, updates <code>ALLOWED_HOSTS</code> / <code>CSRF_TRUSTED_ORIGINS</code> / <code>PUBLIC_BASE_URL</code> in <code>.env</code>, and re-issues the local TLS certificate for that name.</li>
+<li>The name must still <i>resolve</i> for other machines — add a DNS entry on the router or local DNS server, or a line in each client's hosts file (<code>C:\Windows\System32\drivers\etc\hosts</code>) pointing the name at the server's LAN IP.</li>
+<li>Open the new address once in a browser on the server itself to trust the fresh certificate (or run <code>repair-campus.ps1</code> again), and import <code>C:\ProgramData\Campus\campus-local-ca.crt</code> on other PCs (§14, certificate warning).</li>
+</ol>
+<p>Access from <i>outside</i> the LAN is a separate, opt-in feature — <b>Campus — Remote Access Setup</b> (Tunnel / WireGuard / Gateway modes) and <code>docs/REMOTE_ACCESS_AND_YOUR_DATA.md</code> — not this hostname setting.</p>
+
+<h2 id="s12">12. Data model, security &amp; privacy — the short version</h2>
+<p>Full detail: <code>docs/DATA_MODEL.md</code> (every PII field, its purpose and retention) and <code>docs/PII_SECURITY.md</code> (the control matrix). In brief:</p>
+<ul>
+<li><b>Encryption at rest</b> — medical/allergy/medication data, custody and legal notes, government IDs, IEP content, gateway secret keys and uploaded documents are AES-256-GCM encrypted, not just access-controlled. The key (<code>FIELD_ENCRYPTION_KEY</code>) lives only in the ACL-locked <code>.env</code>; production refuses to start without it. <b>Lose that key and the encrypted fields are unrecoverable</b> — backups carry a copy inside the encrypted archive, and you should keep another in secure custody.</li>
+<li><b>Role-based access</b> — deny-by-default permissions; a parent sees only their own linked children (<code>Student.is_visible_to()</code> / <code>visible_queryset()</code> is the single scoping authority for staff API and portal alike); a teacher sees only the groups they staff.</li>
+<li><b>MFA</b> — mandatory TOTP for every staff role. Account lockout after repeated failures, and Argon2 password hashing.</li>
+<li><b>Audit log</b> — append-only; every create/update/delete <i>and every read</i> of a sensitive record, with actor, IP and timestamp but no field values. No edit or delete path exists in the app.</li>
+<li><b>Retention &amp; erasure</b> — a configurable window per record type, a legal-hold flag that blocks both automated retention and manual erasure, and audited <code>export_student</code> / <code>erase_student</code> commands.</li>
+<li><b>No card data ever reaches Campus.</b> Online payments use each provider's hosted checkout (PCI SAQ-A); Campus stores only a reference, amount, status and an encrypted copy of the last verification response. Payments recorded by hand hold a method and reference, never a card number.</li>
+<li><b>No SMS path anywhere</b> — communication is email-only, by design.</li>
+</ul>
+
+<h2 id="s13">13. How the calendars and grading schemes work</h2>
+<p>Every session lives in one table (<code>scheduling.SessionOccurrence</code>), but three UI surfaces read it for three audiences — this trips people up often enough to spell out:</p>
+<table>
+<tr><th>View</th><th>Shows</th><th>Why</th></tr>
+<tr><td>Scheduling → Calendar (console)</td><td>Closures &amp; early dismissals only — <i>no</i> individual class periods</td><td>Whole-school view; at hundreds of students, every class period on one calendar is unreadable</td></tr>
+<tr><td>Students → Timetable (console)</td><td>One student's real class-by-class day — homeroom <i>and</i> every course-of-study section, never overlapping</td><td>Scoped with <code>?student=</code>, resolved server-side to every group they're actively enrolled in</td></tr>
+<tr><td>Portal → Upcoming schedule</td><td>The same as that student's Timetable, for the guardian's or student's own child(ren) only</td><td>Backed by <code>/api/portal/calendar/</code> — same payload shape, authorised via <code>is_visible_to()</code></td></tr>
+</table>
+<p>The frontend component is the same one, <code>ScheduleCalendar.tsx</code>: a <code>showSessions</code> prop (default true) is what the Scheduling page sets false to become the exceptions-only view, and a <code>fixedStudentId</code> prop locks a Timetable/portal instance to one student.</p>
+<div class="note">Which weekday a given course-of-study subject falls on is hardcoded <b>only in the synthetic demo data</b> (<code>seed_demo.py</code>). A real deployment's timetable comes from that school's session templates — there is no built-in assumption about which days a subject runs.</div>
+<p><b>Report-card grading.</b> <code>grades.GradingScheme</code> (+ <code>GradeBand</code>) is a school's grading policy — the letter/level bands a percentage falls into, and whether a GPA is used at all. <code>GradingScheme.activate()</code> deactivates every other scheme in one transaction, so exactly zero or one is ever active. Four presets ship via a data migration (not a fixture, so they are always present): Bahamas 4.0 GPA, Ontario elementary 4-level, South Africa NCS 7-point, Botswana letter bands. <code>generate_report_card()</code> freezes the active scheme and the computed <code>cumulative_gpa</code> (an unweighted mean across GPA-bearing entries — there is no credit-hour model) onto the <code>ReportCard</code> at generation time, so changing the scheme later <b>never</b> rewrites a card that already went home.</p>
+
+<h2 id="s14">14. Known issues — root cause and fix</h2>
+<p>Every entry below was found by actually running the software, not caught in review.</p>
+
+<div class="issue"><div class="hd">14.1 · Install partially completes — only "Campus PostgreSQL" registers, browser refuses to connect</div><div class="bd">
+<p class="lbl">Symptom</p><p>After a fresh install, <code>Get-Service "Campus*"</code> shows only <code>Campus PostgreSQL</code> and <code>https://localhost/</code> refuses to connect. Running <code>campus-app.exe manage migrate</code> by hand throws an <code>AttributeError</code> such as <code>module 'apps.core.models' has no attribute '_school_logo_path'</code>.</p>
+<p class="lbl">Root cause</p><p>The frozen <code>campus-app.exe</code> inside that <code>Campus-Setup.exe</code> was built from a stale or inconsistent source snapshot — a migration expects a symbol its own bundled <code>models.py</code> doesn't have. <code>install.ps1</code> runs migrations early with <code>$ErrorActionPreference = "Stop"</code> and deliberately throws rather than continue, so the run aborts before it registers <b>Campus App</b> and <b>Campus Proxy</b>; Postgres, registered earlier, is all that's left.</p>
+<p class="lbl">Fix</p><p>Rebuild the installer clean from current, verified source (§4) and run <code>manage check</code> against the fresh freeze before compiling, so this class of bug never reaches an install. Do not patch around a bad binary. To unblock a broken install when a known-good build exists, <code>repair-campus.ps1 -RefreshAppFrom</code> re-migrates against the corrected exe.</p></div></div>
+
+<div class="issue"><div class="hd">14.2 · Services never registered, install reports success anyway (historical, fixed)</div><div class="bd">
+<p class="lbl">Symptom</p><p><code>https://localhost/</code> refuses to connect after an apparently successful install.</p>
+<p class="lbl">Root cause</p><p><code>campus.iss</code> originally ran <code>install.ps1</code> with <code>runascurrentuser</code>, which does not inherit Setup's elevated token; <code>nssm</code>'s <code>CreateService</code> calls silently failed and the script still exited 0.</p>
+<p class="lbl">Fix</p><p><code>runascurrentuser</code> removed. <code>install.ps1</code> now hard-guards on elevation, and <code>Register-CampusService</code> confirms each service with <code>Get-Service</code> instead of trusting NSSM's exit code. The final verification step throws if any service is missing or the site doesn't answer.</p></div></div>
+
+<div class="issue"><div class="hd">14.3 · 404 at "/" behind a healthy proxy chain (historical, fixed)</div><div class="bd">
+<p class="lbl">Symptom</p><p><code>curl http://localhost/</code> returns 404 with <code>server: waitress</code> and <code>via: 1.1 Caddy</code> — the chain is up but nothing serves the page.</p>
+<p class="lbl">Root cause</p><p>The Caddyfile proxied every non-API path to Django, which has no route for <code>/</code> and no static root.</p>
+<p class="lbl">Fix</p><p>Caddy now serves the exported frontend itself (<code>root</code> + <code>try_files</code> + <code>file_server</code>) and proxies only <code>/api /admin /static /media</code>. <code>{$CAMPUS_WEB_ROOT}</code> templates to <code>&lt;InstallRoot&gt;\app\frontend_out</code>.</p></div></div>
+
+<div class="issue"><div class="hd">14.4 · A staff-chat popover opened almost entirely off-screen</div><div class="bd">
+<p class="lbl">Root cause</p><p>The panel was <code>position:absolute; right:0</code> inside a wrapper only as wide as the bell (~36 px) near the <i>left</i> edge of the sidebar, so a 380 px panel's right edge landed near x=210 and its left edge near x=-170.</p>
+<p class="lbl">Fix</p><p>Anchored from the left edge so it opens rightward into the content area.</p></div></div>
+
+<div class="issue"><div class="hd">14.5 · The same popover then painted <i>behind</i> the page content</div><div class="bd">
+<p class="lbl">Root cause — a general CSS lesson</p><p>The shared "glass" card style sets <code>backdrop-filter</code>, which creates its own stacking context even on an unpositioned element. The sticky sidebar is also its own context and precedes the content in the DOM; two contexts with no explicit <code>z-index</code> paint in DOM order, so every glass card outranked the <i>whole</i> sidebar, including anything nested in it. No <code>z-index</code> inside the sidebar could win.</p>
+<p class="lbl">Fix</p><p>Render the popover through a React portal onto <code>document.body</code> as <code>position:fixed</code> with coordinates from the trigger's <code>getBoundingClientRect()</code> — the technique the command palette already used — sidestepping DOM position entirely.</p></div></div>
+
+<div class="issue"><div class="hd">14.6 · A failed action (for example "Send") did nothing visible</div><div class="bd">
+<p class="lbl">Root cause</p><p>The mutation had no <code>onError</code> handler.</p>
+<p class="lbl">Fix</p><p>Wired to the app's standard toast-and-message pattern, like every other form.</p></div></div>
+
+<div class="issue"><div class="hd">14.7 · An error popup read literally "…is not valid JSON" (app-wide)</div><div class="bd">
+<p class="lbl">Root cause</p><p>The shared API client called <code>JSON.parse()</code> on every response. Any non-JSON reply — Django's HTML 404 for a route a stale backend doesn't have yet, a proxy error page, a truncated response — threw the browser's native parser error before it could be wrapped.</p>
+<p class="lbl">Fix</p><p>The parse is caught and turned into a readable error ("The server returned an error page (HTTP &lt;code&gt;) instead of a normal response — it may be out of date, restarting, or misconfigured"). This reaches every screen.</p></div></div>
+
+<div class="issue"><div class="hd">14.8 · One staff role saw nobody in a "message" recipient picker</div><div class="bd">
+<p class="lbl">Root cause</p><p>The staff-directory endpoint the picker depends on was gated to admin roles; a front-desk request got a 403 and the picker was silently empty (broadcast options don't use that endpoint, so they kept working).</p>
+<p class="lbl">Fix</p><p>Opened to every staff role, with its query scoped to staff accounts only so it doesn't newly expose parent or student accounts.</p></div></div>
+
+<div class="issue"><div class="hd">14.9 · A calendar group filter silently did nothing</div><div class="bd">
+<p class="lbl">Root cause</p><p>Every record uses a UUID primary key, but the calendar code typed group ids as numbers (<code>Number(uuid)</code> is <code>NaN</code>, falsy), so the filter parameter was never sent. The backend was already correct.</p>
+<p class="lbl">Fix</p><p>Ids retyped as strings throughout the calendar stack; a repo-wide search found no other instance.</p></div></div>
+
+<div class="issue"><div class="hd">14.10 · Pages rendered tiny, in a corner of the window</div><div class="bd">
+<p class="lbl">Root cause</p><p>The root layout had no <code>viewport</code> meta tag; some browser and display combinations then lay the page out at a fixed desktop width and scale it down.</p>
+<p class="lbl">Fix</p><p>Added the standard <code>{width:"device-width", initialScale:1}</code> viewport export once at the root, fixing every route and modal.</p></div></div>
+
+<div class="issue"><div class="hd">14.11 · Report-card and document PDFs silently generate as .html — no error anywhere</div><div class="bd">
+<p class="lbl">Symptom</p><p>A generated report card (anything through <code>apps/grades/services.py html_to_pdf()</code>) is stored and downloadable as <code>.html</code>, not <code>.pdf</code>. Nothing in the UI or logs calls it a failure — it is the designed fallback (<code>PdfEngineUnavailable</code>), not a crash.</p>
+<p class="lbl">Root cause</p><p>WeasyPrint is a thin Python wrapper around real native libraries — Cairo, Pango, GObject, HarfBuzz, Fontconfig. PyInstaller's own hook does <i>not</i> bundle them (the freeze log always warns "WeasyPrint could not import some external libraries"). Without them <code>import weasyprint</code> raises, <code>html_to_pdf()</code> catches it, and the code falls back to <code>.html</code> by design — so the gap ships unnoticed unless someone opens a generated document and checks its extension.</p>
+<p class="lbl">Fix</p><p>The GTK3 runtime for Windows is staged as its own third-party component at <code>deploy\_thirdparty\gtk3\</code> and bundled by <code>campus.iss</code> into <code>C:\ProgramData\Campus\gtk3</code>. <code>campus_app.py</code>'s <code>_ensure_native_pdf_libs()</code> calls <code>os.add_dll_directory()</code> on <code>gtk3\bin</code> once, at the top of <code>main()</code>, before either <code>serve</code> or <code>manage</code> runs.</p>
+<p class="lbl">A trap worth recording: PATH is not enough</p><p>Adding <code>gtk3\bin</code> to <code>PATH</code> lets cffi load the <i>first</i> DLL, but it fails with <code>OSError … error 0x7e</code> (<code>ERROR_MOD_NOT_FOUND</code>) as soon as that DLL loads <i>its own</i> dependencies, even though they sit in the same folder — Windows' Safe DLL Search Mode doesn't extend a PATH directory to a loaded DLL's transitive dependencies. <code>os.add_dll_directory()</code> (Python 3.8+, Windows) does. Confirmed by testing both ways against the real frozen exe.</p>
+<p class="lbl">Re-staging the runtime</p><p>The upstream GTK3 runtime is an NSIS installer whose manifest demands elevation, which blocks <code>Start-Process</code>. Extract it by direct invocation: <code>&amp; ".\gtk3-runtime-installer.exe" /S "/D=C:\extract\target"</code> (<code>/D=</code> last, absolute, unquoted internally — note this is not Inno Setup's <code>/DIR=</code>, and <code>innoextract</code> rightly refuses it). Copy the whole tree (<code>bin lib share etc</code>, about 137 MB) into <code>deploy\_thirdparty\gtk3\</code>; <code>install-dependencies.ps1 -Only gtk3</code> does all of this.</p>
+<p class="lbl">Verify it really works</p><pre>cd C:\ProgramData\Campus\app
+.\campus-app.exe manage shell -c "from apps.grades.services import html_to_pdf; pdf = html_to_pdf('&lt;h1&gt;test&lt;/h1&gt;'); print(len(pdf), pdf[:8])"</pre><p>A real result looks like <code>7330 b'%PDF-1.7'</code>. If it raises <code>PdfEngineUnavailable</code>, confirm <code>C:\ProgramData\Campus\gtk3\bin\libgobject-2.0-0.dll</code> exists — if not, the installer was built without the GTK3 payload (an optional component; the app still runs, with document PDFs falling back to <code>.html</code>).</p></div></div>
+
+<div class="issue"><div class="hd">14.12 · A manual backup shows "Running" for hours and never finishes</div><div class="bd">
+<p class="lbl">Symptom</p><p>After <b>Backups → Run backup now</b>, the run stays <b>Running</b> indefinitely.</p>
+<p class="lbl">Root cause</p><p>The console launches <code>backup.ps1 -RunId … -Kind MANUAL</code>, but the copy in <code>C:\ProgramData\Campus\scripts\</code> pre-dates those parameters. <code>-RefreshAppFrom</code> never refreshes <code>scripts\</code>, so PowerShell rejects the unknown parameters before the script body runs and nothing ever records a result.</p>
+<p class="lbl">Fix</p><p>Refresh the scripts: <code>repair-campus.ps1 -RefreshScriptsFrom &lt;repo&gt;\deploy</code> (or run the full installer). The app now also fails fast — a launch that exits non-zero within about 12 seconds is marked FAILED at once with the exit code, a stale-script hint and the log tail (the console shows it inline), and any run still <b>Running</b> after 30 minutes is flipped to FAILED on the next page load.</p></div></div>
+
+<div class="issue"><div class="hd">14.13 · Reinstalling over a working install gave "refused to connect" (historical, fixed)</div><div class="bd">
+<p class="lbl">Symptom</p><p>After running a newer <code>Campus-Setup.exe</code> over a working install, the site refused connections; <b>Campus App</b> and <b>Campus Proxy</b> were gone and the Caddyfile had reset to the raw template.</p>
+<p class="lbl">Root cause</p><p><code>campus.iss</code> re-laid the Caddyfile every time (<code>ignoreversion</code> = always overwrite), and the reinstall's <code>install.ps1</code> step didn't re-register the services.</p>
+<p class="lbl">Fix</p><p>The bundled Caddyfile is now <code>onlyifdoesntexist</code>, a pristine <code>Caddyfile.template</code> always ships beside it, and <code>install.ps1</code> seeds <code>Caddyfile</code> from the template if missing. To recover a box hit by the old behaviour, run <code>repair-campus.ps1</code> elevated with no flags. Don't reinstall just to get a Start Menu shortcut — launch the window's script directly.</p></div></div>
+
+<div class="issue"><div class="hd">14.14 · Paystack rejects a charge — "Currency not supported by merchant"</div><div class="bd">
+<p class="lbl">Root cause</p><p>A Paystack merchant account charges in exactly one currency, matching the country it was registered under. The install's invoices were in a different one.</p>
+<p class="lbl">Fix</p><p>Bill in the account's currency (§7). A stray <code>.test</code> email domain on a demo guardian also fails Paystack's validator; demo data now uses <code>example.com</code>. Once invoices exist, the site currency is locked in the console — change it deliberately with <code>set_site_config --currency … --force</code>.</p></div></div>
+
+<h2 id="s15">15. General diagnostics playbook</h2>
+<h3>A service won't start, or keeps stopping</h3>
+<ol>
+<li>Read <code>C:\ProgramData\Campus\logs\Campus-App.log</code> (or <code>Campus-Proxy.log</code>) — NSSM writes stdout and stderr there. <code>campus-app.exe manage support_tail proxy</code> tails a log.</li>
+<li>Check the other two services first: <b>Campus App</b> needs <b>Campus PostgreSQL</b> reachable; <b>Campus Proxy</b> needs <b>Campus App</b> answering on 127.0.0.1:8001.</li>
+<li>Run the exe in the foreground from an elevated shell in <code>C:\ProgramData\Campus\app\</code> to see the real startup error: <code>.\campus-app.exe serve --host 127.0.0.1 --port 8001</code>.</li>
+</ol>
+<h3>"Refused to connect", a blank page, or "This site can't be reached"</h3>
+<ol>
+<li><code>Get-Service "Campus*"</code> — are all three <code>Running</code>? If only Postgres is, see §14.1–14.2: almost always a partial install, not a runtime fault.</li>
+<li><code>Test-NetConnection 127.0.0.1 -Port 5432</code> (Postgres), <code>-Port 8001</code> (app), <code>-Port 443</code> (proxy) isolates the layer that's down.</li>
+<li>Run <code>repair-campus.ps1</code> elevated with no flags — it re-registers anything missing and re-templates a reset Caddyfile. A repeated redirect loop usually means the proxy isn't being told the request already arrived over HTTPS; check <code>X-Forwarded-Proto</code> trust in the Caddyfile.</li>
+</ol>
+<h3>A report card or document is .html instead of .pdf</h3>
+<ol>
+<li>Not a fault by itself — the designed fallback when the PDF engine isn't available (§14.11). Check whether it should be: <code>Test-Path "C:\ProgramData\Campus\gtk3\bin\libgobject-2.0-0.dll"</code>.</li>
+<li>If missing, the installer was built without the GTK3 payload. Reinstall from one that has it, or stage <code>_thirdparty\gtk3</code> and copy it to <code>C:\ProgramData\Campus\gtk3</code> — no reinstall needed, since the app only checks for the folder at startup.</li>
+<li>If present and it still falls back, run the smoke test in §14.11 rather than guessing.</li>
+</ol>
+<h3>Database errors ("connection timeout expired" / "connection refused")</h3>
+<p>Almost always <b>Campus PostgreSQL</b> is stopped — not a credentials problem (a bad password fails fast with "password authentication failed", not a timeout). <code>Start-Service "Campus PostgreSQL"</code>, wait a few seconds, retry.</p>
+<h3>Browser shows a certificate warning</h3>
+<p>Expected on any machine other than the server, on first visit. Copy <code>C:\ProgramData\Campus\campus-local-ca.crt</code> from the server into that machine's <b>Trusted Root Certification Authorities</b> store (or push it by Group Policy), then fully restart the browser. If the server itself warns, re-run <code>repair-campus.ps1</code> — it re-trusts the local CA.</p>
+<h3>A migration fails on an otherwise healthy install</h3>
+<p>Check whether a hotfix overlay is active (<code>app\hotfix\</code> not empty) — an overlay out of sync with the schema causes confusing errors — and confirm the frozen build isn't stale (§14.1; <code>manage check</code> is the fast, database-free test). For a schema change that fails against existing rows: a plain <code>AddField(unique=True)</code> on a populated table fails with an <code>IntegrityError</code> on the shared default. The fix is always the same shape — add the column nullable, backfill real values in a data migration, then tighten it to non-null/unique in a third step; never a one-step unique add against live data.</p>
+<h3>A fix "disappeared" after a reinstall</h3>
+<p>Almost always a hotfix that was never folded into a release (§10). Check <code>app\hotfix\</code>; if it's empty and the behaviour regressed, the installer needs the fix built in.</p>
+<h3>A student's timetable looks wrong (overlapping classes, or every group in the school)</h3>
+<p>First confirm which build is running — <code>support_bundle</code> reports the build stamp. This symptom has previously been a box still running pre-fix code after a hotfix folder was wiped, not a live bug. If it persists on a current verified build, it's a real regression: report it, don't hotfix around it.</p>
+<h3>Demo or training data needs a clean reset</h3>
+<pre>campus-app.exe manage seed_demo --force --flush</pre>
+<p>Regenerates the whole synthetic dataset. Never point this at a database holding real student data.</p>
+<h3>An online payment is missing from Campus</h3>
+<p>See §7 — with no background reconciliation job yet, a payment is only confirmed when the family returns to Campus. Check the provider's dashboard and record it with <b>Mark paid</b>.</p>
+
+<div class="pagebreak"></div>
+<h2 class="part">Part II · Running Campus independently (outright purchase / self-managed)</h2>
+<p style="margin-top:14px">Everything above applies whether or not Dunware Solutions is actively supporting an install. Everything from here is for an organization that has bought Campus outright and whose own technical staff will apply updates, run backups and maintain it. It is the same product and toolkit already described in Part I, organised around the questions an independent team asks first.</p>
+
+<h2 id="s16">16. System requirements &amp; sizing</h2>
+<table>
+<tr><th>Resource</th><th>Requirement / recommendation</th></tr>
+<tr><td>Operating system</td><td>64-bit Windows, desktop or Server (Windows 10/11, Server 2019/2022) — the installer targets <code>x64compatible</code>. Nothing prefers Server over Desktop; use your own IT standard.</td></tr>
+<tr><td>CPU / RAM</td><td>Modest by design — Django behind <code>waitress</code>, PostgreSQL and Caddy serving one school on its LAN. 4 cores / 8 GB RAM is comfortable headroom for a single school; treat it as a sensible floor to plan from, not a load-tested figure for a given enrolment.</td></tr>
+<tr><td>Disk</td><td>The fully bundled installer is about 294 MB and unpacks to roughly 500 MB with Postgres, Caddy, GTK3 and GnuPG. The database and encrypted <code>media\</code> grow with enrolment, documents and photos — budget tens of GB, not hundreds, for a typical school, and monitor free space yourself: nothing in the app alerts on low disk. Encrypted backups under <code>backups\</code> add up across the retention window; plan for them separately.</td></tr>
+<tr><td>Network</td><td>LAN-only by default. <b>Campus Proxy</b> (80/443) is the only service listening beyond loopback; <b>Campus App</b> (8001) and <b>Campus PostgreSQL</b> (5432) bind to 127.0.0.1 only. Off-premises access is opt-in (<code>docs/REMOTE_ACCESS_AND_YOUR_DATA.md</code>). Online payments need <b>outbound</b> HTTPS to the chosen provider only — no inbound port and no public address.</td></tr>
+<tr><td>Client browsers</td><td>Any current evergreen browser (Edge, Chrome, Firefox). Nothing is installed on a staff or parent machine beyond trusting the server's local certificate once (§15).</td></tr>
+</table>
+
+<h2 id="s17">17. Version tracking &amp; the update lifecycle</h2>
+<p><code>apps/core/version.py</code> is the single source of build identity — <code>CAMPUS_VERSION</code> (currently <code>0.9.0</code>) plus, on a frozen install, the exe's build timestamp. It shows in <code>manage support_bundle</code> and on the superadmin's <b>Remote access</b> page. Confirming it changed is the cheapest proof an update took.</p>
+<h3>How an update reaches an independently operated site</h3>
+<ul>
+<li><b>A new installer only</b> (the common case): Dunware ships a rebuilt <code>Campus-Setup.exe</code>. Running it over an existing install is safe (§3). For a routine update the lighter path is <code>repair-campus.ps1 -RefreshAppFrom … -RefreshFrontendFrom … -RefreshScriptsFrom …</code>, which swaps the application in place, re-migrates automatically and touches only what it must.</li>
+<li><b>Full source access</b> (an outright code purchase): the organization's developers pull the updated source, follow §5 and §4 exactly as written, and apply the result the same way. Part I is sufficient on its own for this — there is no hidden Dunware-only build step.</li>
+</ul>
+<h3>Recommended procedure, every time</h3>
+<ol>
+<li><b>Back up first</b> (§8, §18) — before, not after, something goes wrong.</li>
+<li>Apply the update (either path).</li>
+<li>Run <code>campus-app.exe manage check --deploy --fail-level WARNING</code> to confirm the security posture survived, not merely that the app starts.</li>
+<li>Confirm the version/build stamp changed, then smoke-test: sign in, open a student, generate a report card (which also proves the PDF engine survived), and — if online payments are on — open the Payments Setup window and click <b>Test connection</b>.</li>
+<li>Migrations run automatically with <code>-RefreshAppFrom</code> and <code>install.ps1</code>; there is no manual schema step and no supported way to skip migrating.</li>
+</ol>
+
+<h2 id="s18">18. Backup schedule, retention &amp; disaster recovery</h2>
+<div class="warn"><b>Backups are on-demand, not automatic, out of the box.</b> Nothing in Campus runs <code>backup.ps1</code> on a timer. Set one up on day one: a Windows Task Scheduler job that runs elevated as SYSTEM (or a dedicated service account) and calls <code>powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\Campus\scripts\backup.ps1</code> with <code>CAMPUS_BACKUP_PASSPHRASE</code> set in that task's environment, at whatever cadence your recovery-point objective needs — nightly is a reasonable default for a system holding same-day attendance, incident and billing records — and copy the output <b>off the machine</b>. This is the single most important operational gap for a self-managed site to close.</div>
+<h3>Disaster recovery — new or repaired hardware</h3>
+<ol>
+<li>Install Campus fresh on the replacement machine (§2). This makes a new, empty database, a new random <code>DATABASE_URL</code> password and a new <code>FIELD_ENCRYPTION_KEY</code> — all expected.</li>
+<li>Copy the most recent encrypted archive onto the machine.</li>
+<li>Run <code>restore.ps1</code> against it with the correct passphrase. It puts the archive's original <code>FIELD_ENCRYPTION_KEY</code> into the new install's <code>.env</code> (it prints "Restored FIELD_ENCRYPTION_KEY from the backup") before restarting <b>Campus App</b>, leaves the new <code>DATABASE_URL</code> alone, and moves the data (students, guardians, grades, the audit log) into the fresh database and media store. <b>If it instead warns that the archive has no <code>env.backup</code></b>, the archive came from an older backup script: put the original key from your custody copy into <code>C:\ProgramData\Campus\app\.env</code> (elevated), restart <b>Campus App</b>, then run the restore.</li>
+<li>Verify: sign in, spot-check records — <b>open a student's health or IEP tab</b>, which proves the encrypted fields decrypt — and confirm audit history survived (it is in the same database).</li>
+</ol>
+<p class="muted">The same procedure is the correct way to migrate to different hardware on a planned basis.</p>
+<div class="rule"><b>The encryption key is what makes a restore usable.</b> Medical and custody data, IEPs, government IDs, gateway keys and every uploaded document are encrypted with the <code>FIELD_ENCRYPTION_KEY</code> in <code>.env</code>, and a fresh install generates a <i>different</i> key. Current backups carry <code>.env</code> inside the encrypted archive and <code>restore.ps1</code> puts the key back, so a normal restore needs nothing extra. <b>Archives made by older versions of the backup script do not contain it</b> — for those, and as insurance, keep a copy of that one value in secure custody (taken the day you install, and again if it is ever rotated). The backup passphrase (§8) likewise has to be stored somewhere other than the machine it protects. Lose both the archive's copy and your own, and the encrypted fields are unrecoverable.</div>
+<h3>Test your restores</h3>
+<p>A backup that has never been restored is a hope, not a plan. Restore to a spare or virtual machine on a real schedule (quarterly is a reasonable floor for legally sensitive child records) and confirm it works end to end, not merely that the script exits 0. <code>docs/BACKUP_RESTORE_DRILL.md</code> and <code>docs/RETENTION_ERASURE_DRILL.md</code> record Dunware's own drills against this exact tooling and are a template for yours.</p>
+
+<h2 id="s19">19. Security &amp; compliance — what becomes your responsibility</h2>
+<p>The security architecture (encryption at rest, MFA, the append-only audit log, object-level access control) is built into the application and does not change with who operates it — see <code>docs/PII_SECURITY.md</code>. What changes once a site is self-managed is who keeps the operational half of that posture current:</p>
+<ul>
+<li><b>OS patching</b> — Windows Update on the host is entirely yours.</li>
+<li><b>Third-party versions</b> — <code>install-dependencies.ps1</code> pins tested versions (Caddy v2.11.4, NSSM 2.24, PostgreSQL 16.15, GnuPG 2.5.22, GTK3 3.24.31) rather than tracking "latest". Moving to a newer one is a deliberate act: update the URL, re-stage, rebuild and re-run the full gate (§4) before it goes near a live site.</li>
+<li><b>Payment credentials</b> — the school owns its Stripe/Paystack/Flutterwave merchant account, its KYC/compliance and its transaction fees. Keep <b>live</b> secret keys out of email and chat, rotate them in the Payments Setup window if exposed, and keep <b>Test</b> mode for training boxes only.</li>
+<li><b>Audit log and retention</b> — <code>RETENTION_AUDIT_LOG_DAYS</code> and related <code>.env</code> settings control how long time-boxed records are kept before <code>run_retention</code> anonymises them. Set them against <i>your</i> regulatory obligations; Dunware's defaults are a starting point, not a compliance determination.</li>
+<li><b>Regular verification</b> — <code>manage check --deploy --fail-level WARNING</code> costs nothing to run after any change or on a schedule, and catches configuration drift before it becomes an incident.</li>
+<li><b>Reading the audit log</b> — it exists to be read. The console viewer (administrators) is the day-to-day tool; <code>support_sql</code> (§9) covers what its filters can't.</li>
+</ul>
+<p>Data-subject-rights tooling is built and now yours to operate under your own jurisdiction: <code>manage export_student &lt;id&gt;</code> (full decrypted export, audited), <code>manage erase_student &lt;id&gt;</code> (anonymise in place, blocked by a legal hold, audited), <code>manage run_retention</code> (the scheduled sweep). <code>docs/OPERATOR_PRIVACY_CHECKLIST.md</code> maps the controls to PIPEDA and provincial education-records law (Canada) and FERPA / COPPA (US) as a starting checklist — it is not legal advice; have your own privacy officer or counsel confirm it against your jurisdiction and any purchase-agreement obligations.</p>
+
+<h2 id="s20">20. Extending or customizing the codebase safely</h2>
+<p>Only for an organization with source access and its own developers — skip it otherwise.</p>
+<ul>
+<li><b>The hotfix overlay (§10) is for emergencies, not customization.</b> It shadows one file at a time without a rebuild — right for "this is broken now and can't wait", wrong for "we want Campus to also do X". A hotfix still active a month later means the real fix hasn't shipped; <code>core.W001</code> keeps surfacing that.</li>
+<li><b>A permanent change means: edit source, run every gate in the release checklist (§4), rebuild, and deploy through the normal update path (§17).</b> Every issue in §14 was caught by a gate being run properly, or shipped because one wasn't.</li>
+<li><b>Track customizations against upstream deliberately.</b> If Dunware keeps shipping updates to the codebase you've modified, expect merge conflicts wherever both sides touch a file; a private branch periodically rebased onto new releases is the realistic approach, not a promise that updates apply cleanly over custom changes.</li>
+<li><b>Follow the existing patterns.</b> PII fields use the encrypted field types, sensitive models extend <code>SensitiveModel</code> for audited reads, and every new viewset gets an explicit permission class. <code>docs/DATA_MODEL.md</code> and <code>docs/PII_SECURITY.md</code> are the reference.</li>
+</ul>
+
+<h2 id="s21">21. Data ownership, export &amp; portability</h2>
+<p>Every byte of real data — the database, every uploaded document, every backup — lives on hardware the organization owns or controls, from the first install. Buying outright doesn't change that; it makes direct access beyond the console unambiguously yours:</p>
+<ul>
+<li><b>Direct database access</b> — the bundled <code>pgsql\bin\psql.exe</code> connects with ordinary PostgreSQL tooling, and a full <code>pg_dump</code> gives a portable, standard-format copy independent of Campus's own backup format.</li>
+<li><b>Structured exports</b> — <code>manage export_student &lt;id&gt;</code> gives one family's complete record (the same tool used to fulfil a data-subject access request).</li>
+<li><b>No proprietary lock-in</b> — Django, PostgreSQL and Next.js are mainstream and non-proprietary. A competent team unfamiliar with Campus can read the schema, query the database and extract from it without Dunware.</li>
+</ul>
+
+<h2 id="s22">22. What's covered vs. what's now yours</h2>
+<p>The terms of any support arrangement are governed by the purchase agreement, not this document. This section states the practical reality of a self-managed site so nothing is discovered the hard way:</p>
+<table>
+<tr><th>Inherent to the software (true whoever operates it)</th><th>Now the operating organization's responsibility</th></tr>
+<tr><td>The security architecture — encryption at rest, MFA, audit logging, object-level access control</td><td>Keeping the host OS patched and the machine physically and administratively secure</td></tr>
+<tr><td>The data model, permission rules and every workflow in the Overview &amp; User Guide</td><td>Scheduling, running and <i>testing</i> backups (§18) — there is no built-in default; it must be set up</td></tr>
+<tr><td>The known-issues catalogue (§14) and the fixes already shipped for it</td><td>Applying future updates (§17) and verifying they landed</td></tr>
+<tr><td>The field-support tooling (§9) and this guide</td><td>Deciding and tracking third-party dependency versions (§19) over time</td></tr>
+<tr><td>The self-contained, non-proprietary data architecture (§21)</td><td>Regulatory compliance for their own jurisdiction (§19) — the built-in controls are real, the compliance determination is theirs</td></tr>
+<tr><td>Hosted-checkout online payments that never expose card data to Campus (§7)</td><td>The merchant account itself: opening it, its KYC and fees, choosing Test or Live, and guarding the keys</td></tr>
+</table>
+<p>This guide, the <i>Overview &amp; User Guide</i> and <code>deploy\install-dependencies.ps1</code> together are meant to be a complete toolkit for this scenario. If something a self-managed team needs isn't covered by one of them, that is a gap worth reporting, not something deliberately withheld.</p>
+
+<h2 id="s23">23. Where to look next</h2>
+<table>
+<tr><th>Topic</th><th>Document</th></tr>
+<tr><td>Every model, every PII field, purpose &amp; retention</td><td><code>docs/DATA_MODEL.md</code></td></tr>
+<tr><td>Full security/privacy control matrix</td><td><code>docs/PII_SECURITY.md</code></td></tr>
+<tr><td>High-level architecture &amp; request flow</td><td><code>docs/ARCHITECTURE.md</code></td></tr>
+<tr><td>Build/package the installer</td><td><code>docs/PACKAGING.md</code></td></tr>
+<tr><td>Install, update, remote access, online payments, field support, third-party binaries</td><td><code>docs/DEPLOYMENT.md</code></td></tr>
+<tr><td>Backup/restore drill (executed, not theoretical)</td><td><code>docs/BACKUP_RESTORE_DRILL.md</code></td></tr>
+<tr><td>Retention/erasure drill</td><td><code>docs/RETENTION_ERASURE_DRILL.md</code></td></tr>
+<tr><td>What an operator sets up for a given jurisdiction</td><td><code>docs/OPERATOR_PRIVACY_CHECKLIST.md</code></td></tr>
+<tr><td>Remote access &amp; what it exposes</td><td><code>docs/REMOTE_ACCESS_AND_YOUR_DATA.md</code></td></tr>
+<tr><td>Security self-review against OWASP ASVS</td><td><code>docs/ASVS_LITE_REVIEW.md</code></td></tr>
+<tr><td>Sources of the three PDFs, and the render script</td><td><code>docs/pdf-src/</code></td></tr>
+</table>
+
+</body>
+</html>

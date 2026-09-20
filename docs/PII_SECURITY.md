@@ -24,10 +24,17 @@ promotion, a non-staff cancellation cutoff, ICS export; `price_cents` is an
 inert Phase-7 hook); Phase 6 adds the restricted parent / student portal — one
 read-scoped dashboard, a **contact-change request** flow (guardians never edit
 their own record, staff approve/reject and the change is audited), and portal
-consent capture as new versioned rows; Phase 7 adds the payments placeholder —
-real `billing` models, a manual "mark paid" workflow through a
-`PaymentGateway` interface, and a `StripeGateway` **stub** that only ever
-raises — no card data collected, nothing for PCI scope to attach to.
+consent capture as new versioned rows; Phase 7 adds payments — real `billing`
+models and a manual "mark paid" workflow through a `PaymentGateway` interface.
+Online payment gateways (Paystack, Flutterwave, Stripe) were added afterwards
+(2026-09-16): the school's own merchant account, **hosted checkout only** — a
+card number never reaches Campus, so PCI scope stays at the SAQ-A level;
+gateway secret keys are stored AES-256-GCM encrypted (`GatewayConfig.secret_key`)
+and never in `.env`, logs or the support bundle; the last provider response is
+kept encrypted (`PaymentAttempt.raw_response`); a payment is recorded only when
+the provider confirms it with a matching amount **and** currency (a mismatch is
+never auto-applied); and a parent's access to an invoice is checked against the
+specific billing guardian, not merely "linked to the child".
 
 **Phase 8 (hardening & test) is complete** — no new features, all
 verification: a full self-review against OWASP ASVS

@@ -204,10 +204,12 @@ place where every **PII field** is listed with its **purpose** and **retention**
   the first waitlisted booking when a confirmed one is freed),
   `bookings_to_ics()` (RFC-5545 `VCALENDAR`, no dependency). `GET
   /api/bookings/ics/` returns the caller's bookings as a `.ics` download.
-## billing  *(Phase 7 — done, placeholder by design)*
+## billing  *(Phase 7 manual workflow + online payments, added 2026-09-16)*
 
-Real models, a real manual workflow — **no card processing**, nothing here
-for PCI scope to attach to. Amounts are integer cents throughout.
+Real models and two ways to be paid: recorded by hand, or online through the
+school's own gateway account. **Campus never handles card data** — online
+payments use each provider's hosted checkout page (PCI SAQ-A). Amounts are
+integer cents throughout.
 
 - `FeeSchedule` — a priced template (one-time / monthly / per-term / annual).
 - `Invoice(SensitiveModel)` — `DRAFT → ISSUED → PARTIALLY_PAID → PAID` (or
@@ -218,20 +220,64 @@ for PCI scope to attach to. Amounts are integer cents throughout.
   payment records — never the raw internal id. Reads audited.
 - `InvoiceLine` — fee-schedule-linked or ad hoc; `amount_cents` = quantity ×
   unit.
-- `Payment` — **manual only**: cash / cheque / e-transfer + a reference,
-  `received_by`. Created exclusively through `ManualGateway.charge()`.
-- `Credit` — a manual adjustment in the family's favour (no automated refund
-  path in v1).
-- `apps/billing/gateways.py` — the `PaymentGateway` interface:
-  `ManualGateway` (the only real option; `refund()` is intentionally
-  unimplemented — issue a `Credit` instead) and `StripeGateway` (**stub** —
-  both methods raise `NotImplementedError`, `# TODO v2`). `get_gateway()`
-  reads `settings.FEATURE_PAYMENTS_GATEWAY` (default `"manual"`).
+- `Invoice` (fields added with online payments) — `currency` (ISO-4217, defaulted from
+  `SiteConfiguration` when the invoice is created) and `guardian` (the
+  **billing guardian**, defaulted to the primary contact — a parent's access is
+  checked against this guardian, not merely "linked to the child").
+- `Payment` — either **manual** (`source=MANUAL`: cash / cheque / e-transfer /
+  card-terminal / other + a `reference`, `received_by`, created through
+  `ManualGateway.charge()`) or **gateway** (`source=GATEWAY`: `gateway` +
+  `gateway_reference`, created only by resolving a `PaymentAttempt`).
+- `Credit` — a manual adjustment in the family's favour. Refunds stay manual.
+- `GatewayConfig` — the install's one configured gateway: `gateway`
+  (`MANUAL` / `PAYSTACK` / `FLUTTERWAVE` / `STRIPE`), `mode` (`TEST` / `LIVE`),
+  `public_key`, **`secret_key` (`EncryptedCharField`, AES-256-GCM)**,
+  `subaccount_id` (reserved), `configured_by` / `configured_at`. Written only by
+  `manage set_gateway_config` / the Payments Setup window — there is no browser
+  write endpoint for keys.
+- `PaymentAttempt` (`SensitiveModel`) — the checkout audit trail: `gateway`,
+  unique `reference`, `amount_cents`, `currency`, `status` (`INITIALIZED` /
+  `PENDING` / `SUCCESS` / `FAILED` / `ABANDONED` / `MISMATCH`), `checkout_url`,
+  `gateway_session_id`, `channel`, **`raw_response` (`EncryptedTextField`)**,
+  `initialized_by`, `last_checked_at`.
+- `PaymentAttemptInvoice` — through table, one row per invoice per attempt with
+  its `allocated_cents`; a combined charge is split proportionally
+  (largest-remainder, so the cents sum exactly). A single-invoice attempt is one
+  row, so the success path never branches on invoice count.
+- `apps/billing/gateways.py` — the `PaymentGateway` interface: `ManualGateway`
+  (`refund()` intentionally unimplemented — issue a `Credit`) and
+  `OnlineGateway` (`initialize()` / `verify()`) with `PaystackGateway`,
+  `FlutterwaveGateway` (v3 hosted checkout) and `StripeGateway` (Checkout).
+  `get_gateway()` reads `GatewayConfig` first, then falls back to
+  `settings.FEATURE_PAYMENTS_GATEWAY` (default `"manual"`). Kanoo is not
+  implemented.
 - `apps/billing/services.py`: `issue_invoice`, `mark_paid` (→ the gateway),
-  `void_invoice`, `portal_summary(student)` — the read-only shape the parent
-  portal shows (no card fields, ever).
+  `void_invoice`, `portal_summary(student)` (read-only, per-invoice `currency`,
+  no card fields, ever), `initiate_online_payment` (rejects a combined charge
+  whose invoices differ in billing guardian or currency),
+  `resolve_payment_attempt` (a verified success with matching amount **and**
+  currency creates the `Payment`; a mismatch is logged as `MISMATCH` and never
+  auto-applied) and `allocate_payment`.
+- API: `POST /api/invoices/pay/` (`invoice_ids` + optional `amount_cents`; a
+  parent may combine only invoices billed to them, staff may generate a link for
+  any family) and `GET /api/payment-attempts/{reference}/` (resolves live
+  against the provider, at most one real check per 5 s). There is **no
+  background reconciliation job yet**.
 - Access: front office (admin tier) manage everything; a parent reads their
-  own child's non-draft invoices/payments only. No instructor access.
+  own child's non-draft invoices/payments only. No instructor access. The whole
+  Billing surface is closed when `SiteConfiguration.collects_fees` is false.
+
+## core — site settings  *(SiteConfiguration added 2026-09-09/16)*
+
+- `SchoolProfile` (singleton) — the school's identity for letterheads and the
+  console: `name`, `legal_name`, `motto`, address, contact, `principal_name` /
+  `principal_title`, `principal_user` (the designated principal), `signature`,
+  `logo`, `report_card_footer`. Only the designated principal or a superadmin
+  can upload or replace the signature (enforced server-side).
+- `SiteConfiguration` (singleton) — `country` (ISO-3166), `currency` (ISO-4217;
+  locks once any invoice exists), `locale`, `collects_fees`, `deployment_mode`
+  (`SINGLE` / `SCHOOL` / `HEADQUARTERS`, reserved for the multi-school plan).
+  Edited under **School settings → Region & fees** or `manage set_site_config`.
 
 ## portal  *(Phase 6 — done, no new app)*
 
