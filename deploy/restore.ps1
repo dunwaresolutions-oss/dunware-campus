@@ -1,10 +1,15 @@
 <#
   Campus - restore from an encrypted backup (Phase 8).
 
-  Decrypt (gpg) -> expand -> [stop the Campus App service] -> pg_restore
-  --clean --if-exists -> restore media -> `campus-app.exe manage migrate`
-  (in case the backup predates a schema change) -> [start the service] ->
-  verify.
+  Decrypt (gpg) -> expand -> [stop the Campus App service] -> restore the
+  archive's FIELD_ENCRYPTION_KEY into app\.env -> pg_restore --clean
+  --if-exists -> restore media -> `campus-app.exe manage migrate` (in case
+  the backup predates a schema change) -> [start the service] -> verify.
+
+  Only the FIELD_ENCRYPTION_KEY line of the archive's env.backup is applied,
+  never the whole file: a fresh install has its own DATABASE_URL / Postgres
+  password, and overwriting that would break the connection. Archives made
+  before env.backup existed carry no key; the script warns.
 
   Part of the Phase 8 test plan: every release must pass a
   backup -> wipe -> restore -> "everything still there" drill - see
@@ -43,6 +48,39 @@ function Resolve-Gpg {
   $onPath = Get-Command gpg -ErrorAction SilentlyContinue
   if ($onPath) { return $onPath.Source }
   return $null
+}
+
+# Put the backup's FIELD_ENCRYPTION_KEY into the target .env (only that line).
+function Restore-EncryptionKey {
+  param([string]$BackupEnv, [string]$TargetEnv)
+  $keyPattern = '^FIELD_ENCRYPTION_KEY=(.*)$'
+  $found = Select-String -Path $BackupEnv -Pattern $keyPattern | Select-Object -First 1
+  if (-not $found) {
+    Write-Warning "env.backup has no FIELD_ENCRYPTION_KEY line - the encryption key was NOT restored."
+    return
+  }
+  $newKey = $found.Matches.Groups[1].Value
+  if (-not (Test-Path $TargetEnv)) {
+    Write-Warning "No $TargetEnv to update - the encryption key was NOT applied. It is in the archive's env.backup."
+    return
+  }
+  $lines = [System.IO.File]::ReadAllLines($TargetEnv)
+  $current = $lines | Where-Object { $_ -match $keyPattern } | Select-Object -First 1
+  if ($current -and ($current -replace '^FIELD_ENCRYPTION_KEY=', '') -eq $newKey) {
+    Write-Host "  FIELD_ENCRYPTION_KEY already matches the backup."
+    return
+  }
+  $updated = $false
+  $result = New-Object System.Collections.Generic.List[string]
+  foreach ($l in $lines) {
+    if ($l -match $keyPattern) {
+      if (-not $updated) { $result.Add("FIELD_ENCRYPTION_KEY=$newKey"); $updated = $true }
+    } else { $result.Add($l) }
+  }
+  if (-not $updated) { $result.Add("FIELD_ENCRYPTION_KEY=$newKey") }
+  # UTF-8 without a BOM: django-environ silently drops a BOM-prefixed first line.
+  [System.IO.File]::WriteAllLines($TargetEnv, $result.ToArray(), (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host "  Restored FIELD_ENCRYPTION_KEY from the backup into $TargetEnv (the restored data is encrypted with it)." -ForegroundColor Yellow
 }
 
 # Record a restore-verification run so the console shows "last verified".
@@ -86,6 +124,12 @@ try {
       Stop-Service -Name "Campus App" -ErrorAction SilentlyContinue
     }
     $envFile = Join-Path $InstallRoot "app\.env"
+    $backupEnv = Join-Path $expandDir "env.backup"
+    if (Test-Path $backupEnv) {
+      Restore-EncryptionKey -BackupEnv $backupEnv -TargetEnv $envFile
+    } else {
+      Write-Warning "This archive has no env.backup (made before the encryption key was included). Make sure $envFile still holds the ORIGINAL FIELD_ENCRYPTION_KEY, or restored encrypted fields will not decrypt."
+    }
     $dbUrl = if (Test-Path $envFile) {
       (Select-String -Path $envFile -Pattern '^DATABASE_URL=(.*)$').Matches.Groups[1].Value
     } else { $env:DATABASE_URL }
@@ -122,6 +166,11 @@ try {
     }
     Write-Host "SIMULATE: decrypt + expand verified; no database was touched." -ForegroundColor Yellow
     Write-Host "  Would restore: $dumpPath"
+    if (Test-Path (Join-Path $expandDir "env.backup")) {
+      Write-Host "  Would restore FIELD_ENCRYPTION_KEY from: $(Join-Path $expandDir 'env.backup')"
+    } else {
+      Write-Warning "This archive has no env.backup - it carries no encryption key."
+    }
     if (Test-Path (Join-Path $expandDir "media")) {
       Write-Host "  Would restore media from: $(Join-Path $expandDir 'media')"
     }

@@ -1,9 +1,11 @@
 <#
   Campus - encrypted backup (Phase 8).
 
-  pg_dump (custom format) + the media directory, packed into one archive,
-  then GPG symmetric-encrypted with the operator's passphrase. Nothing
-  readable ever sits on disk once the run finishes. See
+  pg_dump (custom format) + the media directory + a copy of app\.env (as
+  env.backup - it carries FIELD_ENCRYPTION_KEY, without which the restored
+  encrypted fields and documents cannot be decrypted), packed into one
+  archive, then GPG symmetric-encrypted with the operator's passphrase.
+  Nothing readable ever sits on disk once the run finishes. See
   docs/BACKUP_RESTORE_DRILL.md for the drill procedure and
   docs/DEPLOYMENT.md for backup rotation guidance.
 
@@ -75,6 +77,7 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $mediaBackedUp = $false
 $dbBackedUp = $false
+$encryptedOk = $false
 
 try {
   # Validated inside the try so an on-demand run (-RunId) always closes its
@@ -117,6 +120,17 @@ try {
     $mediaBackedUp = $true
   }
 
+  # Every encrypted database field and stored document is keyed by
+  # FIELD_ENCRYPTION_KEY, and a fresh install generates a different one - so
+  # a backup without it cannot be restored onto new hardware. The plaintext
+  # copy lives only in $work (deleted in `finally`); the archive is encrypted.
+  $envSrc = Join-Path $InstallRoot "app\.env"
+  if (Test-Path $envSrc) {
+    Copy-Item $envSrc (Join-Path $work "env.backup")
+  } elseif (-not $Simulate) {
+    Write-Warning "No $envSrc found - this archive will NOT contain FIELD_ENCRYPTION_KEY, so it cannot be restored onto a fresh install unless you keep that key elsewhere."
+  }
+
   $zipPath = Join-Path $Out "campus-$stamp.zip"
   Compress-Archive -Path (Join-Path $work "*") -DestinationPath $zipPath -Force
 
@@ -124,6 +138,7 @@ try {
   & $gpg --batch --yes --pinentry-mode loopback --passphrase $Passphrase `
       --symmetric --cipher-algo AES256 -o $encPath $zipPath
   if ($LASTEXITCODE -ne 0) { throw "gpg encryption exited with code $LASTEXITCODE" }
+  $encryptedOk = $true
 
   Remove-Item $zipPath -Force  # never leave the plaintext archive on disk
 
@@ -158,4 +173,8 @@ try {
   throw
 } finally {
   Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+  # If encryption failed, the plaintext archive must not be left behind, and a
+  # half-written .gpg must not linger to be mistaken for a valid backup.
+  if ($zipPath -and (Test-Path $zipPath)) { Remove-Item $zipPath -Force -ErrorAction SilentlyContinue }
+  if ($encPath -and -not $encryptedOk -and (Test-Path $encPath)) { Remove-Item $encPath -Force -ErrorAction SilentlyContinue }
 }

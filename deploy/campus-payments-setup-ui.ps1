@@ -6,7 +6,7 @@
   not the place for it") and §companion ("Tab: Payments"): the window shells
   out to `campus-app.exe manage set_gateway_config` / `payments_test` - the
   exact same commands available from a plain elevated PowerShell (see
-  docs/PAYMENTS setup notes) - this is a nicer front end for them, not a
+  docs/DEPLOYMENT.md, "Online payments") - this is a nicer front end for them, not a
   different mechanism. A standalone window for now rather than merged into
   one tabbed "Setup & Configuration" window with Region & Fees + Remote
   Access, which the plan describes as the eventual shape - scoped this way
@@ -17,7 +17,8 @@
   Kanoo out until we get word from CaribPay." Add it once P5 builds a real
   KanooGateway.
 
-  Start it directly (no Start-Menu entry yet - see the file header above):
+  On an installed machine, open Start Menu -> "Campus - Payments Setup"
+  (campus.iss adds the shortcut). From a source checkout, start it directly:
     powershell -ExecutionPolicy Bypass -File deploy\campus-payments-setup-ui.ps1
 #>
 param(
