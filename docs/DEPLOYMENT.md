@@ -172,8 +172,12 @@ and `payments_test`, which can be run from an elevated PowerShell instead.
 - **Confirmation** is checked live against the gateway when the parent returns to
   Campus (the return page polls for a few minutes); a scheduled background
   poller is not built yet. Refunds are manual (issue a `Credit`).
-- Kanoo (Bahamas) is not offered until CaribPay grants API access; a Bahamas
-  install records payments manually meanwhile.
+- Kanoo (Bahamas) is not offered until CaribPay grants API access, so Campus has
+  no built online gateway for a Bahamas install yet. That does not stop parents
+  paying by major credit card: cards can already complete online purchases and
+  pay bills, provided the cardholder's own bank allows the transaction (most do;
+  some ask for a simple verification). The school can also take cash and
+  cheques. Campus records those payments by hand meanwhile.
 
 ## Field support
 

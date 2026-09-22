@@ -226,7 +226,7 @@ postgres   present</pre>
 <h3>Connecting a gateway</h3>
 <ol>
 <li>Open <b>Start Menu → Campus → Campus — Payments Setup</b>.</li>
-<li>Pick <b>Paystack</b>, <b>Flutterwave</b> or <b>Stripe</b> (or <b>Manual</b> for none). Kanoo (Bahamas) is not offered until its provider grants API access; a Bahamas install records payments manually meanwhile.</li>
+<li>Pick <b>Paystack</b>, <b>Flutterwave</b> or <b>Stripe</b> (or <b>Manual</b> for none). Kanoo (Bahamas) is not offered until its provider grants API access, so Campus has no built online gateway for a Bahamas install yet. That does not stop parents paying by major credit card, provided the cardholder's own bank allows the transaction (most do; some ask for a simple verification); the school can also take cash and cheques. Campus records those payments by hand meanwhile.</li>
 <li>Choose <b>Test</b> or <b>Live</b> mode and enter the keys from the provider's dashboard.</li>
 <li>Click <b>Test connection</b>. It tests exactly the values in the form, without saving them.</li>
 <li>Click <b>Apply</b>. The secret key is stored AES-256-GCM encrypted in the database — never in <code>.env</code>, logs or the support bundle.</li>
