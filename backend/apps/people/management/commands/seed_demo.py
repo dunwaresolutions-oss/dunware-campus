@@ -230,7 +230,7 @@ SITE_CLOSURES = [
     (dt.date(2027, 6, 4), dt.date(2027, 6, 4), "Randol Fawkes Labour Day"),
 ]
 
-DEMO_PASSWORD = "demo-Passphrase-123!"  # noqa: S105 - synthetic demo accounts only
+DEMO_PASSWORD = "demo-Passphrase-123!"  # noqa: S105 # nosec B105 - synthetic demo accounts only
 
 # a tiny, well-known transparent 1x1 PNG — enough for an ImageField that
 # nothing actually renders pixel-for-pixel in this dataset.

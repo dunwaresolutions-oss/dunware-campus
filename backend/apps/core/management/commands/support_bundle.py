@@ -29,7 +29,7 @@ import io
 import json
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - every call site below uses a fixed argv list, no shell
 import sys
 import tempfile
 import zipfile
@@ -78,7 +78,7 @@ def _tail(path: Path, nbytes: int) -> bytes:
 
 def _run(cmd: list[str]) -> str:
     try:
-        p = subprocess.run(  # noqa: S603 - fixed argv lists built in this module only
+        p = subprocess.run(  # noqa: S603 # nosec B603 - fixed argv lists built in this module only
             cmd, capture_output=True, text=True, timeout=30, check=False
         )
         return (p.stdout or "") + (p.stderr or "")

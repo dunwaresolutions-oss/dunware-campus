@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-import subprocess
+import subprocess  # nosec B404 - every call site below uses a fixed argv list, no shell
 import sys
 from pathlib import Path
 
@@ -149,7 +149,7 @@ def start_manual_backup(*, user, passphrase: str = "") -> BackupRun:
         if sink:
             _stamp(sink, f"--- manual backup {run.pk} @ {timezone.now():%Y-%m-%d %H:%M:%S} ---")
         try:
-            proc = subprocess.Popen(  # noqa: S603 - fixed argv, shell=False, passphrase via env
+            proc = subprocess.Popen(  # noqa: S603 # nosec B603 - fixed argv, shell=False, passphrase via env
                 args,
                 env=child_env,
                 cwd=str(settings.INSTALL_ROOT),

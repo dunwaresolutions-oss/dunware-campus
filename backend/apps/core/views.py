@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-import subprocess
+import subprocess  # nosec B404 - every call site below uses a fixed argv list, no shell
 import sys
 
 from django.conf import settings
@@ -28,7 +28,7 @@ def _service_state(name: str) -> str:
     if sys.platform != "win32":
         return "unknown"
     try:
-        out = subprocess.run(  # noqa: S603 - fixed argv, absolute exe
+        out = subprocess.run(  # noqa: S603 # nosec B603 - fixed argv, absolute exe
             [_SC, "query", name], capture_output=True, text=True, timeout=10, check=False
         ).stdout
     except (OSError, subprocess.SubprocessError):

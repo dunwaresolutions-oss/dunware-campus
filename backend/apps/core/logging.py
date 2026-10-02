@@ -35,6 +35,6 @@ class PIIScrubFilter(logging.Filter):
                 record.args = tuple(
                     _scrub(a) if isinstance(a, str) else a for a in record.args
                 )
-        except Exception:  # noqa: S110 - a logging filter must never raise
+        except Exception:  # noqa: S110 # nosec B110 - a logging filter must never raise
             return True
         return True
