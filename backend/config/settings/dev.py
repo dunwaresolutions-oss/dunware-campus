@@ -4,6 +4,16 @@ from .base import INSTALLED_APPS, env
 
 DEBUG = env.bool("DEBUG", default=True)
 
+# No collectstatic here (local `runserver`, and CI's backend job never runs it
+# either): plain, non-manifest static storage so the admin templates render
+# without a staticfiles.json. Same reasoning as test.py's identical override;
+# prod.py is untouched and keeps whitenoise's manifest storage, since the real
+# installer does run collectstatic before Django ever serves a request.
+STORAGES = {
+    **globals()["STORAGES"],
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+}
+
 INSTALLED_APPS += ["django_extensions"]
 
 # Let the Next.js dev server (localhost:3000) call the API on :8001.
