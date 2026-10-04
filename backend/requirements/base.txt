@@ -7,6 +7,9 @@ argon2-cffi>=23.1             # password hashing (Argon2 first in PASSWORD_HASHE
 cryptography>=43.0            # AES-GCM field encryption (apps/core/fields.py)
 django-otp>=1.5               # TOTP MFA for staff
 qrcode>=7.4                   # MFA enrolment QR
+Pillow>=10.4                  # ImageField (SchoolProfile.logo/signature, Student.photo). Was only ever
+                               # present by accident, as weasyprint's own transitive dependency on the
+                               # prod-only install path -- never installed by a plain dev/CI install.
 django-axes>=6.5             # login lockout / brute-force protection
 django-cors-headers>=4.4      # dev only in practice; prod is same-origin
 django-q2>=1.7                # background jobs (report cards, retention, digests)
