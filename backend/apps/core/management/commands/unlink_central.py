@@ -20,7 +20,7 @@ class Command(BaseCommand):
         cfg = SiteConfiguration.load()
         cfg.school_id = None
         cfg.central_url = ""
-        cfg.central_token = ""
+        cfg.central_token = ""  # noqa: S105 # nosec B105 - clearing the field, not a real password
         cfg.sync_enabled = False
         cfg.last_sync_error = ""
         cfg.save()
