@@ -3,7 +3,7 @@
   Called from campus.iss [UninstallRun]. Data directories are handled
   separately in campus.iss [Code] (the "keep data?" prompt).
 #>
-foreach ($name in @("Campus App", "Campus Proxy", "Campus PostgreSQL")) {
+foreach ($name in @("Campus App", "Campus Scheduler", "Campus Proxy", "Campus PostgreSQL")) {
   $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
   if ($svc) {
     Stop-Service -Name $name -Force -ErrorAction SilentlyContinue

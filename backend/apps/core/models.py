@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from apps.core.fields import EncryptedCharField
 from apps.core.storage import document_storage
 
 
@@ -201,6 +202,25 @@ class SiteConfiguration(BaseModel):
         max_length=12, choices=DeploymentMode.choices, default=DeploymentMode.SINGLE
     )
 
+    # Campus Central link (SCHOOL mode only; see docs/CENTRAL_SYNC_SCOPE.md).
+    # ``school_id`` is issued BY Central when the school is registered there —
+    # never generated locally. ``central_token`` is a bearer credential, same
+    # treatment as any other integration secret (apps/billing's gateway keys):
+    # encrypted at rest, set only via the companion tool / management
+    # commands, never exposed through /api/config/.
+    school_id = models.UUIDField(null=True, blank=True)
+    central_url = models.URLField(blank=True)
+    central_token = EncryptedCharField(blank=True)
+    sync_enabled = models.BooleanField(default=False)
+    sync_interval_minutes = models.PositiveIntegerField(default=1440)  # nightly
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    last_sync_error = models.TextField(blank=True)
+    # Tracked separately from last_synced_at (C5, apps/core/central_sync.py):
+    # a FULL bundle is forced at least weekly even when every sync in
+    # between was incremental, so Central's copy eventually catches a hard
+    # delete an incremental bundle's own absence-of-a-row can't prove.
+    last_full_synced_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = "core_site_configuration"
         verbose_name = "site configuration"
@@ -211,6 +231,18 @@ class SiteConfiguration(BaseModel):
     def save(self, *args, **kwargs):
         if self._state.adding and SiteConfiguration.objects.exists():
             raise ValidationError("SiteConfiguration is a singleton.")
+        # Campus is never Central: HEADQUARTERS is a separate product with its
+        # own installer (Campus-Central-Setup.exe) and its own settings model
+        # (CentralSettings, built in C3). This install's own deployment_mode
+        # exists only to say "plain" or "a school linked to one" — never "I am
+        # the head office" — so a stray script or form post can't silently
+        # turn a school install into something it structurally isn't.
+        if self.deployment_mode == self.DeploymentMode.HEADQUARTERS:
+            raise ValidationError(
+                "Campus cannot run as the Headquarters — that is a separate "
+                "product (Campus Central, its own installer). This install "
+                "stays SINGLE or SCHOOL."
+            )
         super().save(*args, **kwargs)
 
     @classmethod

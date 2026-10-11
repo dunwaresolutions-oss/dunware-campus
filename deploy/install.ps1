@@ -20,6 +20,12 @@
     6. Template the Caddyfile with the chosen LAN host; register
        "Campus Proxy" - needs both Caddy and NSSM staged.
     7. Register "Campus App" (campus-app.exe serve) - needs NSSM staged.
+    7b. Register "Campus Scheduler" (campus-app.exe manage qcluster) - the
+        django_q worker. Q_CLUSTER has been configured in settings since C5
+        with no worker process ever registered anywhere (confirmed by
+        grepping every deploy/*.ps1 + campus.iss before this) - meaning NO
+        scheduled job, for any feature, could ever actually run on a timer.
+        Needs NSSM staged, same as Campus App; no separate binary.
     8. Set every registered service to Automatic and start it.
     9. Drop a Start Menu / Desktop launcher (handled by campus.iss
        [Icons]; this script only writes the target .url).
@@ -330,12 +336,18 @@ if (-not $SkipServices) {
   if (Test-Path $appExe) {
     Register-CampusService -name "Campus App" -nssmPath $nssm -targetExe $appExe `
       -svcArgs "serve --host 127.0.0.1 --port 8001" -appDir (Join-Path $InstallRoot "app") | Out-Null
+    # The django_q worker. Same exe, same NSSM pattern as "Campus App" above -
+    # `manage qcluster` never returns, exactly like `serve` doesn't. Without
+    # this, Q_CLUSTER (config/settings/base.py) stays configured but inert:
+    # nothing scheduled by any feature can ever actually run.
+    Register-CampusService -name "Campus Scheduler" -nssmPath $nssm -targetExe $appExe `
+      -svcArgs "manage qcluster" -appDir (Join-Path $InstallRoot "app") | Out-Null
   }
 }
 
 # ── 8. start everything Automatic ────────────────────────────────────────
 if (-not $SkipServices) {
-  foreach ($svc in @("Campus PostgreSQL", "Campus App", "Campus Proxy")) {
+  foreach ($svc in @("Campus PostgreSQL", "Campus App", "Campus Scheduler", "Campus Proxy")) {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
     if ($s) {
       Set-Service -Name $svc -StartupType Automatic
@@ -366,11 +378,11 @@ IconIndex=0
 # and leave the real page load to a browser.
 if (-not $SkipServices) {
   Write-Step "Verifying"
-  $missing = @("Campus PostgreSQL", "Campus App", "Campus Proxy") |
+  $missing = @("Campus PostgreSQL", "Campus App", "Campus Scheduler", "Campus Proxy") |
     Where-Object { -not (Get-Service -Name $_ -ErrorAction SilentlyContinue) }
   if ($missing) { throw "these services were not registered: $($missing -join ', '). Setup did not complete." }
 
-  $down = @("Campus PostgreSQL", "Campus App", "Campus Proxy") |
+  $down = @("Campus PostgreSQL", "Campus App", "Campus Scheduler", "Campus Proxy") |
     Where-Object { (Get-Service -Name $_).Status -ne "Running" }
   if ($down) { Write-Warn2 "not Running yet: $($down -join ', ') - give them a moment, or check $InstallRoot\logs\" }
 

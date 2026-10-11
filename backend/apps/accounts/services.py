@@ -10,6 +10,7 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -19,7 +20,7 @@ from rest_framework.exceptions import ValidationError
 from apps.audit.models import AuditAction
 from apps.audit.services import record
 
-from .models import STAFF_ROLES, Role, StaffInvite, User
+from .models import Role, StaffInvite, User
 
 INVITE_TTL = timedelta(days=7)
 
@@ -30,8 +31,13 @@ def _invite_error(message: str) -> ValidationError:
 
 
 def create_staff_invite(*, email: str, role: str, invited_by: User | None) -> StaffInvite:
-    if role not in {r.value for r in STAFF_ROLES}:
-        raise ValidationError({"role": "Not a staff role."})
+    # Settings-driven (see config/settings/base.py / central/settings/base.py's
+    # ACCOUNTS_DIRECTORY_ROLES) -- the serializer already restricts this via
+    # its ChoiceField, but the service layer re-checks independently rather
+    # than trusting the view never changes (same defense-in-depth every
+    # other service function in this codebase already follows).
+    if role not in settings.ACCOUNTS_DIRECTORY_ROLES:
+        raise ValidationError({"role": "Not a valid role for this install."})
     invite = StaffInvite.objects.create(
         email=email.strip().lower(),
         role=role,

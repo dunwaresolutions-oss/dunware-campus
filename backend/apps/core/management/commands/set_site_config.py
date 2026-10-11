@@ -48,6 +48,12 @@ class Command(BaseCommand):
         if o["collects_fees"] is not None:
             cfg.collects_fees = o["collects_fees"] == "yes"
         if o["deployment_mode"] is not None:
+            if o["deployment_mode"] == "HEADQUARTERS":
+                raise CommandError(
+                    "Campus cannot run as the Headquarters -- that is a separate "
+                    "product, Campus Central, with its own installer "
+                    "(Campus-Central-Setup.exe). This install stays SINGLE or SCHOOL."
+                )
             cfg.deployment_mode = o["deployment_mode"]
 
         cfg.save()

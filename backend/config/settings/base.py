@@ -66,6 +66,17 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.User"
 
+# Which roles the shared staff directory (apps.accounts.UsersView) lists and
+# the shared invite endpoint (StaffInviteView) can issue, on THIS deployment
+# -- apps.accounts is reused as-is by Campus Central too (central/settings/
+# base.py sets these to Central's own CENTRAL_ROLE_NAMES instead), so the
+# allowed set has to be settings-driven, not a hardcoded import of Campus's
+# own STAFF_ROLES, or Central would inherit Campus's role list by accident.
+ACCOUNTS_DIRECTORY_ROLES = ["SUPERADMIN", "ADMIN", "TEACHER", "TUTOR", "FRONT_DESK"]
+# Who may SEND an invite -- Campus: Superadmin or Admin, same as every other
+# admin-only action (apps.core.permissions.AdminOnly).
+ACCOUNTS_INVITE_MANAGER_ROLES = ["SUPERADMIN", "ADMIN"]
+
 # ── Applications ──────────────────────────────────────────────────────────
 DJANGO_APPS = [
     "django.contrib.admin",

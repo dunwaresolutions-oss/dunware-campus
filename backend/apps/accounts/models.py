@@ -21,12 +21,27 @@ class Role(models.TextChoices):
     FRONT_DESK = "FRONT_DESK", "Front desk"
     PARENT = "PARENT", "Parent / guardian"
     STUDENT = "STUDENT", "Student"
+    # Campus Central only (apps.central, a separate Django project/database --
+    # see docs/CENTRAL_SYNC_SCOPE.md). A Campus (school) install reuses this
+    # same User/Role model class but, in its own database, never creates a
+    # user with one of these three roles -- there is no school-side feature
+    # that would assign them. They exist here, rather than on a duplicated
+    # Central-only User model, because the plan's own C3 scope explicitly
+    # calls for reusing apps.accounts wholesale (User / Role / MFA) rather
+    # than rebuilding account management twice.
+    MINISTRY_ADMIN = "MINISTRY_ADMIN", "Ministry admin"
+    MINISTRY_ANALYST = "MINISTRY_ANALYST", "Ministry analyst"
+    DISTRICT_OFFICER = "DISTRICT_OFFICER", "District officer"
 
 
 STAFF_ROLES = frozenset(
     {Role.SUPERADMIN, Role.ADMIN, Role.TEACHER, Role.TUTOR, Role.FRONT_DESK}
 )
 PORTAL_ROLES = frozenset({Role.PARENT, Role.STUDENT})
+# Central-only roles (see the Role enum's own comment above). Meaningless on
+# a Campus (school) install; used by apps.central's own permission classes
+# once those are built (C6).
+CENTRAL_ROLES = frozenset({Role.MINISTRY_ADMIN, Role.MINISTRY_ANALYST, Role.DISTRICT_OFFICER})
 
 
 class StaffStatus(models.TextChoices):
@@ -65,7 +80,11 @@ class User(AbstractUser):
         self.is_staff = self.role in STAFF_ROLES or self.is_superuser
         if self.role == Role.SUPERADMIN:
             self.is_superuser = True
-        self.must_use_mfa = self.role in STAFF_ROLES
+        # Central roles access cross-school PII and require MFA exactly like
+        # school staff do, even though they aren't STAFF_ROLES (a Campus
+        # install never creates one of these; only Central, a separate
+        # database, does).
+        self.must_use_mfa = self.role in STAFF_ROLES or self.role in CENTRAL_ROLES
         super().save(*args, **kwargs)
 
     @property

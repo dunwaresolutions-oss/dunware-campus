@@ -43,6 +43,7 @@ hiddenimports = (
     # a frozen `serve` smoke test caught the omission — see
     # docs/PACKAGING.md.
     + collect_submodules("whitenoise")
+    + collect_submodules("truststore")
     + [
         "psycopg",
         "psycopg_binary",

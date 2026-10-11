@@ -18,16 +18,20 @@ Remote access is **optional**, set up from a dedicated window on the server
 any time**, which returns Campus to a state where nothing leaves the building
 at all.
 
-## The three ways to do it
+## The ways to do it
 
 | | What travels outside | Who can read it in transit | Best for |
 |---|---|---|---|
 | **Cloudflare Tunnel** | Encrypted web traffic, via Cloudflare's network | Cloudflare's edge briefly decrypts each request to check the sign-in and re-encrypts it (sub-second, not stored) | Parents / anyone — nothing to install |
+| **Quick test tunnel** | Same as Cloudflare Tunnel, same brief edge decryption | Cloudflare's edge, same as above — **and no Cloudflare Access sign-in check at all**, since there's no domain/zone to attach one to | A quick, one-off connectivity test — not ongoing use |
 | **WireGuard VPN** | Encrypted traffic only Cloudflare-style middle layer | **No one** — it stays encrypted end to end; the school's computer is the only thing that can read it | Staff — needs an app + a config per device |
 | **Plain gateway** | Encrypted web traffic, direct to the school | **No one** but the school's own computer (it holds the certificate) | Schools that want their own domain and no third party at all |
 
-All three keep the database, files and backups on-premises. They differ only in
-**how much a third party can see the traffic while it is moving**.
+All four keep the database, files and backups on-premises. They differ in **how
+much a third party can see the traffic while it is moving**, and the quick test
+tunnel additionally has **no sign-in check in front of it at all** — Campus's
+own login is the only thing protecting it, which is why it's meant for a short
+test, not something left running.
 
 ## Cloudflare Tunnel — the detail, because it's the one people ask about
 

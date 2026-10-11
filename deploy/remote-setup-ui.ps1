@@ -83,6 +83,7 @@ $grpMode.Location = New-Object System.Drawing.Point(12, 112)
 $grpMode.Size = New-Object System.Drawing.Size(640, 60)
 $modes = @(
   @{ Key = 'Tunnel';    Text = 'Cloudflare Tunnel' }
+  @{ Key = 'Quick';     Text = 'Quick test tunnel' }
   @{ Key = 'WireGuard'; Text = 'WireGuard VPN' }
   @{ Key = 'Gateway';   Text = 'Plain gateway' }
   @{ Key = 'Off';       Text = 'Turn OFF' }
@@ -93,11 +94,11 @@ foreach ($m in $modes) {
   $r = New-Object System.Windows.Forms.RadioButton
   $r.Text = $m.Text
   $r.Location = New-Object System.Drawing.Point($rx, 24)
-  $r.Size = New-Object System.Drawing.Size(155, 22)
+  $r.Size = New-Object System.Drawing.Size(120, 22)
   $r.Tag = $m.Key
   $radios[$m.Key] = $r
   $grpMode.Controls.Add($r)
-  $rx += 158
+  $rx += 125
 }
 $form.Controls.Add($grpMode)
 
@@ -122,6 +123,12 @@ $btnCfLogin = New-Button 'Sign in to Cloudflare...' 170 148 200
 $pnlTunnel.Controls.Add($btnCfLogin)
 $lblTunNote = New-Label 'Needs a Cloudflare account + a domain in Cloudflare. After Apply, finish the Cloudflare Access policy in the dashboard (the log prints the steps).' 8 188 620 50
 $pnlTunnel.Controls.Add($lblTunNote)
+
+$pnlQuick = New-Object System.Windows.Forms.Panel
+$pnlQuick.Location = $panelArea; $pnlQuick.Size = $panelSize
+$pnlQuick.Controls.Add((New-Label 'No Cloudflare account or domain needed. Click Apply to start a temporary tunnel -- a random *.trycloudflare.com address is assigned automatically and shown in the log below.' 8 12 620 50))
+$pnlQuick.Controls.Add((New-Label 'TEMPORARY: the address changes every time the tunnel restarts (service restart, reboot, crash, or Apply clicked again). For a stable, permanent address, use Cloudflare Tunnel or WireGuard instead.' 8 70 620 60))
+$pnlQuick.Controls.Add((New-Label "Protected only by Campus's own login -- there's no Cloudflare Access policy on a quick tunnel (no zone to attach one to). Turn OFF when you're done testing." 8 138 620 50))
 
 $pnlWg = New-Object System.Windows.Forms.Panel
 $pnlWg.Location = $panelArea; $pnlWg.Size = $panelSize
@@ -160,7 +167,7 @@ $pnlOff = New-Object System.Windows.Forms.Panel
 $pnlOff.Location = $panelArea; $pnlOff.Size = $panelSize
 $pnlOff.Controls.Add((New-Label 'This stops the tunnel / VPN, clears the setting, and restarts Campus LAN-only. Nothing is removed from the database.' 8 12 620 50))
 
-$allPanels = @($pnlTunnel, $pnlWg, $pnlGw, $pnlOff)
+$allPanels = @($pnlTunnel, $pnlQuick, $pnlWg, $pnlGw, $pnlOff)
 $allPanels | ForEach-Object { $_.Visible = $false; $form.Controls.Add($_) }
 
 # ── action + log ────────────────────────────────────────────────────────
@@ -208,6 +215,7 @@ function Show-Panel($key) {
   $allPanels | ForEach-Object { $_.Visible = $false }
   switch ($key) {
     'Tunnel'    { $pnlTunnel.Visible = $true }
+    'Quick'     { $pnlQuick.Visible = $true }
     'WireGuard' { $pnlWg.Visible = $true }
     'Gateway'   { $pnlGw.Visible = $true }
     'Off'       { $pnlOff.Visible = $true }
@@ -269,6 +277,7 @@ $btnApply.Add_Click({
             AccessEmails = $txtTunEmails.Text.Trim()
           }
         }
+        'Quick'     { Enable-QuickTunnel @{} }
         'WireGuard' { Enable-WireGuard @{ WgListenPort = $txtWgPort.Text.Trim() } }
         'Gateway'   { Enable-Gateway @{ Hostname = $txtGwHost.Text.Trim(); AcmeEmail = $txtGwEmail.Text.Trim() } }
         'Off'       { Disable-RemoteAccess }

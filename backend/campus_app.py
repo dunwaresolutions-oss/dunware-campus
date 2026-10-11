@@ -21,6 +21,7 @@ BASE_DIR from sys.executable when frozen — see the `sys.frozen` check there).
 from __future__ import annotations
 
 import importlib.util
+import multiprocessing
 import os
 import sys
 from pathlib import Path
@@ -167,4 +168,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # Required for a frozen exe before ANYTHING that might use multiprocessing
+    # (django_q's qcluster -- "Campus Scheduler" -- spawns worker processes via
+    # multiprocessing.Process; see django_q/cluster.py). Without this, each
+    # spawned child re-executes this whole frozen exe from scratch, lands back
+    # here with multiprocessing's own internal bootstrap argv (not "serve"/
+    # "manage"), hits the SystemExit(2) below, and the worker spawn silently
+    # fails -- which crashes the whole qcluster process immediately, which is
+    # why "Campus Scheduler" registered fine via NSSM but failed to start.
+    # Harmless no-op when not frozen or not Windows.
+    multiprocessing.freeze_support()
     main()

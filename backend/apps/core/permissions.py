@@ -7,6 +7,7 @@ shape so no viewset ships without an explicit decision.
 """
 from __future__ import annotations
 
+from django.conf import settings
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 STAFF_ROLE_NAMES = ("SUPERADMIN", "ADMIN", "FRONT_DESK", "TEACHER", "TUTOR")
@@ -62,6 +63,34 @@ class SuperadminOnly(RoleRequired):
     role that owns how the box is run, not day-to-day administration."""
 
     allowed_roles = ("SUPERADMIN",)
+
+
+class SettingsRoleRequired(BasePermission):
+    """Like RoleRequired, but the allowed set is read from a Django setting
+    at request time instead of a hardcoded class attribute — for a view
+    reused wholesale by more than one deployment (apps.accounts's staff
+    directory / invite endpoint, shared by Campus and Campus Central, each
+    with its own role set — see config/settings/base.py and
+    central/settings/base.py's own ACCOUNTS_* settings)."""
+
+    setting_name: str = ""
+
+    def has_permission(self, request, view):
+        user = request.user
+        allowed = getattr(settings, self.setting_name, ())
+        return bool(user and user.is_authenticated and getattr(user, "role", None) in allowed)
+
+
+class DirectoryAccess(SettingsRoleRequired):
+    """Who can list the staff/account directory on THIS deployment."""
+
+    setting_name = "ACCOUNTS_DIRECTORY_ROLES"
+
+
+class InviteManagerOnly(SettingsRoleRequired):
+    """Who can send an account invite on THIS deployment."""
+
+    setting_name = "ACCOUNTS_INVITE_MANAGER_ROLES"
 
 
 class PortalUser(RoleRequired):

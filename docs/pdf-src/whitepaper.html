@@ -1,0 +1,318 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: Letter; margin: 2.1cm 2cm 2.3cm 2cm;
+    @bottom-center { content: "Campus Product Whitepaper   ·   page " counter(page) " of " counter(pages); font-size: 8.5px; color: #8a8f98; } }
+  body { font-family: "Segoe UI", Calibri, Arial, sans-serif; font-size: 10.3px; color: #23262b; line-height: 1.5; }
+  h1 { font-size: 25px; color: #3b2d72; margin: 0 0 4px; }
+  h2 { font-size: 16px; color: #3b2d72; border-bottom: 2px solid #5b43ad; padding-bottom: 4px; margin: 24px 0 10px; page-break-after: avoid; }
+  h2.part { font-size: 12px; color: #565c66; text-transform: uppercase; letter-spacing: 1.5px; border-bottom: none; margin: 30px 0 -8px; }
+  h3 { font-size: 12.5px; color: #5b43ad; margin: 16px 0 6px; page-break-after: avoid; }
+  h4 { font-size: 10.8px; color: #3a3f47; margin: 12px 0 4px; page-break-after: avoid; }
+  p { margin: 6px 0; }
+  ul, ol { margin: 6px 0 10px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .cover { text-align: center; padding-top: 22%; }
+  .cover .kicker { letter-spacing: 3px; text-transform: uppercase; color: #5b43ad; font-size: 11px; font-weight: 600; }
+  .cover h1 { font-size: 36px; margin-top: 10px; }
+  .cover .sub { font-size: 13px; color: #565c66; margin-top: 8px; }
+  .cover .meta { margin-top: 50px; font-size: 9.5px; color: #8a8f98; }
+  .badges { margin-top: 22px; }
+  .badge { display: inline-block; background: #efeafb; color: #5b43ad; border-radius: 12px; padding: 4px 12px; font-size: 9px; font-weight: 600; margin: 3px; }
+  .pagebreak { page-break-before: always; }
+  .note { background: #efeafb; border-left: 3px solid #5b43ad; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .warn { background: #fdf3e7; border-left: 3px solid #c9821e; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .open { background: #fdeceb; border-left: 3px solid #c0392b; padding: 8px 12px; margin: 10px 0; border-radius: 0 4px 4px 0; }
+  .muted { color: #6a7079; }
+  code, .code { font-family: Consolas, "Courier New", monospace; background: #f1f3f5; padding: 1px 5px; border-radius: 3px; font-size: 9.6px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 12px; font-size: 9.8px; }
+  th, td { border: 1px solid #d7dbe0; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: #efeafb; color: #3b2d72; }
+  .toc a { display: flex; justify-content: space-between; color: inherit; text-decoration: none; border-bottom: 1px dotted #c7cbd1; padding: 4px 0; font-size: 10.5px; }
+  .toc a::after { content: target-counter(attr(href), page); }
+  .mod-grid { display: block; }
+  .mod { border: 1px solid #d7dbe0; border-radius: 6px; padding: 7px 10px; margin: 6px 0; page-break-inside: avoid; }
+  .mod b { color: #3b2d72; }
+  .tag-sm { display: inline-block; background: #3b2d72; color: #fff; border-radius: 3px; padding: 1px 6px; font-size: 8px; font-weight: 700; margin-left: 6px; text-transform: uppercase; letter-spacing: .3px; }
+  .tag-sm.central { background: #5b43ad; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">Dunware Solutions</div>
+  <h1>Campus<br>Product Whitepaper</h1>
+  <div class="sub">On-premise school management for a single school, and — new — Campus Central,<br>a Ministry/district head-office console for overseeing many schools at once.</div>
+  <div class="badges">
+    <span class="badge">PostgreSQL, on your own server</span>
+    <span class="badge">Field-level AES-256-GCM encryption</span>
+    <span class="badge">MFA mandatory for staff</span>
+    <span class="badge">Flat one-time licence, no per-student fee</span>
+    <span class="badge">No AI, no third-party data sharing</span>
+    <span class="badge">Append-only audit log</span>
+  </div>
+  <div class="meta"><b>Describes:</b> Campus 0.9.0 and Campus Central (first release), both as built 11 October 2026.<br><b>Prepared:</b> Sunday, October 11, 2026 — this is the first whitepaper written for this product family.</div>
+</div>
+
+<div class="pagebreak"></div>
+<h2>Contents</h2>
+<div class="toc">
+<a href="#s1">1. Executive summary</a>
+<a href="#s2">2. What Campus is</a>
+<a href="#s3">3. What Campus Central is</a>
+<a href="#s4">4. Architecture</a>
+<a href="#s5">5. The sync model — how a school reaches Central</a>
+<a href="#s6">6. Security &amp; privacy</a>
+<a href="#s7">7. Module catalog — Campus (single school)</a>
+<a href="#s8">8. Module catalog — Campus Central (Ministry/district)</a>
+<a href="#s9">9. Delivery: installers, backups &amp; remote access</a>
+<a href="#s10">10. Pricing &amp; licensing</a>
+<a href="#s11">11. Testing and quality</a>
+<a href="#s12">12. Known limits, stated plainly</a>
+<a href="#s13">13. Technical reference</a>
+</div>
+
+<div class="pagebreak"></div>
+<h2 id="s1">1. Executive summary</h2>
+<p class="lede">Campus is a single-school operations platform — registration, scheduling, attendance,
+grades and report cards, billing with optional online payments, communication, booking, IEPs and a
+parent/student portal — that runs entirely on a school's own server, with nothing sent to a third-party
+cloud by default. <b>Campus Central</b> is a second, separate product built on top of it: a Ministry or
+district head-office console that any number of individual Campus installs can optionally link to,
+giving a head office cross-school search, aggregate dashboards (including a district-level illness/health
+metric) and on-demand case-file detail, without ever holding a school's full, unfiltered database.</p>
+<p>The two products are deliberately kept apart rather than merged into one "multi-tenant" system: a
+school's own Campus install is exactly as self-contained and private as it has always been, whether or
+not any Ministry ever links to it. Central is opt-in, read-mostly, and receives only a curated,
+field-limited export — never a school's raw database.</p>
+<div class="note"><b>This is the first whitepaper written for this product family.</b> Campus itself has
+shipped an Overview &amp; User Guide and a Technical &amp; Troubleshooting Guide since September 2026;
+Campus Central, built across early-to-mid October 2026, had no dedicated product document at all until
+this one. Every figure in this paper was checked against the actual repository and, where it is a test
+count, by actually running the test suite — not carried forward from an earlier draft.</p>
+</div>
+
+<h2 id="s2">2. What Campus is</h2>
+<p>A single authenticated web console plus a restricted parent/student portal, for a daycare through
+secondary school to run day-to-day operations. One role per login (superadmin, admin, front desk,
+teacher/tutor, parent/guardian, student), each seeing only the sections and records their role permits.
+Built on Django 5.2 (REST API) and a Next.js static-export console, both frozen into one Windows
+installer with a bundled PostgreSQL database and a bundled Caddy reverse proxy for local HTTPS — no
+separate Python or Node runtime on the target machine, no Docker in production.</p>
+
+<h2 id="s3">3. What Campus Central is</h2>
+<p>A Ministry/district head-office product, sold and installed separately from Campus itself
+(<code>Campus-Central-Setup.exe</code>, its own PyInstaller freeze, its own Next.js console on its own
+port, its own PostgreSQL database on its own port). A head office registers each participating school,
+which then links to Central from its own install (a companion window, not a web form) and begins
+sending it a curated snapshot on a schedule plus on demand. Central's own console gives Ministry/
+district staff:</p>
+<ul>
+<li><b>A schools registry</b> and per-school sync status.</li>
+<li><b>Cross-school search</b> over students, guardians and staff by name — matches a full "First Last"
+query, not just one half of it, and shows which school each result belongs to.</li>
+<li><b>On-demand case-file detail</b> for one student or guardian at a time — enrolment, attendance,
+guardians, consents, report-card status — reachable instantly when genuinely needed (for example,
+assisting a police inquiry about a specific family without the Ministry needing to contact the school
+directly), never held or broadcast in bulk.</li>
+<li><b>Aggregate dashboards</b> — attendance, enrolment, billing (summary totals only, never per-family),
+and a district-level <b>illness/health rate</b> (normalized per 100 enrolled students, so a raw count never
+unfairly favours a smaller district) — by school or rolled up by district, with CSV export.</li>
+<li><b>Ministry account management</b> — more than one real administrator account can now be created
+(role: Ministry Admin, Ministry Analyst or District Officer), not only the one break-glass account the
+very first release shipped with.</li>
+</ul>
+<p>Three roles, deliberately asymmetric: <b>Ministry Admin</b> and <b>District Officer</b> can search and
+open case files (District Officer scoped to their own assigned schools); <b>Ministry Analyst</b> is refused
+individual search and case-file access outright, at the server, not just hidden in the interface — by
+design, an analyst role only ever sees aggregates.</p>
+
+<h2 id="s4">4. Architecture</h2>
+<table>
+<tr><th>Layer</th><th>Campus (per school)</th><th>Campus Central (per Ministry/district)</th></tr>
+<tr><td>Backend</td><td>Django 5.2 + DRF, <code>waitress</code> WSGI, PyInstaller-frozen (<code>campus_app.py</code>)</td><td>A genuinely <b>separate</b> Django project (<code>backend/central/</code>, <code>central_app.py</code>) — reuses only the shared <code>apps.accounts</code>/<code>apps.audit</code>/<code>apps.core</code> code, never a school's own operational apps</td></tr>
+<tr><td>Frontend</td><td>Next.js (<code>output: 'export'</code>, static), <code>frontend/</code></td><td>A separate Next.js project, <code>frontend_central/</code> (own port 3100 in dev, own build) — intentionally indigo-accented so it never looks like the same screen as Campus</td></tr>
+<tr><td>Database</td><td>Bundled PostgreSQL 16, one per school install</td><td>Its own bundled PostgreSQL, on port <b>5433</b> specifically so a Campus+Central box never collides on the default port</td></tr>
+<tr><td>Front door / TLS</td><td>Bundled Caddy, local HTTPS</td><td>Its own bundled Caddy, default port <b>8443</b> (moved off 443/80, which Campus's own Caddy already owns on a shared box) with <code>admin off</code> and <code>auto_https disable_redirects</code> so neither Caddy instance can collide with the other even on one machine</td></tr>
+<tr><td>Background jobs</td><td><code>django-q2</code>, now registered as a 4th Windows service ("Campus Scheduler") — previously configured but never actually run (§12)</td><td>None — Central has no scheduled jobs of its own yet; sync is driven from the school side (§5)</td></tr>
+<tr><td>Packaging</td><td><code>Campus-Setup.exe</code>, Inno Setup</td><td><code>Campus-Central-Setup.exe</code>, Inno Setup, same pattern, its own <code>.env.central</code> secrets file</td></tr>
+</table>
+<p>Central can never share a database, a process, or a port with any school's own install — this is
+structural, not configuration. A school's <code>SiteConfiguration.deployment_mode</code> can be
+<code>SINGLE</code> or <code>SCHOOL</code>; it is refused outright, at the model's own <code>save()</code>
+and at every place that sets it, from ever being set to <code>HEADQUARTERS</code> — that mode only exists
+as Central's own separate installer.</p>
+
+<h2 id="s5">5. The sync model — how a school reaches Central</h2>
+<p>A school links to Central from its own server (a companion window, <b>Campus — Central Link Setup</b>,
+not the browser console) with a URL and a bearer token Central issued when the school was registered.
+From then on:</p>
+<ul>
+<li><b>What's sent</b> is a curated, allowlist export built directly from the source models — never a
+wider "export everything" serializer trimmed down, to avoid a future field silently leaking through.
+Included: students, guardians, staff, attendance/incident/billing <i>summaries</i> (per-term totals, never
+a per-family invoice or application), consent status, report-card status. <b>Excluded by default</b>:
+health/medical data, custody notes, government IDs, narrative text (observation notes, incident
+descriptions), per-family billing or application detail, and (deliberately deferred, not yet built at all)
+who is authorized to pick a child up.</li>
+<li><b>Full vs incremental.</b> A sync is incremental by default (only rows changed since the last one),
+forced to a full reconcile when a school has never fully synced yet or it's been 7 or more days since the
+last full one — row-level tables only ever sweep (detect) deletions on a full sync, since an incremental
+bundle's absence of a row proves nothing; the four aggregate tables always send in full either way.</li>
+<li><b>Transport.</b> Server-to-server bearer-token auth (no session/CSRF — this is not a browser call);
+the bundle's own SHA-256 content hash is recomputed on arrival to catch tampering or corruption in
+transit; a schema-version check refuses a bundle Central doesn't yet know how to ingest.</li>
+<li><b>On a timer, honestly: not yet.</b> The sync agent and the "on-demand sync" button both work today
+(<code>manage central_sync</code>, or the companion window's <b>Sync now</b> button). What doesn't exist
+yet is an actual scheduled job that calls it automatically on a recurring basis — the worker process to
+run one now exists (§9's Campus Scheduler fix), but no <code>Schedule</code> row has been created for it.
+Stated here rather than implied, since "nightly sync" is the eventual intent but not the current reality.</li>
+</ul>
+
+<h2 id="s6">6. Security &amp; privacy</h2>
+<p>Campus's own security posture (built in from Phase 1, not a later pass): field-level AES-256-GCM
+encryption at rest for medical/allergy/medication data, custody and legal notes, government IDs, IEP
+content and uploaded documents; mandatory TOTP for every staff role; an append-only audit log of every
+write <i>and every sensitive read</i>; deny-by-default, object-level permissions (a parent sees only their
+own linked children; a teacher only their own groups); no card data ever reaches Campus (hosted-checkout
+payments only); no SMS path anywhere, email only.</p>
+<p>Campus Central inherits the same account/audit/MFA foundation (the shared <code>apps.accounts</code>/
+<code>apps.audit</code> code), plus its own additions specific to holding cross-school data:</p>
+<ul>
+<li><b>Deny-by-default school scoping.</b> A District Officer's queries are restricted to their assigned
+schools at the query layer itself (<code>schools_visible_to()</code>), not filtered after the fact.</li>
+<li><b>Case-file access is on-demand only, never bulk-held</b> — the explicit governing principle: Central
+should not constantly broadcast or hold full student detail by default, but when it genuinely needs
+detail (the police-inquiry scenario), that detail must be reachable instantly, not blocked behind
+contacting the school first.</li>
+<li><b>A continuous disk-encryption check</b> — BitLocker was previously verified only once, at install
+time; it's now re-checked on every <code>manage check</code> run, fails safe on any error, frozen builds
+only.</li>
+<li><b>Its own encrypted, drilled backup/restore pipeline</b> — mirrors Campus's own GPG-encrypted
+<code>pg_dump</code> approach exactly; Central had no backup tooling at all before this was built.</li>
+</ul>
+<div class="open"><b>Open question, stated honestly rather than built wrong.</b> Central's stored
+student/guardian PII (name, email, student number) is <i>not</i> field-encrypted the way Campus's own
+health/custody/government-ID data is. This was a deliberate decision, not an oversight: Central's
+cross-school search does direct SQL <code>icontains</code> matching on exactly those fields, and
+field-encrypting them would silently break that search outright — the same "find a student by name for a
+police inquiry" capability this paper describes as a core Central feature. A real fix needs
+searchable/blind-indexed encryption, which is its own, separately-scoped cryptographic engineering
+effort. Flagged here as an open item for a future release, not quietly shipped as "encrypted" when it
+isn't for these particular fields.</div>
+
+<h2 id="s7">7. Module catalog — Campus (single school)</h2>
+<div class="mod-grid">
+<div class="mod"><b>Dashboard</b> — role-scoped snapshot: attendance, academics, wellbeing (incidents), enrolment, billing, consent/booking/messages, and (administrators) staffing &amp; system health.</div>
+<div class="mod"><b>Students</b> — profile, guardians (with portal-login management), emergency contacts &amp; authorized pickups, consents (versioned, emailed to guardians), a real class-by-class timetable (not a single homeroom block), classes, attendance history, health (encrypted), documents, IEP and billing tabs.</div>
+<div class="mod"><b>Registration</b> — enquiry → application → offer/waitlist → enrolment, versioned consent, document upload.</div>
+<div class="mod"><b>Scheduling</b> — session templates, generated dated sessions with real rosters, whole-school closures and early dismissals (a shorter day, not no school — deliberately modeled as its own concept), terms/academic years, rooms.</div>
+<div class="mod"><b>Attendance</b> — check-in/out tied to authorized pickups; anyone else is refused on purpose.</div>
+<div class="mod"><b>Lessons</b> — curriculum units, lesson plans (draft→published), resources that can stand for a whole group, not just one dated lesson.</div>
+<div class="mod"><b>Grades &amp; report cards</b> — rubric/narrative/marks assessment, four ready-made grading-scheme presets (Bahamas 4.0 GPA, Ontario elementary 4-level, South Africa NCS 7-point, Botswana letter bands) or a custom one, generated cards locked to whichever scheme was active at generation time, review → preview → generate → release workflow, school letterhead and principal's signature.</div>
+<div class="mod"><b>IEPs</b> — Individual Education Plans, encrypted, any teacher of the student can read/write, a generated letterhead document, visible to guardians on the portal.</div>
+<div class="mod"><b>Communication</b> — announcements, staff↔parent message threads, incident reports with per-guardian tracked acknowledgement, merge-field email templates — email only, no SMS.</div>
+<div class="mod"><b>Staff chat</b> — direct messages between staff and role-restricted broadcasts, structurally unreachable from the parent/student portal.</div>
+<div class="mod"><b>Billing</b> — per-family invoices, a real human-readable invoice number, hosted-checkout online payments (Stripe, Paystack or Flutterwave — the school's own merchant account; Campus never sees a card number), combine several children's invoices into one real charge, payment links for families without a portal login, manual record-payment for cash/cheque/other, per-invoice currency, credits for refunds.</div>
+<div class="mod"><b>Booking</b> — tutoring/extra-curricular offerings, availability, capacity-limited dated slots, automatic waitlist promotion, ICS.</div>
+<div class="mod"><b>Staff</b> — directory with a real status beyond active/inactive (sick leave, on leave, sedentary duty, transferred, suspended, terminated), invite flow, group assignment that controls what a teacher can see elsewhere.</div>
+<div class="mod"><b>School settings, backups, remote access, audit log</b> — branding/letterhead, region &amp; fees (country/currency/locale, billing on/off), on-demand encrypted backups with a health summary, remote-access status, and the append-only audit log.</div>
+<div class="mod"><b>Parent/student portal</b> — a restricted view: own-children only, real interactive schedule, attendance strip, released report cards, billing with online Pay, message threads, announcements/consents/incidents/IEP summary/bookings where they apply, guardian-initiated change requests that staff must approve.</div>
+</div>
+
+<h2 id="s8">8. Module catalog — Campus Central (Ministry/district)</h2>
+<div class="mod-grid">
+<div class="mod"><b>Schools registry</b><span class="tag-sm central">Central</span> — register a school, issue/rotate its sync token, see its own sync status.</div>
+<div class="mod"><b>Cross-school search</b><span class="tag-sm central">Central</span> — students, guardians and staff by name across every school the viewer's role covers; refused entirely for Ministry Analyst.</div>
+<div class="mod"><b>Case files</b><span class="tag-sm central">Central</span> — on-demand single-student/guardian detail: school, enrolment, attendance, guardians, consents, report-card status.</div>
+<div class="mod"><b>Dashboards</b><span class="tag-sm central">Central</span> — attendance/enrolment/billing aggregates and the district illness-rate metric, by school or by district, with CSV export.</div>
+<div class="mod"><b>Ministry administrators</b><span class="tag-sm central">Central</span> — create and manage more than the one original break-glass account; Ministry Admin, Ministry Analyst and District Officer roles, the latter scoped to assigned districts/schools.</div>
+<div class="mod"><b>Backups</b><span class="tag-sm central">Central</span> — its own encrypted backup/restore scripts (no in-console "Backups" page yet — the scripts' own output is the signal, meant for a scheduled task).</div>
+</div>
+
+<h2 id="s9">9. Delivery: installers, backups &amp; remote access</h2>
+<p>Both products install like a desktop application: one <code>.exe</code>, Windows services registered,
+boots on startup, no separate Python or Node install, no Docker. <code>Campus-Setup.exe</code> registers
+four services (PostgreSQL, App, Proxy, and — new — <b>Campus Scheduler</b>, the background-jobs worker
+that was configured but never actually registered before this pass: nothing on a timer could run for any
+feature until this was fixed, a product-wide gap, not specific to Central). <code>Campus-Central-Setup.exe</code>
+registers the Central equivalent, minus a scheduler service (Central has no scheduled jobs of its own yet).</p>
+<p><b>Remote access</b> (Campus) offers four modes: a Cloudflare named tunnel, WireGuard VPN, a plain
+gateway with your own domain, and — new — a <b>Quick test tunnel</b> (no Cloudflare account or domain
+needed, a random <code>*.trycloudflare.com</code> address) added after the named-tunnel flow was found to
+hang indefinitely for an account with no domain already added as a zone. The quick mode's own tradeoff is
+stated plainly to whoever enables it: the address changes every restart and no access policy can be
+attached to it — fine for a one-off test, not for ongoing access.</p>
+<p><b>Backups</b> (both products) use the same GPG-encrypted <code>pg_dump</code> pipeline, including the
+<code>.env</code>'s encryption key inside the encrypted archive so a restore onto a fresh install (which
+would otherwise generate a different key) can actually read the encrypted fields back. Neither product
+schedules a backup automatically — that is an operator's own Task Scheduler entry, documented in the
+Technical &amp; Troubleshooting Guide.</p>
+
+<h2 id="s10">10. Pricing &amp; licensing</h2>
+<p><b>Campus: $1,450 flat, one-time, no per-student or per-user fee, ever</b> — the base package covers
+every module on one server. Add-ons: LAN access for multiple devices (+$250), remote access (+$500, all
+three modes priced the same since they differ only in exposure, not cost), data migration (from $350),
+staff training ($150/hr or $600/half-day), custom branding (+$300), off-box backup destination setup
+(+$150), priority install (+$200). Buying more than one school's licence at the same time: 40% off base
+for the 2nd and every one after. Optional ongoing support: 18%/year of licence cost, or $95/hr ad hoc.
+Full current figures: <code>Campus_Pricing.pdf</code>.</p>
+<div class="warn"><b>Campus Central has no published price yet.</b> It is a genuinely separate product
+with its own installer, and this paper does not invent a figure for it — that is an open business
+decision for Dunware Solutions, not a technical one, and is stated here as still open rather than guessed
+at.</div>
+
+<h2 id="s11">11. Testing and quality</h2>
+<p>Verified by actually running the suites on 11 October 2026, not carried forward from an earlier pass:</p>
+<ul>
+<li><b>Campus's own backend: 425 tests pass.</b></li>
+<li><b>Campus Central's own backend (<code>apps/central</code>): 73 tests pass</b> (an earlier internal
+note said 76 — today's direct count supersedes it).</li>
+<li>Both exes have been re-frozen and smoke-tested against real throwaway databases after every fix in
+this pass, not just imported successfully — a frozen <code>manage check</code> was run clean on both,
+and the real end-to-end Campus↔Central link (register a school, link it, sync, search, open a case file)
+was driven live on a real machine, not mocked.</li>
+<li><code>ruff</code> clean across the whole backend; <code>tsc</code>/<code>next build</code> clean on
+both frontends.</li>
+</ul>
+
+<h2 id="s12">12. Known limits, stated plainly</h2>
+<ul>
+<li>Campus Central's sync is not yet on an automatic schedule — the worker now exists (§9), but no
+recurring job has actually been created for it; sync today is on-demand (manual button / command) only.</li>
+<li>Campus Central does not field-encrypt the student/guardian PII its own cross-school search matches
+against (§6) — a deliberate, flagged trade-off against breaking that search, not yet resolved with
+searchable encryption.</li>
+<li>Pickup-authorization data (who may collect a child) is not synced to Central at all — explicitly
+deferred by its own decision, not yet designed.</li>
+<li>Campus Central has no in-console "Backups" page — only the scripts' own output, meant for a scheduled
+task.</li>
+<li>The Kanoo (CaribPay) payment gateway for Bahamas-registered merchants is not built; Stripe is
+documented as unavailable to Bahamas-registered merchants, so a Bahamas install records online card
+payments only through Paystack/Flutterwave today, or by hand.</li>
+<li>No multi-school <i>import</i> tool and no self-serve licensing (e.g. LemonSqueezy) exist yet — every
+install today is set up directly by Dunware Solutions.</li>
+<li>Translation/i18n is investigated but deliberately parked — Django's i18n flag is on but unused, the
+Next.js frontend has no translation scaffolding and well over a thousand hardcoded English strings.</li>
+<li>No macOS build exists for either product; both are Windows-only today.</li>
+<li>Campus Central has no published price (§10).</li>
+</ul>
+
+<h2 id="s13">13. Technical reference</h2>
+<table>
+<tr><th>Component</th><th>Campus</th><th>Campus Central</th></tr>
+<tr><td>Backend</td><td>Django 5.2 LTS + DRF, Python, <code>waitress</code> WSGI</td><td>Separate Django project, same framework version</td></tr>
+<tr><td>Frontend</td><td>Next.js (App Router, TS, Tailwind), static export</td><td>Separate Next.js project, same stack</td></tr>
+<tr><td>Database</td><td>PostgreSQL 16, bundled, port 5432</td><td>PostgreSQL 16, bundled, port 5433</td></tr>
+<tr><td>Reverse proxy / TLS</td><td>Caddy, bundled, local HTTPS</td><td>Caddy, bundled, default port 8443</td></tr>
+<tr><td>Background jobs</td><td><code>django-q2</code>, now a registered Windows service</td><td>None yet</td></tr>
+<tr><td>Packaging</td><td>PyInstaller + Inno Setup 7, <code>Campus-Setup.exe</code></td><td>PyInstaller + Inno Setup 7, <code>Campus-Central-Setup.exe</code></td></tr>
+<tr><td>PDF generation</td><td>WeasyPrint + a bundled GTK3 runtime (report cards, IEP documents, these PDFs)</td><td>Not used</td></tr>
+<tr><td>Sync transport</td><td>HTTPS + bearer token (<code>httpx</code>, TLS verification delegated to the OS trust store via <code>truststore</code>)</td><td>Same, receiving end</td></tr>
+<tr><td>Tests</td><td>425 (pytest, real database)</td><td>73 (pytest, real database)</td></tr>
+</table>
+
+</body>
+</html>

@@ -276,8 +276,109 @@ integer cents throughout.
   can upload or replace the signature (enforced server-side).
 - `SiteConfiguration` (singleton) — `country` (ISO-3166), `currency` (ISO-4217;
   locks once any invoice exists), `locale`, `collects_fees`, `deployment_mode`
-  (`SINGLE` / `SCHOOL` / `HEADQUARTERS`, reserved for the multi-school plan).
+  (`SINGLE` / `SCHOOL`; `HEADQUARTERS` exists on the enum but is refused at
+  save time — Campus is never Central, see docs/CENTRAL_SYNC_SCOPE.md).
   Edited under **School settings → Region & fees** or `manage set_site_config`.
+  **Campus Central link** (C1, added 2026-10-08, SCHOOL mode only): `school_id`
+  (UUID issued by Central), `central_url`, `central_token` (encrypted —
+  `EncryptedCharField`, same treatment as a payment gateway's secret key, never
+  exposed through `/api/config/`), `sync_enabled`, `sync_interval_minutes`,
+  `last_synced_at`, `last_sync_error`, `last_full_synced_at` (C5, added
+  2026-10-09 — tracked separately so a full resync can be forced at least
+  weekly even when every sync in between was incremental). Set via
+  **Start Menu → "Campus — Central Link Setup"** or `manage link_central` /
+  `unlink_central` / `central_sync`.
+- **Central export bundle** (C2, added 2026-10-08, no new tables —
+  `apps/core/central_export.py` reads existing models into an allowlisted,
+  denormalised snapshot): `manage central_export --out <path>` writes a
+  gzipped tar of `<table>.jsonl` files + `manifest.json` (school_id,
+  generated_at, schema version, per-table row counts, a SHA-256 content
+  hash). See docs/CENTRAL_SYNC_SCOPE.md for the exact field list. Nothing
+  reads `sync_enabled`/`sync_interval_minutes` yet — the sync agent that
+  actually sends this file is C5.
+
+## apps.central  *(C3, added 2026-10-09 — a separate Django project, not part of the `config` app above)*
+
+Campus Central's own data model, in its own database (`backend/central/`,
+`manage_central.py`) — see docs/CENTRAL_SYNC_SCOPE.md for the full writeup.
+Reuses `apps.core`/`apps.accounts`/`apps.audit`; never the school-operational
+apps. Three Ministry-only roles were added to the *shared* `accounts.Role`
+enum for this (`MINISTRY_ADMIN`, `MINISTRY_ANALYST`, `DISTRICT_OFFICER`) — a
+Campus/school install never creates a user with one.
+
+- `CentralSettings` (singleton) — `name`, `region`, `snapshot_schema_version_supported`.
+- `School` (the registry) — `name`, `district`, `sync_token_hash` (SHA-256,
+  `issue_token()` returns the plaintext once), `last_synced_at`,
+  `sync_status`, `snapshot_schema_version`, `contact_email`, `active`.
+  `School.pk` *is* the `school_id` a linked Campus install stores in its own
+  `SiteConfiguration.school_id`.
+- `SnapshotBatch` — one row per received bundle: `school`, `kind`
+  (FULL/INCREMENTAL), `manifest` (JSON), `content_hash`, `applied`,
+  `rejected_reason`. Nothing creates one yet (C4).
+- `Central*` read tables, one per C2 export-bundle table, each upserted by
+  `(school, source_id)` with a real unique constraint: `CentralStudent`,
+  `CentralGuardian`, `CentralStaff`, `CentralGroup`, `CentralEnrolment`,
+  `CentralConsent`, `CentralReportCard`, `CentralRegistrationCounts` (one row
+  per school, not source-keyed — it's an aggregate), `CentralAttendanceSummary`,
+  `CentralIncidentSummary`, `CentralBillingSummary`.
+
+Tests run with their own settings/database, never Campus's own:
+`pytest apps/central --ds=central.settings.test`.
+
+**Ingest (C4, added 2026-10-09, no new tables):** `POST /api/central/ingest/<school_id>/`
+(bearer-token auth against `School.verify_token()`) accepts a
+`central_export` bundle and upserts it into the tables above via
+`apps/central/ingest.py`'s `ingest_bundle()`. `register_school` /
+`rotate_school_token` management commands create a `School` row and mint
+its token.
+
+**Console backend (C6, added 2026-10-09, backend only — no frontend yet):**
+- `DistrictAssignment` (new table) — `user`, `district`. Which island/district
+  a `DISTRICT_OFFICER` may see (`apps/central/scoping.py`'s
+  `schools_visible_to()`); meaningless for `MINISTRY_ADMIN`/`MINISTRY_ANALYST`,
+  who see every school.
+- `GET`/`POST /api/central/schools/`, `GET /api/central/schools/<id>/`,
+  `POST /api/central/schools/<id>/rotate-token/` — the school registry over
+  HTTP (`MINISTRY_ADMIN` only for the writes), replacing `register_school`/
+  `rotate_school_token` being CLI-only.
+- `GET /api/central/search/?q=` — cross-school search over
+  `CentralStudent`/`CentralGuardian`/`CentralStaff`. Refused outright for
+  `MINISTRY_ANALYST` (`IndividualRecordAccess`'s role list excludes it) —
+  per C0 decision 7, enforced by an explicit permission class, not by
+  filtering fields out of a shared response.
+- `GET /api/central/dashboard/` (`?school_id=`, `?group_by=district`) and
+  `GET /api/central/dashboard/export.csv` — aggregate-only figures
+  (`apps/central/dashboard.py`): enrolment totals, attendance %,
+  consent-compliance %, incidents by category. Open to all three roles,
+  including the analyst, since nothing here is an individual record.
+- Every one of the above writes an `AuditEntry` (`apps.audit`, reused as-is)
+  — Central's own append-only audit of every cross-school view, search and
+  export, per the plan's own privacy section.
+- PDF export is not built this pass — it reads naturally as a console/frontend
+  concern (rendering), not backend data, and no PDF library is a dependency
+  of this project yet.
+- **Permission fix, same pass**: the shared bootstrap flow
+  (`apps.accounts`'s `SetupAdminView`) creates the first account with role
+  `SUPERADMIN`, not a Central role — `apps/central/permissions.py` and
+  `scoping.py`'s `schools_visible_to()` both now treat `is_superuser` as a
+  break-glass superset (same way Campus's own `ADMIN_ROLE_NAMES` already
+  treats `SUPERADMIN`), or the very first login on a fresh install would
+  have been refused by every endpoint. **Known, documented, not-yet-fixed
+  gap**: `apps.accounts`'s staff-invite flow only accepts Campus's own
+  `STAFF_ROLES`, so there is no way yet to create a *second* Central account
+  with a proper Ministry role.
+
+**Console frontend (C6 part 2, added 2026-10-09):** `frontend_central/` — a
+separate Next.js 15 project (own port, own `package.json`), not a new area
+of Campus's own `frontend/`. Reuses `lib/api.ts`/`components/ui.tsx`/
+`components/Toast.tsx` verbatim (confirmed zero Campus coupling first);
+adapts `lib/auth.ts` to Central's three roles. Pages: `/login`, `/setup`,
+`/mfa`, `/` (dashboard), `/schools` (list + register), `/schools/detail`
+(detail + rotate-token), `/search` (hidden from `MINISTRY_ANALYST`'s nav
+entirely, matching the backend's own refusal). `tsc`/`lint`/`next build`
+all clean; the full login → MFA → register-school → dashboard → search
+flow was verified against a real, live Django dev server (throwaway
+SQLite, no shared service touched), not just pytest.
 
 ## portal  *(Phase 6 — done, no new app)*
 

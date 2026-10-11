@@ -168,7 +168,12 @@ function Get-RemoteStatus {
   $enabled = ($map.Contains('REMOTE_ACCESS_ENABLED') -and $map['REMOTE_ACCESS_ENABLED'].Trim() -eq '1')
   $mode = 'Off (LAN only)'
   if ($enabled) {
-    if ($header -ieq 'CF-Connecting-IP' -or (Test-Path (Join-Path $script:RS.RemoteDir 'config.yml'))) { $mode = 'Cloudflare Tunnel' }
+    # config.yml only ever exists for the named-tunnel path (Enable-Tunnel
+    # writes it; Enable-QuickTunnel deliberately never does, and removes it
+    # if present from an earlier named-tunnel setup) -- the one reliable way
+    # to tell the two apart, since both set the same CF-Connecting-IP header.
+    if (Test-Path (Join-Path $script:RS.RemoteDir 'config.yml')) { $mode = 'Cloudflare Tunnel' }
+    elseif ($header -ieq 'CF-Connecting-IP') { $mode = 'Cloudflare Quick Tunnel (temporary)' }
     elseif (Test-Path (Join-Path $script:RS.RemoteDir 'wg\wg0.conf')) { $mode = 'WireGuard VPN' }
     elseif ($header -ieq 'X-Forwarded-For') { $mode = 'Plain gateway' }
     else { $mode = 'On (unrecognised)' }
@@ -268,6 +273,69 @@ ingress:
   if ($Opt.AccessEmails) { Info "  Policy -> Include -> Emails: $($Opt.AccessEmails)" }
   else { Info '  Policy -> Include -> Emails (list) OR your Google / Microsoft sign-in' }
   Info "Until Access is on, $($Opt.Hostname) is protected only by Campus's own login."
+}
+
+# ── Cloudflare quick tunnel (no account, no domain, temporary) ────────────
+# The named-tunnel path above (Enable-Tunnel) needs a real Cloudflare
+# account WITH AT LEAST ONE DOMAIN ALREADY ADDED AS A ZONE -- `tunnel login`
+# shows a zone picker with nothing in it, and hangs on "Waiting for
+# login..." forever, for any account that doesn't have one. A school/tester
+# who just wants a quick, no-setup way to reach Campus from outside the LAN
+# shouldn't have to go buy and configure a domain first. cloudflared's own
+# "quick tunnel" (`tunnel --url ...`, no `tunnel login` at all) is exactly
+# that -- it needs nothing but the cloudflared binary, and hands back a
+# random https://<words>.trycloudflare.com address within a few seconds.
+# The address is NOT stable: it changes every time the tunnel restarts, so
+# this is deliberately a separate mode from Enable-Tunnel, not a variant of
+# it, and is never meant to replace it for real, ongoing remote access.
+function Get-QuickTunnelLogPath { Join-Path $script:RS.LogDir 'Campus-Remote.log' }
+
+function Enable-QuickTunnel {
+  param([hashtable]$Opt = @{})   # CloudflaredExe (optional)
+  $cf = Get-CloudflaredExe $Opt.CloudflaredExe
+  if (-not $cf) { Die "cloudflared.exe not found. Stage it at $($script:RS.RemoteBin)\cloudflared.exe." }
+  Step 'Quick test tunnel -- no Cloudflare account needed'
+
+  # A leftover config.yml from an earlier named-tunnel setup would make
+  # Get-RemoteStatus misreport this as 'Cloudflare Tunnel' afterward -- a
+  # quick tunnel never uses one (no --config flag below), so clear it.
+  $configYml = Join-Path $script:RS.RemoteDir 'config.yml'
+  if (Test-Path $configYml) { Remove-Item $configYml -Force }
+
+  $logPath = Get-QuickTunnelLogPath
+  New-Item -ItemType Directory -Force -Path $script:RS.LogDir | Out-Null
+  # truncate first -- NSSM appends to this same path, and a stale
+  # trycloudflare.com URL from a PREVIOUS run would otherwise match first.
+  Set-Content -Path $logPath -Value '' -Encoding utf8
+
+  Register-RemoteService $cf 'tunnel --url https://localhost:443 --no-tls-verify' $script:RS.RemoteDir
+
+  Step 'waiting for cloudflared to announce its address...'
+  $hostname = $null
+  foreach ($try in 1..20) {
+    Start-Sleep -Seconds 1
+    if (Test-Path $logPath) {
+      $text = Get-Content $logPath -Raw -ErrorAction SilentlyContinue
+      $m = [regex]::Match($text, 'https://([a-z0-9-]+\.trycloudflare\.com)')
+      if ($m.Success) { $hostname = $m.Groups[1].Value; break }
+    }
+  }
+  if (-not $hostname) {
+    Die "cloudflared did not announce a trycloudflare.com address within 20s -- check $logPath."
+  }
+
+  Set-EnvValues @{
+    REMOTE_ACCESS_ENABLED          = '1'
+    REMOTE_ACCESS_HOSTS            = $hostname
+    REMOTE_ACCESS_CLIENT_IP_HEADER = 'CF-Connecting-IP'
+  }
+  Append-CsvEnv 'ALLOWED_HOSTS' $hostname
+  Append-CsvEnv 'CSRF_TRUSTED_ORIGINS' "https://$hostname"
+  Restart-CampusApp
+
+  Step "Quick tunnel ready:  https://$hostname"
+  Warn 'TEMPORARY: this address changes every time the tunnel restarts (service restart, reboot, crash, or Apply clicked again). For a stable address, use Cloudflare Tunnel or WireGuard instead.'
+  Info "Protected only by Campus's own login -- there is no Cloudflare Access policy on a quick tunnel (no zone to attach one to). Turn OFF when you're done testing."
 }
 
 # ── WireGuard ────────────────────────────────────────────────────────────

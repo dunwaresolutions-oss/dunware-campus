@@ -1,4 +1,4 @@
-r"""Render the three customer/operator PDFs at the repo root from their HTML sources.
+r"""Render the four customer/operator PDFs at the repo root from their HTML sources.
 
     backend\.venv\Scripts\python.exe docs\pdf-src\render_docs.py
 
@@ -19,6 +19,7 @@ JOBS = [
     ("pricing_sheet.html", "Campus_Pricing.pdf"),
     ("user_guide.html", "Campus_Overview_and_User_Guide.pdf"),
     ("technical_guide.html", "Campus_Technical_and_Troubleshooting_Guide.pdf"),
+    ("whitepaper.html", "Campus Product Whitepaper.pdf"),
 ]
 
 only = set(sys.argv[1:])

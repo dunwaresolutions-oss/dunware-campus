@@ -226,6 +226,12 @@ class SiteConfigView(APIView):
             raise ValidationError(
                 {"currency": "Locked — invoices already exist in the current currency."}
             )
+        if data.get("deployment_mode") == SiteConfiguration.DeploymentMode.HEADQUARTERS:
+            raise ValidationError({
+                "deployment_mode":
+                    "Campus cannot run as the Headquarters -- that is a separate "
+                    "product, Campus Central, with its own installer.",
+            })
         if data.get("collects_fees") is False and cfg.collects_fees:
             open_unpaid = Invoice.objects.filter(
                 status__in=[Invoice.Status.ISSUED, Invoice.Status.PARTIALLY_PAID,

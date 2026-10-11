@@ -4,6 +4,10 @@
 ; app (dist/campus-app, built by deploy/campus.spec), the exported Next.js
 ; SPA, the Caddyfile, and the deploy scripts, laid out under
 ; %ProgramData%\Campus and wired up by install.ps1 in the [Run] step.
+; install.ps1 registers four Windows services from that one frozen app:
+; Campus PostgreSQL, Campus App (serve), Campus Scheduler (manage qcluster --
+; the django_q worker, added so anything scheduled by any feature can
+; actually run on a timer), and Campus Proxy (Caddy).
 ;
 ; Build order:
 ;   1. cd frontend && npm run build              (produces frontend/out)
@@ -95,6 +99,7 @@ Source: "remote-setup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "remote-setup.lib.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "remote-setup-ui.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "campus-payments-setup-ui.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "campus-central-setup-ui.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "create-campus-admin.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "campus.ico"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "backup.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
@@ -125,6 +130,8 @@ Name: "{group}\Campus - Remote Access Setup"; Filename: "{sys}\WindowsPowerShell
 ; pick/configure this install's online payment gateway (self-elevates) - shipped
 ; since the payments work but never had a Start-Menu entry until now (2026-09-17)
 Name: "{group}\Campus - Payments Setup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\campus-payments-setup-ui.ps1"""; IconFilename: "{app}\campus.ico"; Comment: "Choose and configure this install's online payment gateway"
+; link this install to a Campus Central head office, or turn that link off (self-elevates) - C1, 2026-10-08
+Name: "{group}\Campus - Central Link Setup"; Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\campus-central-setup-ui.ps1"""; IconFilename: "{app}\campus.ico"; Comment: "Link this school to a Campus Central head office"
 
 [Run]
 ; NO runascurrentuser here - install.ps1 registers Windows services (nssm,

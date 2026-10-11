@@ -123,18 +123,19 @@ Campus is LAN-only until someone deliberately turns off-premises access on. The
 way to do it is the **Start Menu → "Campus — Remote Access Setup"** window on
 the box (it self-elevates): pick a mode, fill the fields, click **Apply**;
 progress and the follow-up steps show in the log pane, and a **Turn OFF** option
-reverts to LAN-only. Stage the binaries from the table above first. All three
-modes keep the database, files and backups on-premises — see
+reverts to LAN-only. Stage the binaries from the table above first. Every mode
+keeps the database, files and backups on-premises — see
 `docs/REMOTE_ACCESS_AND_YOUR_DATA.md` for what differs (in-transit visibility)
 and for the language to give a school's privacy officer.
 
 `scripts\remote-setup.ps1` is the same actions without the window, for scripted
-runs (`-Mode Tunnel|WireGuard|Gateway|Status|Off`); both share
+runs (`-Mode Tunnel|Quick|WireGuard|Gateway|Status|Off`); both share
 `remote-setup.lib.ps1`.
 
 | Mode | What you fill in | Needs |
 |---|---|---|
-| **Cloudflare Tunnel** — easiest for parents, nothing to install | public hostname, allowed emails (optional); a **Sign in to Cloudflare** button opens the browser | a Cloudflare account + a domain in Cloudflare; finish the Cloudflare Access policy in the dashboard (the log prints the steps) |
+| **Cloudflare Tunnel** — easiest for parents, nothing to install | public hostname, allowed emails (optional); a **Sign in to Cloudflare** button opens the browser | a Cloudflare account **with a domain already added as a zone** — `tunnel login`'s zone picker is empty and hangs on "Waiting for login..." forever without one; finish the Cloudflare Access policy in the dashboard afterward (the log prints the steps) |
+| **Quick test tunnel** — no account, no domain, temporary | nothing — click **Apply** | just the `cloudflared.exe` binary staged; hands back a random `https://<words>.trycloudflare.com` address in a few seconds. Address changes every restart; no Cloudflare Access policy is possible (no zone). For a one-off connectivity test, not ongoing remote access — use Cloudflare Tunnel or WireGuard for that |
 | **WireGuard** — best for staff, ciphertext-only in transit | listen port; then per device a name + the school's public IP/DDNS → **Create device config** writes a `.conf` to import | one **UDP** port forwarded to the box |
 | **Gateway** — own domain, own Let's Encrypt cert, TLS ends on the box | public hostname, Let's Encrypt email | ports **80 + 443** forwarded, public DNS A record |
 | **Turn OFF** | — | always leaves a working LAN install |
@@ -178,6 +179,47 @@ and `payments_test`, which can be run from an elevated PowerShell instead.
   pay bills, provided the cardholder's own bank allows the transaction (most do;
   some ask for a simple verification). The school can also take cash and
   cheques. Campus records those payments by hand meanwhile.
+
+## Multi-school deployment (optional, C1 — link only)
+
+Every Campus install is a single, isolated school by default
+(`deployment_mode = SINGLE`). A Ministry or board running a head office can
+link schools to it instead — see `docs/CENTRAL_SYNC_SCOPE.md` for the full
+plan and the C0 decisions it settles.
+
+Use **Start Menu → "Campus — Central Link Setup"** (it self-elevates): set the
+mode to **School**, then enter the **Central URL**, **School ID** and **sync
+token** issued by whoever runs the Head Office box, and press **Link**. The
+window is a front end for `campus-app.exe manage set_site_config
+--deployment-mode`, `link_central`, `unlink_central`, `central_link_test` and
+`central_sync`, which can all be run from an elevated PowerShell instead. The
+sync token is stored AES-256-GCM encrypted in the database, same as a
+payment gateway's secret key.
+
+- **Campus cannot be set to Headquarters.** That is a separate product,
+  Campus Central, with its own installer — this window and the underlying
+  commands refuse the attempt outright.
+- **Press "Sync now" to actually send data.** Once linked, this builds the
+  curated snapshot (`manage central_export`'s own bundle format) and POSTs
+  it straight to Central — a real sync, not a placeholder. Tick **Force
+  full** to send everything instead of just what changed; otherwise it
+  sends incrementally, automatically forcing a full resync at least weekly
+  so Central's copy eventually catches a hard delete an incremental sync's
+  own absence-of-a-row can't prove on its own.
+- **No automatic schedule runs this yet.** django_q is configured in this
+  install but no worker process (`manage.py qcluster`) is one of Campus's
+  three Windows services — a pre-existing gap in Campus's own scheduling
+  infrastructure, not specific to sync, that needs its own decision before
+  anything can run on a timer. Until then, **"Sync now" (or `manage
+  central_sync`) must be run by hand** — the `sync_interval_minutes` setting
+  is stored and ready, but nothing reads it yet.
+- **Test connection** still fails today — it checks Central's own health
+  endpoint, which doesn't exist until Central itself is a real, running
+  product (a later phase; Central's Django skeleton and ingest API exist,
+  but not its installer).
+- Unlinking clears the stored URL/ID/token and turns `sync_enabled` off; it
+  deliberately leaves `deployment_mode` as `SCHOOL` (a school that's
+  temporarily unlinked is still organisationally a school).
 
 ## Field support
 

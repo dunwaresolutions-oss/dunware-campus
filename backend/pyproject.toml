@@ -18,6 +18,14 @@ ignore = ["S101"]  # assert in tests
 DJANGO_SETTINGS_MODULE = "config.settings.test"
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-q --strict-markers"
+# apps/central is Campus Central's own Django app (see docs/CENTRAL_SYNC_SCOPE.md) --
+# a separate project, settings module and database from Campus's own `config.settings.test`
+# above. Its tests only run with an explicit override: `pytest apps/central --ds=central.settings.test`.
+# `norecursedirs` only prunes a directory pytest reaches by its own recursion (the default,
+# argument-less `pytest` run); an explicit path on the command line still collects from it.
+# Starts from pytest's own documented defaults (setting this option replaces them, it doesn't
+# extend them) plus "central".
+norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules", "venv", "{arch}", "central"]
 filterwarnings = [
     # whitenoise warns when STATIC_ROOT has no collectstatic output; irrelevant in tests
     "ignore:No directory at:UserWarning",

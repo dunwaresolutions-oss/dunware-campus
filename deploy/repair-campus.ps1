@@ -6,7 +6,9 @@
        were never registered -> https://localhost/ refused to connect.
     2. the Caddyfile proxied  /  to Django, which has no route for it ->
        https://localhost/ returned 404 (waitress/Caddy in the headers).
-  It also strips a UTF-8 BOM from .env if an older install.ps1 left one.
+  It also strips a UTF-8 BOM from .env if an older install.ps1 left one, and
+  (re)registers "Campus Scheduler" (campus-app.exe manage qcluster) on an
+  install predating that service so django_q actually has a worker.
 
   RUN AS ADMINISTRATOR:
     powershell -ExecutionPolicy Bypass -File <path>\repair-campus.ps1
@@ -203,6 +205,8 @@ function Ensure-Service($name, $exe, $svcArgs, $dir) {
 }
 Step "Registering Campus App"
 Ensure-Service "Campus App" $app "serve --host 127.0.0.1 --port 8001" (Join-Path $InstallRoot "app")
+Step "Registering Campus Scheduler"
+Ensure-Service "Campus Scheduler" $app "manage qcluster" (Join-Path $InstallRoot "app")
 Step "Registering Campus Proxy"
 Ensure-Service "Campus Proxy" $caddy ("run --config `"$cfile`"") (Join-Path $InstallRoot "caddy")
 
@@ -213,7 +217,7 @@ if ($RefreshAppFrom) {
     throw "no campus-app.exe under $RefreshAppFrom - build it first (cd backend; pyinstaller ..\deploy\campus.spec --distpath ..\dist)"
   }
   $appDir = Join-Path $InstallRoot "app"
-  foreach ($svc in @("Campus Proxy","Campus App")) {
+  foreach ($svc in @("Campus Proxy","Campus App","Campus Scheduler")) {
     if ((Get-Service $svc -EA SilentlyContinue).Status -eq "Running") { Stop-Service $svc -Force; Start-Sleep 1 }
   }
   # /MIR but never purge or overwrite the runtime data that isn't part of the freeze
@@ -284,7 +288,7 @@ IconIndex=0
 
 # --- 4. restart everything (Caddyfile changed) --------------------
 Step "Restarting services"
-foreach ($svc in @("Campus PostgreSQL","Campus App","Campus Proxy")) {
+foreach ($svc in @("Campus PostgreSQL","Campus App","Campus Scheduler","Campus Proxy")) {
   Set-Service -Name $svc -StartupType Automatic
   if ((Get-Service $svc).Status -eq "Running" -and $svc -ne "Campus PostgreSQL") { Restart-Service $svc -Force }
   elseif ((Get-Service $svc).Status -ne "Running") { Start-Service $svc }
@@ -321,7 +325,7 @@ if (Test-Path $gpgBundled) {
 Step "Health check"
 $curlExe = Join-Path $env:SystemRoot "System32\curl.exe"
 
-$svcDown = @("Campus PostgreSQL","Campus App","Campus Proxy") |
+$svcDown = @("Campus PostgreSQL","Campus App","Campus Scheduler","Campus Proxy") |
   Where-Object { (Get-Service $_ -EA SilentlyContinue).Status -ne "Running" }
 
 $httpCode = $null

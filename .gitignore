@@ -34,6 +34,10 @@ node_modules/
 frontend/.next/
 frontend/out/
 frontend/.turbo/
+# frontend_central/ -- Campus Central's own, separate Next.js project (C6)
+frontend_central/.next/
+frontend_central/out/
+frontend_central/.turbo/
 *.tsbuildinfo
 next-env.d.ts
 

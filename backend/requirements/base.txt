@@ -14,4 +14,13 @@ django-axes>=6.5             # login lockout / brute-force protection
 django-cors-headers>=4.4      # dev only in practice; prod is same-origin
 django-q2>=1.7                # background jobs (report cards, retention, digests)
 whitenoise>=6.7               # serve the exported Next.js build + static from Django
-httpx>=0.27                   # online payment gateway REST calls (apps/billing/gateways.py)
+httpx>=0.27                   # online payment gateway REST calls (apps/billing/gateways.py);
+                               # also the Central sync agent (apps/core/central_sync.py)
+truststore>=0.9               # delegates TLS verification to the OS-native cert store instead
+                               # of httpx's bundled certifi list -- needed so the Central sync
+                               # agent trusts Caddy's self-signed `tls internal` cert (the
+                               # default for both Campus's and Central's own Caddyfiles) after
+                               # it's imported into the Windows trust store by install.ps1/
+                               # install-central.ps1's Trust-CaddyLocalCA, the same way a
+                               # browser already does -- httpx's default verify=True never
+                               # looks at the OS store at all. See apps/core/central_sync.py.

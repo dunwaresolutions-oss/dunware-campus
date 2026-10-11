@@ -62,10 +62,16 @@ $env:SECRET_KEY = "<placeholder>"; $env:FIELD_ENCRYPTION_KEY = "<placeholder>"
 .\dist\campus-app\campus-app.exe manage check     # expect: no issues
 ```
 
-The two companion windows (**Campus — Remote Access Setup**, **Campus —
-Payments Setup**) are not separate installers: `campus.iss` copies
-`remote-setup-ui.ps1` / `campus-payments-setup-ui.ps1` into `{app}\scripts` and
-adds their Start Menu shortcuts, so one `iscc` run keeps them current.
+The three companion windows (**Campus — Remote Access Setup**, **Campus —
+Payments Setup**, **Campus — Central Link Setup**) are not separate
+installers: `campus.iss` copies `remote-setup-ui.ps1` /
+`campus-payments-setup-ui.ps1` / `campus-central-setup-ui.ps1` into
+`{app}\scripts` and adds their Start Menu shortcuts, so one `iscc` run keeps
+them current. "Central Link Setup" (C1, 2026-10-08) sets `deployment_mode`
+and links a school to a Campus Central head office — see
+docs/CENTRAL_SYNC_SCOPE.md; **Campus Central itself is a separate product
+with its own, not-yet-built installer**, never something this window can
+turn a Campus install into.
 
 Output: `dist/installer/Campus-Setup.exe` — ~294 MB with the third-party
 binaries staged and bundled in (266 MB when this was first written, before
@@ -337,3 +343,178 @@ Caddyfile to the SPA-serving layout, (re)registers `Campus App` /
 `/api/healthz/` and `/` with TLS 1.2 forced (the Windows PowerShell 5.1
 client won't negotiate it with modern Caddy by default). This is the
 recovery path for anyone who installed 0.9.0 before these fixes shipped.
+
+### `Campus Scheduler` registered but wouldn't start: a real frozen-exe bug (2026-10-09)
+
+Damien hit this on a real install: `nssm install` succeeded, the service showed
+up, but `Start-Service "Campus Scheduler"` failed outright. Root cause, found
+by reasoning from `django_q/cluster.py`'s own source rather than guessing: it
+spawns worker processes with `multiprocessing.Process` (`multiprocessing.get_
+context()`, which is `"spawn"` on Windows — there's no `"fork"` there). A
+frozen PyInstaller exe needs `multiprocessing.freeze_support()` called before
+anything else, or every spawned child **re-executes the whole frozen exe from
+scratch** — which lands back in `campus_app.py`'s own `main()`, fails its
+`sys.argv[1] not in ("serve", "manage")` check (multiprocessing's own internal
+bootstrap argv isn't either of those), and exits immediately — crashing the
+parent `qcluster` process a moment after NSSM starts it. This is a generic
+PyInstaller-on-Windows gotcha, not specific to django_q or to Campus; it just
+had never been hit before because `serve` (waitress) is single-process.
+
+Fixed: `multiprocessing.freeze_support()` added as the first line under
+`if __name__ == "__main__":` in both `campus_app.py` and `central_app.py`
+(the latter defensively — Central has no multiprocessing-using command today).
+**Actually verified, not just reasoned about**: re-froze `campus-app.exe`,
+then ran `campus-app.exe manage qcluster` directly against a migrated
+throwaway SQLite database — it now logs `Q Cluster ... running`, with worker
+processes actually reaching `ready for work`/`monitoring`/`pushing tasks`,
+instead of the service dying instantly. `Campus-Setup.exe` was recompiled with
+this fixed build (304,714,735 bytes, exit 0).
+
+### The fourth service: `Campus Scheduler` (2026-10-09)
+
+`Q_CLUSTER` has been configured in settings since before this phase, but no
+`manage.py qcluster` worker process was ever registered anywhere — so no
+feature of Campus's, not just Central sync, could actually run anything on
+a timer (see `docs/CENTRAL_SYNC_SCOPE.md`'s C5/C7a). Fixed as a fourth
+NSSM-wrapped Windows service, "Campus Scheduler" (`campus-app.exe manage
+qcluster`), registered in `install.ps1` right after "Campus App", using the
+exact same `Register-CampusService` helper — no new code in `campus_app.py`
+needed, since `manage` already proxies arbitrary Django commands.
+`repair-campus.ps1` and `uninstall-services.ps1` updated to match. Verified
+by parsing all three edited scripts with PowerShell's own AST parser (no
+syntax errors); **not** run for real against this dev machine — registering
+a Windows service is exactly the kind of real, shared-machine-state action
+this project avoids taking just to validate a mechanical, already-proven
+pattern (see `docs/DEPLOYMENT.md`'s "two real Postgres services already on
+this box" note).
+
+### Co-locating Campus + Campus Central on one box: three real port collisions found and fixed (2026-10-09)
+
+Damien hit this live, linking a real Campus install to a real Central install
+on the same machine for a definitive end-to-end test. Each was found by
+actually reading the resulting Caddy log, not guessed:
+
+1. **Caddy's admin API is a fixed `127.0.0.1:2019`, independent of the
+   site's own port.** Two `caddy.exe` processes on one box always collide
+   there. Fixed: `admin off` in Central's Caddyfile (neither install ever
+   calls the admin API at runtime — both only rewrite the Caddyfile and
+   restart the service).
+2. **The site itself defaulted to port 443/80**, which Campus's own Caddy
+   ("Campus Proxy") already owns on a co-located box. Fixed: Central's
+   Caddy now binds `:8443` (`CENTRAL_WEB_PORT`, `install-central.ps1`'s
+   `-WebPort` param) — the same collision-avoidance reasoning already
+   applied to Postgres's port 5433. `CSRF_TRUSTED_ORIGINS` in `.env.central`
+   needed the port added too (`https://localhost:8443`), or Django rejects
+   every POST/login with a CSRF origin mismatch once the Origin header
+   itself carries the port.
+3. **Caddy's `auto_https` feature opens its own SEPARATE port-80 redirect
+   listener whenever any site uses TLS — independent of what port the site
+   itself is on.** Moving the site to `:8443` alone did not stop Caddy from
+   still trying to grab `:80` for that redirect helper, which failed with
+   the same "Only one usage of each socket address" error, leaving the
+   service `Paused`. Fixed: `auto_https disable_redirects` in the global
+   options block (confirmed via the log: `"automatic HTTP->HTTPS redirects
+   are disabled"`) — the site's own explicit `tls internal` still works
+   fine with this off; only the extra listener is disabled.
+
+**Verified, not just reasoned about**: validated the fixed Caddyfile with
+`caddy validate`, then actually ran it live (`caddy run`) alongside Damien's
+real, running "Campus Proxy" service — both answered simultaneously on their
+own ports with zero bind conflict.
+
+## Campus Central's own packaging (`Campus-Central-Setup.exe`)
+
+A second, independent pipeline, deliberately mirroring every file and every
+fix above rather than rediscovering them — Central is a separate product
+(separate database, separate installer, per `docs/CENTRAL_SYNC_SCOPE.md`),
+but the packaging *mechanics* (PyInstaller onedir, NSSM-wrapped services,
+Inno Setup, the same staged third-party binaries) are identical.
+
+```
+frontend_central/   npm run build                 -> frontend_central/out/      (static SPA)
+backend/             pyinstaller central.spec      -> dist/central-app/          (frozen Django + waitress)
+deploy/_thirdparty/  (same staged binaries as Campus's own build - generic, not product-specific)
+deploy/central.iss   iscc central.iss              -> dist/installer/Campus-Central-Setup.exe
+```
+
+`central_app.py` is Central's one entrypoint (`serve` / `manage`), the
+counterpart of `campus_app.py` — same waitress `trusted_proxy` fix, same
+hotfix-overlay mechanism (both generic, not Campus-specific). It deliberately
+has **no** `_ensure_native_pdf_libs()` step: nothing under `apps/central`
+uses WeasyPrint (confirmed by grep before writing the spec), so Central
+needs no GTK3 runtime staged — a real, intentional difference from Campus's
+own entrypoint, not an oversight.
+
+Build it yourself:
+
+```powershell
+cd frontend_central; npm run build; cd ..
+
+cd backend
+$env:DJANGO_SETTINGS_MODULE = "central.settings.prod"
+$env:CENTRAL_SECRET_KEY = "<any 50+ char placeholder>"
+$env:CENTRAL_FIELD_ENCRYPTION_KEY = "<any 32-byte base64 placeholder>"
+.\.venv\Scripts\pyinstaller ..\deploy\central.spec --distpath ..\dist --workpath ..\build --noconfirm
+cd ..
+
+# stage deploy/_thirdparty/{pgsql,caddy} — same binaries as Campus's own build;
+# nothing extra to stage if a Campus build has already staged them
+
+cd deploy
+& "C:\...\Inno Setup 6\ISCC.exe" central.iss
+```
+
+Smoke-test before compiling, same reasoning as Campus's own:
+
+```powershell
+$env:DJANGO_SETTINGS_MODULE = "central.settings.prod"
+$env:CENTRAL_SECRET_KEY = "<placeholder>"; $env:CENTRAL_FIELD_ENCRYPTION_KEY = "<placeholder>"
+.\dist\central-app\central-app.exe manage check     # expect: no issues
+```
+
+**Actually run this phase** (not just written): `pyinstaller central.spec`
+hit the exact same `AttributeError: 'Settings' object has no attribute
+'ROOT_URLCONF'` this doc already documents for Campus's own build (the
+PyInstaller Django hook imports settings during the freeze itself, before
+`DJANGO_SETTINGS_MODULE`/the placeholder secrets are set) — same cause, same
+fix, confirming this isn't a one-off Campus quirk but a real PyInstaller +
+Django interaction every frozen Django build here will hit. With the env
+vars set, the freeze completed clean (one `central-app.exe`, ~99 MB onedir,
+same ballpark as Campus's own). `manage check` then reported "System check
+identified no issues". Beyond that, `central-app.exe serve --host 127.0.0.1
+--port 8099` was started against a throwaway SQLite database (never
+touching either of this machine's real Postgres services), and
+`curl http://127.0.0.1:8099/api/healthz/` returned `301` — the correct,
+expected `SECURE_SSL_REDIRECT` redirect-to-HTTPS behaviour, the exact same
+signal Campus's own `install.ps1`/`repair-campus.ps1` already treat as
+"the app tier is working" at that same health-check step.
+
+`deploy/install-central.ps1` mirrors `install.ps1` end to end, with three
+deliberate differences, not oversights:
+
+- **`.env.central`, not `.env`** — a different filename, matching
+  `central/settings/base.py`'s own `_env_file` read, so the two can never be
+  confused on a box that somehow runs both.
+- **Postgres on port 5433, not 5432** — a deliberate collision-avoidance
+  choice: a Ministry test box might run a Campus install (for support/demo)
+  alongside Campus Central, and the two must never fight over the same port.
+- **No fourth, scheduler service** — `central/settings/base.py`'s
+  `INSTALLED_APPS` has no `django_q`; Central has no scheduled jobs of its
+  own, so unlike Campus (see above) it registers exactly three services
+  ("Campus Central PostgreSQL", "Campus Central App", "Campus Central
+  Proxy"), not four.
+
+**Compiled successfully**: `& "C:\Program Files\Inno Setup 7\ISCC.exe"
+central.iss` ran clean — 361.984 sec, exit 0 — producing a real
+264,635,770-byte `dist\installer\Campus-Central-Setup.exe`. The compile log
+confirms every staged piece actually went in: the frozen `central-app`, the
+`frontend_central` export, the Caddyfile template, and the full
+`deploy/_thirdparty\pgsql\*` (including its debug symbols) and
+`deploy/_thirdparty\caddy\*` trees — the same binaries Campus's own build
+stages, reused rather than duplicated. The entire pipeline above — freeze,
+smoke test, compile — is now real and verified end to end, not just
+written. Still not built: Central backup/restore tooling (no
+`backup.ps1`/`restore.ps1` equivalent exists for Central) and an actual
+recurring `Schedule` row for `central_sync` (the scheduler worker now
+exists, product-wide, per the section above — but nothing inserts a
+`Schedule` row yet; that remains its own, separate, unbuilt decision).

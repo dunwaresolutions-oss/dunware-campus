@@ -20,6 +20,7 @@ from __future__ import annotations
 import secrets
 
 from axes.handlers.proxy import AxesProxyHandler
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
@@ -40,7 +41,7 @@ from rest_framework.views import APIView
 
 from apps.audit.models import AuditAction
 from apps.audit.services import record
-from apps.core.permissions import AdminOnly, StaffOnly
+from apps.core.permissions import AdminOnly, DirectoryAccess, InviteManagerOnly
 
 from .lockout import lockout_response
 from .mfa import (
@@ -194,7 +195,7 @@ class UsersView(APIView):
     Scoped to staff accounts only (never parents/students, regardless of who
     is asking); no PII beyond name + role + active flag."""
 
-    permission_classes = [IsAuthenticated, StaffOnly]
+    permission_classes = [IsAuthenticated, DirectoryAccess]
 
     def get(self, request):
         out = [
@@ -207,7 +208,9 @@ class UsersView(APIView):
                 "status": u.status,
                 "display_name": getattr(u, "display_name", "") or u.username,
             }
-            for u in User.objects.filter(role__in=STAFF_ROLES).order_by("username")
+            for u in User.objects.filter(
+                role__in=settings.ACCOUNTS_DIRECTORY_ROLES
+            ).order_by("username")
         ]
         return Response(out)
 
@@ -264,7 +267,7 @@ class PortalLoginView(APIView):
 
 
 class StaffInviteView(APIView):
-    permission_classes = [IsAuthenticated, AdminOnly]
+    permission_classes = [IsAuthenticated, InviteManagerOnly]
 
     def post(self, request):
         s = StaffInviteCreateSerializer(data=request.data)

@@ -285,6 +285,16 @@ class Command(BaseCommand):
             help="Target total enrolled students, apportioned across grades 7-12.",
         )
         parser.add_argument(
+            "--staff", type=int, default=None,
+            help="Target total staff headcount (admin + front desk + teachers + aides + "
+                 "tutors). Omit to keep the default: one dedicated specialist teacher per "
+                 "subject plus one lead per homeroom (usually far more than a small --staff "
+                 "figure). When given, teachers are pooled instead and cycled round-robin "
+                 "across every subject AND every homeroom, so one teacher may lead/teach "
+                 "more than one - realistic for a smaller school that doesn't staff one "
+                 "specialist per subject.",
+        )
+        parser.add_argument(
             "--quick", action="store_true",
             help="Tiny fast build for tests: ~12 pupils total, ~2 weeks of sessions.",
         )
@@ -296,6 +306,47 @@ class Command(BaseCommand):
         parser.add_argument("--seed", type=int, default=1729)
         parser.add_argument("--force", action="store_true",
                             help="Allow running even when DEBUG is False")
+        parser.add_argument(
+            "--school-name", default="Windward Cay High School",
+            help="SchoolProfile.name (report-card letterhead, etc.). When given, "
+                 "--legal-name/the report-card footer default to this name plainly "
+                 "(no 'Ministry of Education, District 4' suffix) rather than "
+                 "assuming every demo school is a public Ministry one -- e.g. for a "
+                 "private/church-affiliated prospect like 'Sunland Baptist Academy'.",
+        )
+        parser.add_argument(
+            "--legal-name", default=None,
+            help="SchoolProfile.legal_name. Defaults to the Ministry-suffixed form "
+                 "only when --school-name is left at its own default; otherwise "
+                 "defaults to --school-name itself, unsuffixed.",
+        )
+        parser.add_argument("--motto", default="Knowledge · Discipline · Service")
+        parser.add_argument("--address-line1", default="27 Explorer Boulevard")
+        parser.add_argument("--address-line2", default="Windward Cay Settlement")
+        parser.add_argument("--city", default="Nassau")
+        parser.add_argument("--region", default="New Providence")
+        parser.add_argument("--postal-code", default="N-4471")
+        parser.add_argument(
+            "--country", default="Bahamas",
+            help="SchoolProfile.country -- a free-text display field. Separate from "
+                 "SiteConfiguration.country (an ISO-3166 code driving real fee/payment "
+                 "behaviour), which this command does not touch via this flag.",
+        )
+        parser.add_argument("--phone", default="(242) 555-0198")
+        parser.add_argument(
+            "--email", default=None,
+            help="SchoolProfile.email. Defaults to office@<slugified school name>.example.",
+        )
+        parser.add_argument(
+            "--website", default=None,
+            help="SchoolProfile.website. Defaults to <slugified school name>.example.",
+        )
+        parser.add_argument(
+            "--footer-text", default=None,
+            help="SchoolProfile.report_card_footer, used VERBATIM when given (no "
+                 "auto-appended school-name line). Defaults to the standard "
+                 "confidentiality sentence plus a school-name line.",
+        )
         parser.add_argument(
             "--currency", default="ZAR",
             help="ISO-4217 code for SiteConfiguration.currency, and so for every "
@@ -342,31 +393,76 @@ class Command(BaseCommand):
         head = self._user(rng, taken_usernames, Role.ADMIN)
         front = self._user(rng, taken_usernames, Role.FRONT_DESK)
 
-        # one dedicated subject teacher per distinct subject in the whole
-        # curriculum — 26 specialists, the way a real high school staffs it.
         all_subjects = (
             COMPULSORY_SUBJECTS + JUNIOR_SHARED_SUBJECTS + ALL_TRACK_SUBJECTS + [CAREER_GUIDANCE]
         )
-        subject_teacher = {
-            subj: self._user(rng, taken_usernames, Role.TEACHER) for subj in all_subjects
-        }
         # a form (homeroom) teacher for every homeroom we're about to build.
         n_homerooms = sum(
             len(_split_counts(grade_counts[g], max(1, -(-grade_counts[g] // max_class_size))))
             for g in GRADES
         )
-        form_teachers = [
-            self._user(rng, taken_usernames, Role.TEACHER) for _ in range(n_homerooms)
-        ]
-        n_aides = 1 if quick else 6
-        aides = [self._user(rng, taken_usernames, Role.TEACHER) for _ in range(n_aides)]
-        tutors = [self._user(rng, taken_usernames, Role.TUTOR) for _ in range(1 if quick else 3)]
-        all_teachers = list({*subject_teacher.values(), *form_teachers})
+
+        staff_target = opts.get("staff")
+        if staff_target is not None:
+            # Pooled mode (--staff given): a small shared teacher pool, cycled round-robin
+            # across every subject AND every homeroom, so one teacher may lead/teach more
+            # than one - realistic for a smaller school that doesn't staff a dedicated
+            # specialist per subject. Reserves 2 seats for admin + front desk, then splits
+            # the rest between tutors, aides and the teacher pool itself.
+            staff_target = max(4, staff_target)
+            n_tutors = 0 if quick else min(2, max(1, staff_target // 10))
+            n_aides = 0 if quick else min(3, max(1, staff_target // 8))
+            pool_size = max(1, staff_target - 2 - n_tutors - n_aides)
+            teacher_pool = [
+                self._user(rng, taken_usernames, Role.TEACHER) for _ in range(pool_size)
+            ]
+            pool_cycle = itertools.cycle(teacher_pool)
+            subject_teacher = {subj: next(pool_cycle) for subj in all_subjects}
+            form_teachers = [next(pool_cycle) for _ in range(n_homerooms)]
+            aides = [self._user(rng, taken_usernames, Role.TEACHER) for _ in range(n_aides)]
+            tutors = [self._user(rng, taken_usernames, Role.TUTOR) for _ in range(n_tutors)]
+            all_teachers = teacher_pool
+        else:
+            # one dedicated subject teacher per distinct subject in the whole
+            # curriculum — 26 specialists, the way a real high school staffs it.
+            subject_teacher = {
+                subj: self._user(rng, taken_usernames, Role.TEACHER) for subj in all_subjects
+            }
+            form_teachers = [
+                self._user(rng, taken_usernames, Role.TEACHER) for _ in range(n_homerooms)
+            ]
+            n_aides = 1 if quick else 6
+            aides = [self._user(rng, taken_usernames, Role.TEACHER) for _ in range(n_aides)]
+            tutors = [
+                self._user(rng, taken_usernames, Role.TUTOR) for _ in range(1 if quick else 3)
+            ]
+            all_teachers = list({*subject_teacher.values(), *form_teachers})
+
         staff_all = [head, front, *all_teachers, *aides, *tutors]
         made["staff"] = len(staff_all)
 
         # ── the school's own identity (report-card letterhead) ───────
         from apps.core.models import SchoolProfile, SiteConfiguration
+
+        school_name = opts["school_name"]
+        is_default_school = (school_name == "Windward Cay High School")
+        legal_name = opts["legal_name"] or (
+            f"{school_name} (Ministry of Education, District 4)" if is_default_school
+            else school_name
+        )
+        slug = "".join(ch for ch in school_name.lower() if ch.isalnum()) or "school"
+        email = opts["email"] or f"office@{slug}.example"
+        website = opts["website"] or f"{slug}.example"
+        if opts["footer_text"]:
+            footer = opts["footer_text"]
+        else:
+            footer_org_line = (
+                f"{school_name} — Ministry of Education" if is_default_school else school_name
+            )
+            footer = (
+                "This report is confidential and intended for the parent or "
+                f"guardian named above.\n{footer_org_line}"
+            )
 
         SiteConfiguration.objects.all().delete()
         SiteConfiguration.objects.create(
@@ -376,22 +472,20 @@ class Command(BaseCommand):
 
         SchoolProfile.objects.all().delete()
         SchoolProfile.objects.create(
-            name="Windward Cay High School",
-            legal_name="Windward Cay High School (Ministry of Education, District 4)",
-            motto="Knowledge · Discipline · Service",
-            address_line1="27 Explorer Boulevard",
-            address_line2="Windward Cay Settlement",
-            city="Nassau", region="New Providence", postal_code="N-4471", country="Bahamas",
-            phone="(242) 555-0198", email="office@windwardcay.example",
-            website="windwardcay.example",
+            name=school_name,
+            legal_name=legal_name,
+            motto=opts["motto"],
+            address_line1=opts["address_line1"],
+            address_line2=opts["address_line2"],
+            city=opts["city"], region=opts["region"], postal_code=opts["postal_code"],
+            country=opts["country"],
+            phone=opts["phone"], email=email,
+            website=website,
             principal_name=f"{head.first_name} {head.last_name}", principal_title="Principal",
             principal_user=head,
             signature=ContentFile(_PIXEL_PNG, name="principal-signature.png"),
             logo=ContentFile(_PIXEL_PNG, name="logo.png"),
-            report_card_footer=(
-                "This report is confidential and intended for the parent or "
-                "guardian named above.\nWindward Cay High School — Ministry of Education"
-            ),
+            report_card_footer=footer,
         )
         made["school_profile"] = 1
 

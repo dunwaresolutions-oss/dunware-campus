@@ -1,0 +1,86 @@
+# Campus Central — bundled reverse proxy / HTTPS front door.
+# install-central.ps1 templates {$CENTRAL_HOST}, {$CENTRAL_API_BIND} and
+# {$CENTRAL_WEB_ROOT} from the first-run setup. Caddy runs as a Windows
+# service ("Campus Central Proxy"). Distinct placeholder names from
+# deploy/proxy/Caddyfile (Campus's own) so the two can never be confused if
+# both ever get staged side by side on a dev machine.
+#
+# For a host with no public DNS, Caddy's internal CA (self-signed) via
+# `tls internal`. install-central.ps1 / repair-campus-central.ps1 add that CA
+# to the machine trust store after Caddy has generated it — same mechanism as
+# Campus's own, proven in docs/PACKAGING.md.
+
+{
+	# Caddy's admin API always binds 127.0.0.1:2019, REGARDLESS of whatever
+	# site port is chosen below -- that's a fixed, global listener, not tied
+	# to CENTRAL_WEB_PORT. A school/Ministry test box that runs a Campus
+	# install (its own Caddy, "Campus Proxy") AND Campus Central side by side
+	# would have two separate caddy.exe processes both trying to bind that
+	# same fixed port, and the second one to start fails outright before it
+	# even gets to opening its own site -- confirmed by hitting exactly this:
+	# "starting caddy administration endpoint: listen tcp 127.0.0.1:2019:
+	# bind: Only one usage of each socket address is normally permitted",
+	# which left "Campus Central Proxy" Paused and every request silently
+	# falling through to Campus's OWN Caddy instead (same symptom as the
+	# CENTRAL_WEB_PORT collision below, but a different cause). Neither this
+	# install nor Campus's own ever calls Caddy's admin API at runtime --
+	# both only ever rewrite the Caddyfile and restart the service -- so
+	# turning it off entirely is correct, not just a workaround.
+	admin off
+	# Caddy's auto_https feature opens its OWN separate port-80 redirect
+	# listener ("remaining_auto_https_redirects") whenever any site uses
+	# TLS -- independent of which port the site itself is on. CENTRAL_WEB_PORT
+	# being 8443 is not enough by itself: Caddy still tried to grab :80 for
+	# that redirect server and failed with "Only one usage of each socket
+	# address..." (confirmed 2026-10-09) because Campus's own Caddy already
+	# holds 80 on a co-located box. The site's own explicit `tls internal`
+	# below still provisions a cert fine with this off; only the extra
+	# port-80 listener is disabled.
+	auto_https disable_redirects
+	# Caddy runs here as a SYSTEM service and cannot write to the Windows
+	# certificate store itself ("the request is not supported"); the install
+	# scripts do it with certutil / Import-Certificate instead. Stop Caddy
+	# retrying (and logging an error) on every start.
+	skip_install_trust
+}
+
+# A non-standard port, not 443 -- deliberate, same collision-avoidance
+# reasoning as CENTRAL_DATABASE_URL's port 5433 in install-central.ps1:
+# Campus's own Caddy ("Campus Proxy") already owns 443/80 on a box that
+# also runs a Campus install, and two Caddy instances cannot both bind
+# the same port on the same machine.
+{$CENTRAL_HOST:localhost}:{$CENTRAL_WEB_PORT:8443} {
+	encode gzip zstd
+
+	# --- dynamic: Django (waitress) ---------------------------------------
+	# API and the break-glass admin, Django's own collected static (admin +
+	# DRF browsable API assets), and media all go to the app. /media/* is
+	# unused today (apps.central stores no files, only synced rows) but
+	# apps.core/apps.accounts are reused wholesale and MEDIA_URL is a real,
+	# configured setting - routing it through rather than 404ing matches
+	# Campus's own Caddyfile and costs nothing idle.
+	@dynamic path /api/* /admin/* /static/* /media/*
+	handle @dynamic {
+		reverse_proxy {$CENTRAL_API_BIND:127.0.0.1:8002}
+	}
+
+	# --- everything else: the exported Next.js SPA (frontend_central) -----
+	# Served straight off disk by Caddy - the static export is bundled at
+	# {app}\app\frontend_central_out. try_files covers Next's per-route
+	# index.html folders and falls back to the SPA shell for client-side
+	# routes (the query-param routing pattern this console uses).
+	handle {
+		root * {$CENTRAL_WEB_ROOT:./frontend_central_out}
+		try_files {path} {path}/index.html {path}.html /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+	}
+
+	tls internal
+}

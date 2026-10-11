@@ -1,6 +1,7 @@
+from django.conf import settings
 from rest_framework import serializers
 
-from .models import STAFF_ROLES, User
+from .models import Role, User
 
 
 class WhoAmISerializer(serializers.ModelSerializer):
@@ -28,7 +29,12 @@ class TOTPTokenSerializer(serializers.Serializer):
 
 class StaffInviteCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
-    role = serializers.ChoiceField(choices=[(r.value, r.label) for r in STAFF_ROLES])
+    # Settings-driven, not a hardcoded STAFF_ROLES import -- this serializer
+    # is reused as-is by Campus Central (settings.ACCOUNTS_DIRECTORY_ROLES is
+    # Central's own CENTRAL_ROLE_NAMES there). See config/settings/base.py.
+    role = serializers.ChoiceField(
+        choices=[(name, Role(name).label) for name in settings.ACCOUNTS_DIRECTORY_ROLES]
+    )
 
 
 class InviteAcceptSerializer(serializers.Serializer):

@@ -45,7 +45,7 @@
   <div class="kicker">Campus School Management</div>
   <h1>Technical &amp; Troubleshooting Guide</h1>
   <div class="sub">For the person who builds, installs, updates and supports the box — and for an<br>organization's own technical staff running Campus independently.<br>On-prem, Windows, self-contained.</div>
-  <div class="meta">Companion to <i>Campus — Overview &amp; User Guide</i>. Full technical detail lives in <code>docs/</code> inside the repo;<br>this is the field-facing guide. Describes Campus 0.9.0 as built on 19 September&nbsp;2026.</div>
+  <div class="meta">Companion to <i>Campus — Overview &amp; User Guide</i>. Full technical detail lives in <code>docs/</code> inside the repo;<br>this is the field-facing guide. Describes Campus 0.9.0 as built on 19 September&nbsp;2026, plus Campus Central (added 11&nbsp;October&nbsp;2026).</div>
 </div>
 
 <div class="pagebreak"></div>
@@ -74,9 +74,12 @@
 <a href="#s21">21. Data ownership, export &amp; portability</a>
 <a href="#s22">22. What's covered vs. what's now yours</a>
 <a href="#s23">23. Where to look next</a>
+<a href="#s24">24. Campus Central — linking a school to a Ministry/district console</a>
 </div>
 <p class="muted" style="margin-top:14px">Sections 1–15 apply to every install, whoever operates it. Sections 16–22
-are for an organization that has bought Campus outright and will run, update and back it up itself.</p>
+are for an organization that has bought Campus outright and will run, update and back it up itself.
+Section 24 is new (11 October 2026) and applies only to a school linking to a separate Campus Central
+installation, or to whoever builds/operates Central itself.</p>
 
 <div class="pagebreak"></div>
 <h2 class="part">Part I · Build, install, and fix</h2>
@@ -379,6 +382,21 @@ campus-app.exe manage support_sql "&lt;query&gt;" --operator "&lt;your name&gt;"
 <p class="lbl">Root cause</p><p>A Paystack merchant account charges in exactly one currency, matching the country it was registered under. The install's invoices were in a different one.</p>
 <p class="lbl">Fix</p><p>Bill in the account's currency (§7). A stray <code>.test</code> email domain on a demo guardian also fails Paystack's validator; demo data now uses <code>example.com</code>. Once invoices exist, the site currency is locked in the console — change it deliberately with <code>set_site_config --currency … --force</code>.</p></div></div>
 
+<div class="issue"><div class="hd">14.15 · Linking to Campus Central fails with CERTIFICATE_VERIFY_FAILED, even after trusting the local certificate</div><div class="bd">
+<p class="lbl">Symptom</p><p>Every sync or "Test connection" attempt from Campus's Central Link Setup window fails with <code>CERTIFICATE_VERIFY_FAILED</code>, even though the self-signed local CA (<code>Trust-CaddyLocalCA</code>) has already been imported into the Windows certificate store and a browser is perfectly happy with the same address.</p>
+<p class="lbl">Root cause</p><p><code>httpx</code> (used for the sync call) checks its own bundled <code>certifi</code> CA list by default — never the Windows trust store a browser uses. This would fail for <i>every</i> real deployment using the default self-signed setup, not just an unusual one.</p>
+<p class="lbl">Fix</p><p>The <code>truststore</code> package delegates Python's TLS verification to the OS-native store instead; both the sync POST and the connection test now use it (<code>apps/core/central_sync.py:trusted_ssl_context()</code>). Already bundled in current builds of both installers — if an older build still shows this, update <code>Campus-Setup.exe</code>.</p></div></div>
+
+<div class="issue"><div class="hd">14.16 · "Campus Scheduler" registers but won't start</div><div class="bd">
+<p class="lbl">Symptom</p><p><code>Get-Service "Campus Scheduler"</code> shows the service registered, but <code>Start-Service</code> fails or the service stops immediately after starting.</p>
+<p class="lbl">Root cause</p><p><code>django_q</code>'s cluster spawns worker processes via Python's <code>multiprocessing</code>. On Windows, a frozen (PyInstaller) exe re-executes its own entire argv on every spawned child unless <code>multiprocessing.freeze_support()</code> runs first — without it, each spawned worker hits the frozen app's own argument check, fails, and the parent process dies instantly. A generic PyInstaller-on-Windows gotcha, never hit before this service existed, since the main <code>serve</code> process is single-process.</p>
+<p class="lbl">Fix</p><p>Already fixed in <code>campus_app.py</code> (and defensively in <code>central_app.py</code>, which has no scheduler of its own). Update to the current <code>Campus-Setup.exe</code> if an older build still shows this — <code>repair-campus.ps1 -RefreshAppFrom</code> also carries the fix onto a live install.</p></div></div>
+
+<div class="issue"><div class="hd">14.17 · Co-locating Campus and Campus Central on one machine, the two Caddy instances fight each other</div><div class="bd">
+<p class="lbl">Symptom</p><p>One of the two products' proxy service crash-loops, or <code>https://localhost/</code> for one product unexpectedly answers with the other product's certificate, right after installing the second one.</p>
+<p class="lbl">Root cause</p><p>Three separate Caddy behaviours, each real: (1) Caddy's admin API binds a fixed <code>127.0.0.1:2019</code> regardless of the site's own port — two Caddy processes on one box always collide there. (2) Central's installer previously defaulted its web port to 443/80, already owned by Campus's own Caddy. (3) Caddy's <code>auto_https</code> feature opens its <i>own</i> separate port-80 redirect listener whenever any site on it uses TLS, independent of that site's chosen port — moving Central's own port off 443 alone does not stop it also reaching for :80.</p>
+<p class="lbl">Fix</p><p><code>admin off</code> in both products' global Caddy options (neither ever calls the admin API at runtime); Central's installer now defaults its web port to <b>8443</b> (<code>install-central.ps1 -WebPort</code> to change it) with that port added to <code>CSRF_TRUSTED_ORIGINS</code> in <code>.env.central</code> (Django's CSRF origin check needs the exact port, unlike <code>ALLOWED_HOSTS</code>); <code>auto_https disable_redirects</code> in Central's global options block. This is purely a co-location concern — a Central install on its own machine, with no Campus install on the same box, never hits any of it.</p></div></div>
+
 <h2 id="s15">15. General diagnostics playbook</h2>
 <h3>A service won't start, or keeps stopping</h3>
 <ol>
@@ -513,8 +531,60 @@ campus-app.exe manage support_sql "&lt;query&gt;" --operator "&lt;your name&gt;"
 <tr><td>What an operator sets up for a given jurisdiction</td><td><code>docs/OPERATOR_PRIVACY_CHECKLIST.md</code></td></tr>
 <tr><td>Remote access &amp; what it exposes</td><td><code>docs/REMOTE_ACCESS_AND_YOUR_DATA.md</code></td></tr>
 <tr><td>Security self-review against OWASP ASVS</td><td><code>docs/ASVS_LITE_REVIEW.md</code></td></tr>
-<tr><td>Sources of the three PDFs, and the render script</td><td><code>docs/pdf-src/</code></td></tr>
+<tr><td>Campus Central's sync-scope decisions and build phases (C0–C9)</td><td><code>docs/CENTRAL_SYNC_SCOPE.md</code></td></tr>
+<tr><td>Business/product overview of Campus and Campus Central together</td><td><code>Campus Product Whitepaper.pdf</code></td></tr>
+<tr><td>Sources of the four PDFs, and the render script</td><td><code>docs/pdf-src/</code></td></tr>
 </table>
+
+<div class="pagebreak"></div>
+<h2 id="s24">24. Campus Central — linking a school to a Ministry/district console</h2>
+<p>Campus Central is a separate product, sold and installed separately (<code>Campus-Central-Setup.exe</code>) —
+nothing in this section applies unless a school's district or Ministry actually operates one. Full
+business-level detail is in the <i>Campus Product Whitepaper</i>; this section is the field-facing
+how-to for the school side of the link.</p>
+
+<h3>24.1 Linking this install to a Central install</h3>
+<ol>
+<li>Central's own administrator registers this school first (<code>manage register_school</code> on the
+Central box) and gives you a <b>school id</b> and a one-time <b>bearer token</b>.</li>
+<li>On this school's own server, run the <b>Campus — Central Link Setup</b> companion window (Start Menu,
+same place as Payments Setup and Remote Access Setup). Enter the Central URL, the school id and the
+token, then <b>Test connection</b> before saving.</li>
+<li>Tick <b>Sync enabled</b> and set an interval, or leave sync manual and use the window's own
+<b>Sync now</b> button (same as <code>campus-app.exe manage central_sync</code>) whenever you want to
+push a fresh snapshot.</li>
+<li><code>campus-app.exe manage unlink_central</code> removes the link entirely from this school's side;
+nothing on the Central side is deleted automatically.</li>
+</ol>
+<div class="note">This is a server-side setup step, not a console feature — nothing about Campus Central
+appears anywhere in the browser console. Section 17 of the <i>Overview &amp; User Guide</i> has the
+one-paragraph version for non-technical staff.</div>
+
+<h3>24.2 What gets sent, and when</h3>
+<p>Each sync sends a curated, allowlisted snapshot — students, guardians, staff, attendance/incident/
+billing <i>summaries</i> only (never a per-family invoice), consent status, report-card status.
+<b>Never sent</b>: health/medical data, custody notes, government IDs, narrative text (observation and
+incident <i>descriptions</i>, not just their category), per-family billing/application detail, or who is
+authorized to pick a child up (that sync doesn't exist yet at all, by deliberate decision). A sync is
+incremental by default; it runs a full reconcile instead when this school has never fully synced yet, or
+it's been 7+ days since the last full one. <b>No schedule is wired up by default</b> — until an operator
+sets one (Task Scheduler calling <code>manage central_sync</code>, or the equivalent once a
+<code>Schedule</code> row exists for it), sync only happens when someone presses Sync now.</p>
+
+<h3>24.3 Central's own installer, backups and security notes</h3>
+<p>Central installs exactly like Campus — one <code>.exe</code>, Windows services, bundled PostgreSQL
+(port <b>5433</b> by default, deliberately different from Campus's 5432 so one machine can run both) and
+bundled Caddy (port <b>8443</b> by default — see §14.17 if co-locating with a Campus install on the same
+box). <code>backup-central.ps1</code>/<code>restore-central.ps1</code> mirror Campus's own GPG-encrypted
+<code>pg_dump</code> pipeline exactly; there is no in-console "Backups" page for Central yet, so point a
+scheduled task at the script the same way §18 describes for Campus. <code>manage check</code> re-verifies
+BitLocker is still on at every run (<code>core.W002</code>), not just once at install time.</p>
+<div class="open"><b>Known, deliberately unresolved gap:</b> Central's stored student/guardian name/email/
+student-number fields are <i>not</i> encrypted at rest the way Campus's own health/custody/government-ID
+fields are — Central's cross-school search matches directly against those columns, and field-encrypting
+them would silently break that search. A real fix needs searchable/blind-indexed encryption; until then,
+secure the Central database host itself (disk encryption, network access control) as the primary control
+for that specific data, not field-level encryption.</div>
 
 </body>
 </html>

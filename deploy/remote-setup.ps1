@@ -11,6 +11,15 @@
   Cloudflare Tunnel  (easiest for parents -- nothing to install)
     -Mode Tunnel -Hostname <portal.school.edu.bs> [-TunnelName campus]
                  [-AccessEmails "head@school.edu.bs,office@school.edu.bs"]
+    Needs a Cloudflare account with at least one domain already added as a
+    zone -- 'tunnel login' shows an empty zone picker and hangs forever
+    without one. No domain yet? Use -Mode Quick instead.
+
+  Quick test tunnel  (no Cloudflare account, no domain -- temporary)
+    -Mode Quick
+    Hands back a random https://<words>.trycloudflare.com address in a few
+    seconds. Changes every time it restarts -- for a one-off test, not
+    ongoing remote access.
 
   WireGuard VPN  (best for staff -- ciphertext-only in transit)
     -Mode WireGuard [-WgListenPort 51820]
@@ -23,7 +32,7 @@
 #>
 param(
   [Parameter(Mandatory)]
-  [ValidateSet('Tunnel', 'WireGuard', 'Gateway', 'Status', 'Off', 'Login')]
+  [ValidateSet('Tunnel', 'Quick', 'WireGuard', 'Gateway', 'Status', 'Off', 'Login')]
   [string]$Mode,
 
   [string]$InstallRoot = "$env:ProgramData\Campus",
@@ -62,6 +71,7 @@ try {
     'Login'    { Invoke-CloudflaredLogin $CloudflaredExe }
     'Off'      { Disable-RemoteAccess @{ WireGuardExe = $WireGuardExe } }
     'Tunnel'   { Enable-Tunnel @{ Hostname = $Hostname; TunnelName = $TunnelName; AccessEmails = $AccessEmails; CloudflaredExe = $CloudflaredExe } }
+    'Quick'    { Enable-QuickTunnel @{ CloudflaredExe = $CloudflaredExe } }
     'Gateway'  { Enable-Gateway @{ Hostname = $Hostname; AcmeEmail = $AcmeEmail } }
     'WireGuard' {
       if ($AddPeer) {
